@@ -1,0 +1,31 @@
+name: tests
+
+# Every push runs all three suites. The addon ones need nothing but Lua: the
+# client is stubbed, so there is no WoW and no network anywhere in here.
+on:
+  push:
+  pull_request:
+
+jobs:
+  addon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+      - name: addon tests
+        run: lua5.4 test/run.lua
+
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: pillow, for the icon checks
+        run: python -m pip install pillow
+      - name: push tests
+        run: python3 test/pushtest.py
+      - name: shell tests
+        run: bash test/shelltest.sh

@@ -1,0 +1,24 @@
+## Interface: 11509, 20506, 30405, 38002, 40402, 50504
+## Title: Chain
+## Notes: Everything a run is worth knowing. Runs, time and gold to your target level, which booster to pay, your instance lockout, and who is looking for a group.
+## Author: Rikerud
+## Version: 1.1.0
+## SavedVariables: ChainDB, LevelBarDB, LevelTrackerDB
+## SavedVariablesPerCharacter: ChainCharDB, LevelBarCharDB, LevelTrackerCharDB
+## IconTexture: Interface\AddOns\Chain\icon
+## OptionalDeps: NovaInstanceTracker
+## X-Curse-Project-ID: 1691613
+## X-License: MIT
+## X-Category: Quests & Leveling
+
+Data.lua
+Stats.lua
+Decay.lua
+Core.lua
+Trade.lua
+PvP.lua
+Roster.lua
+Bar.lua
+Minimap.lua
+Window.lua
+Options.lua
