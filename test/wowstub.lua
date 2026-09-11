@@ -382,6 +382,8 @@ function frameMeta:GetTop()
   return p and p.y or 0
 end
 function frameMeta:GetBottom() return (self:GetTop() or 0) - (self:GetHeight() or 0) end
+function frameMeta:SetScale(v) self.__scale = v end
+function frameMeta:GetScale() return self.__scale or 1 end
 function frameMeta:GetEffectiveScale() return self.__scale or 1 end
 function frameMeta:StartMoving() self.__moving = true end
 function frameMeta:StopMovingOrSizing() self.__moving = false end

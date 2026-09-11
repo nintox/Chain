@@ -1257,8 +1257,8 @@ function BT.OnEvent(_, event, ...)
     local watching = ChainDB.watchEnemies and BT.NoteCombatLogUnit
     if (not r or r.instId) and not watching then return end
     if CombatLogGetCurrentEventInfo then
-      local _, sub, _, src, srcName, srcFlags, _, dst, dstName, dstFlags =
-        CombatLogGetCurrentEventInfo()
+      local _, sub, _, src, srcName, srcFlags, _, dst, dstName, dstFlags,
+            _, spellId = CombatLogGetCurrentEventInfo()
       if r and not r.instId then
         BT.NoteInstance(src)
         if not r.instId then BT.NoteInstance(dst) end
@@ -1266,7 +1266,9 @@ function BT.OnEvent(_, event, ...)
       -- the combat log reaches further than any nameplate: somebody casting
       -- two rooms away is in it
       if watching then
-        BT.NoteCombatLogUnit(src, srcName, srcFlags)
+        -- the spell goes with the caster only: what somebody was hit by says
+        -- nothing about them
+        BT.NoteCombatLogUnit(src, srcName, srcFlags, spellId)
         BT.NoteCombatLogUnit(dst, dstName, dstFlags)
         -- who beat whom, which is the one piece of history about a player
         -- that is genuinely yours rather than the server's

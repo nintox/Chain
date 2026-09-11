@@ -2412,7 +2412,12 @@ do
       -- slepp, og då skal ho hugse kvar du la henne
       r1.__scripts.OnDragStop(r1)
       ok(not BT.NearbyDragging(), "draget er slutt")
-      eq(ChainDB.nearbyPos.x, 700, "og posisjonen er lagra der du slapp henne")
+      -- lagra i skjermen sine einingar, ikkje i ramma sine: ei skalert ramme
+      -- les sin eigen GetLeft i sine eigne einingar, og ankeret mot UIParent
+      -- er i skjermen sine. Å blande dei to er akkurat feilen som får boksen
+      -- til å hoppe når du skrur opp storleiken.
+      eq(ChainDB.nearbyPos.x, 700 * nb:GetScale(),
+         "og posisjonen er lagra i skjermen sine einingar")
 
       -- og no skal tikken få lov igjen
       BT.RefreshNearby()
@@ -2425,7 +2430,70 @@ do
       ok(not nb.__moving, "låst lar seg ikkje dra")
       ChainDB.nearbyLocked = nil
 
-        -- Kven som slo kven: det einaste stykket historie om ein annan spelar
+        -- Ei evne set eit golv under nokon du aldri har sett: ein rang kan ikkje
+      -- kastast under det levelet han blir lært på. Det er eit golv og ikkje
+      -- meir - ein level 60 som kastar Rank 1 les framleis som "4+" - så det
+      -- blir lagra som ei gjetting og vist med "+".
+      do
+        ChainDB.enemies = {}
+        _G.Spy_AbilityList = {
+          [1111] = { level = 34, class = "MAGE" },
+          [2222] = { level = 45, class = "MAGE" },
+          [3333] = { level = 12, class = "MAGE" },
+        }
+        ok(BT.HasAbilityData(), "vi ser tabellen når han er der")
+        BT.NoteCombatLogUnit("Player-4-0101", "Kastar-Testrealm", 0x440, 1111)
+        local e = ChainDB.enemies["Kastar"]
+        eq(e.level, 34, "evna set eit golv")
+        ok(e.levelGuess, "og det er merkt som ei gjetting")
+        eq(e.class, "MAGE", "klassa kjem med på kjøpet")
+
+        -- eit høgare golv vinn
+        BT.NoteCombatLogUnit("Player-4-0101", "Kastar-Testrealm", 0x440, 2222)
+        eq(ChainDB.enemies["Kastar"].level, 45, "eit høgare golv vinn")
+        -- eit lågare gjer ikkje
+        BT.NoteCombatLogUnit("Player-4-0101", "Kastar-Testrealm", 0x440, 3333)
+        eq(ChainDB.enemies["Kastar"].level, 45, "og eit lågare rører det ikkje")
+
+        -- men å sjå dei sjølv avgjer, uansett kva evna sa
+        BT.NoteEnemy("Kastar-Testrealm", { level = 38 })
+        eq(ChainDB.enemies["Kastar"].level, 38, "eit sett level slår gjettinga")
+        eq(ChainDB.enemies["Kastar"].levelGuess, nil, "og er ikkje lenger gjetta")
+        -- og då skal ei evne ikkje få heve det igjen
+        BT.NoteCombatLogUnit("Player-4-0101", "Kastar-Testrealm", 0x440, 2222)
+        eq(ChainDB.enemies["Kastar"].level, 38, "evna overstyrer ikkje det du såg")
+
+        -- og "+" skal stå på rada
+        BT.NoteCombatLogUnit("Player-4-0102", "Gjetta-Testrealm", 0x440, 2222)
+        BT.RefreshNearby()
+        local nb3, found = _G.ChainNearby, nil
+        for _, r in ipairs(nb3.rows) do
+          if type(r.rec) == "table" and r.rec.name == "Gjetta" then found = r end
+        end
+        ok(found and (found.right:GetText() or ""):find("45%+"),
+           "og rada seier 45+ (" .. tostring(found and found.right:GetText()) .. ")")
+
+        _G.Spy_AbilityList = nil
+        ok(not BT.HasAbilityData(), "utan tabellen gjer det rett og slett ingenting")
+        ok(BT.NoteAbilityLevel("Kvasom", 50) == nil, "og ingen level blir gjetta")
+      end
+
+      -- Storleik: dette blir lese på to sekund før ein slåstkamp, ikkje studert
+      do
+        ChainDB.nearbyScale = nil
+        local nb4 = _G.ChainNearby
+        BT.RefreshNearby()
+        ok(nb4:GetScale() > 1, "lista er større enn spelet sin småskrift som standard")
+        BT.SetNearbyScale(1.5)
+        eq(ChainDB.nearbyScale, 1.5, "og du kan skru henne opp")
+        eq(nb4:GetScale(), 1.5, "som slår ut med ein gong")
+        BT.SetNearbyScale(3)
+        eq(ChainDB.nearbyScale, 2, "med eit tak")
+        ChainDB.nearbyScale = nil
+        BT.RefreshNearby()
+      end
+
+      -- Kven som slo kven: det einaste stykket historie om ein annan spelar
       -- som er ditt eige. Serveren fortel deg ingenting om dei, men han
       -- fortel deg kven som slutta å røre seg.
       do

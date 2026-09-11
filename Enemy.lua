@@ -130,7 +130,10 @@ function BT.NoteEnemy(name, info)
   -- only ever fill in; a nameplate knows the level, the combat log does not,
   -- and the combat log must not erase what the nameplate told us
   e.class = info.class or e.class
-  e.level = (info.level and info.level > 0) and info.level or e.level
+  if info.level and info.level > 0 then
+    -- seeing them settles it, whatever an ability suggested
+    e.level, e.levelGuess = info.level, nil
+  end
   e.guild = info.guild or e.guild
   e.faction = info.faction or e.faction
   e.race = info.race or e.race
@@ -388,7 +391,32 @@ local function IsPlayerGUID(guid)
   return type(guid) == "string" and guid:sub(1, 7) == "Player-"
 end
 
-function BT.NoteCombatLogUnit(guid, name, flags)
+-- What an ability tells you about whoever used it.
+--
+-- A spell rank cannot be cast below the level it is learned at, so seeing one
+-- puts a floor under somebody you have never laid eyes on. It is a floor and
+-- nothing more - a level 60 casting Rank 1 Frostbolt still reads as 4+ - so
+-- it is stored as a guess and shown with a "+" rather than pretending to be
+-- the level.
+--
+-- The table is Spy's. It is read from its global if Spy is loaded, exactly
+-- the way Nova Instance Tracker's count is read: nothing is copied, nothing
+-- is shipped, and if Spy is not there this simply does nothing. Building our
+-- own is three thousand rows of game data and a job of its own.
+function BT.AbilityInfo(spellId)
+  if not spellId then return nil end
+  local list = _G.Spy_AbilityList
+  if type(list) ~= "table" then return nil end
+  local a = list[spellId]
+  if type(a) ~= "table" then return nil end
+  return a.level, a.class, a.race
+end
+
+function BT.HasAbilityData()
+  return type(_G.Spy_AbilityList) == "table"
+end
+
+function BT.NoteCombatLogUnit(guid, name, flags, spellId)
   if not ChainDB.watchEnemies then return end
   if not IsPlayerGUID(guid) or not name then return end
   if not bit or not flags then return end
@@ -406,7 +434,28 @@ function BT.NoteCombatLogUnit(guid, name, flags)
     if englishClass and englishClass ~= "" then class = englishClass end
     if englishRace and englishRace ~= "" then race = englishRace end
   end
-  BT.NoteEnemy(name, { how = "combat log", class = class, race = race })
+  -- and what the ability they just used says about them
+  local lvl, aClass, aRace
+  if spellId then lvl, aClass, aRace = BT.AbilityInfo(spellId) end
+
+  BT.NoteEnemy(name, { how = "combat log", class = class or aClass,
+                       race = race or aRace })
+  -- the level is its own step: it is a floor rather than a fact, and it may
+  -- only ever be raised
+  if lvl then BT.NoteAbilityLevel(name, lvl) end
+end
+
+-- A floor only rises. Two abilities seen, the higher one wins; and a level we
+-- actually saw with our own eyes always beats a guess.
+function BT.NoteAbilityLevel(name, lvl)
+  local key = BT.KOSKey(name)
+  local e = key and ChainDB.enemies and ChainDB.enemies[key]
+  if not e or not lvl or lvl <= 0 then return nil end
+  if e.level and not e.levelGuess then return nil end       -- seen beats guessed
+  if e.level and e.level >= lvl then return nil end
+  e.level, e.levelGuess = lvl, true
+  if BT.RefreshNearby then BT.RefreshNearby() end
+  return lvl
 end
 
 local f = CreateFrame("Frame", "ChainEnemyFrame")
@@ -460,6 +509,12 @@ local function NearRows()
   return math.max(1, math.min(NEAR_MAX, math.floor(ChainDB.nearbyRows or NEAR_ROWS)))
 end
 local function GrowUp() return ChainDB.nearbyGrow == "up" end
+-- Bigger than the game's default small font, because this is read at a glance
+-- in the two seconds before a fight rather than studied.
+local function NearScale()
+  return math.max(0.7, math.min(2, tonumber(ChainDB.nearbyScale) or 1.15))
+end
+
 local function NearWidth()
   return math.max(120, math.min(420, math.floor(ChainDB.nearbyWidth or NEAR_W)))
 end
@@ -627,7 +682,8 @@ local function RowTooltip(self)
   if e.guild then GameTooltip:AddLine(e.guild, 0.6, 0.9, 0.6) end
   -- "Level 45 Orc Warrior", the way the game says it everywhere else
   local bits = {}
-  if e.level and e.level > 0 then table.insert(bits, "Level " .. e.level)
+  if e.level and e.level > 0 then
+    table.insert(bits, "Level " .. e.level .. (e.levelGuess and "+" or ""))
   else table.insert(bits, "Level unknown") end
   if e.race then table.insert(bits, e.race) end
   if e.class then table.insert(bits, BT.ClassLabel(e.class)) end
@@ -676,7 +732,10 @@ local function RowTooltip(self)
     GameTooltip:AddLine("was stealthed when spotted", 0.7, 0.5, 1)
   end
   GameTooltip:AddLine(" ")
-  if not e.level or e.level <= 0 then
+  if e.levelGuess then
+    GameTooltip:AddLine("at least that - from an ability they used",
+                        0.5, 0.5, 0.5)
+  elseif not e.level or e.level <= 0 then
     GameTooltip:AddLine("no level: you have not actually seen them yet",
                         0.5, 0.5, 0.5)
   end
@@ -770,6 +829,15 @@ end
 function BT.ToggleNearbyLock()
   ChainDB.nearbyLocked = not ChainDB.nearbyLocked
   return ChainDB.nearbyLocked
+end
+
+function BT.SetNearbyScale(v)
+  v = tonumber(v)
+  if not v then return NearScale() end
+  ChainDB.nearbyScale = math.max(0.7, math.min(2, v))
+  if nearby then nearby:SetScale(ChainDB.nearbyScale) end
+  BT.RefreshNearby()
+  return ChainDB.nearbyScale
 end
 
 function BT.SetNearbyRows(n)
@@ -883,6 +951,14 @@ local function ListItems()
              and (C.warn .. "Locked" .. C.off .. C.dim .. " - unlock" .. C.off)
              or (C.dim .. "Unlocked" .. C.off .. " - lock"),
       fn = function() BT.ToggleNearbyLock() end },
+    { text = "Size" .. C.dim .. "  " .. math.floor(NearScale() * 100)
+             .. "%  - bigger" .. C.off,
+      fn = function()
+        local steps = { 0.9, 1, 1.15, 1.3, 1.5 }
+        local now, at = NearScale(), 1
+        for i, v in ipairs(steps) do if math.abs(v - now) < 0.02 then at = i end end
+        BT.SetNearbyScale(steps[(at % #steps) + 1])
+      end },
     { text = "Back to the middle", fn = function() BT.ResetNearbyPos() end },
     { text = "Hide the list", fn = function() BT.ToggleNearby() end },
   }
@@ -1024,6 +1100,7 @@ function BT.BuildNearby()
   if nearby then return nearby end
   nearby = CreateFrame("Frame", "ChainNearby", UIParent)
   nearby:SetSize(NearWidth(), 22 + NearRows() * ROW_H)
+  nearby:SetScale(NearScale())
   AnchorNearby()
   nearby:SetMovable(true)
   nearby:EnableMouse(true)
@@ -1136,6 +1213,7 @@ local function LayoutNearby(shown)
     nearby.title:SetPoint("TOPLEFT", 6, -5)
   end
   local w = NearWidth()
+  nearby:SetScale(NearScale())
   if not sizing then nearby:SetWidth(w) end
   for i = 1, NEAR_MAX do
     local row = nearby.rows[i]
@@ -1202,7 +1280,8 @@ function BT.RefreshNearby()
       row.name:SetText((why and "|cffff4040!|r " or "")
         .. (e.stealth and "|cffb080ff~|r " or "") .. e.name)
       row.name:SetTextColor(1, 1, 1)
-      row.right:SetText(((e.level and e.level > 0) and tostring(e.level) or "??")
+      row.right:SetText(((e.level and e.level > 0)
+          and (e.level .. (e.levelGuess and "+" or "")) or "??")
         .. " " .. (e.class and BT.ClassLabel(e.class) or "?"))
       row.right:SetTextColor(col[1], col[2], col[3])
       row.name:SetAlpha(a)

@@ -72,6 +72,19 @@ parts that are not.
   somebody is worth more than the mark: "ganks the SM entrance at 2am" is a
   plan, a red name is a colour. Writing one marks him, because you do not
   write a note about somebody you do not care about. Never shared.
+- **A level for people you have never laid eyes on.** A spell rank cannot be
+  cast below the level it is learned at, so an ability puts a floor under its
+  caster. Shown as "45+", because a floor is all it is - a level 60 casting
+  Rank 1 still reads as 4+ - and a level you actually saw always wins and
+  clears the guess.
+  The spell table is Spy's, read from its global if Spy is loaded, the same
+  way Nova Instance Tracker's count is read: nothing copied, nothing shipped,
+  and without Spy this simply does nothing. Three thousand rows of game data
+  is a job of its own.
+- Class and race come off the same table, so somebody who only ever appears
+  in the combat log arrives class-coloured instead of grey.
+- The list has a size of its own, bigger than the game's small font by
+  default. It is read in the two seconds before a fight, not studied.
 - Levels are picked up from every unit the client will give one for, not only
   the one you are pointing at: your target's target, your mouseover's target,
   and whatever the rest of the group is swinging at. Most of the people you
