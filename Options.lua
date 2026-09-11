@@ -405,6 +405,15 @@ local function BuildOptions()
     function(v)
       if BT.SetNearbyRows then BT.SetNearbyRows(v or 8) end
     end)
+  NextRow()
+  -- How long somebody stays on the list after you stop seeing them. Too short
+  -- and a rogue who stepped behind a rock is gone; too long and the list is a
+  -- history of the zone rather than who is here.
+  opt.nearbySecs = Field(1, "Forget after (s)", 40,
+    function() return BT.NearbySeconds and BT.NearbySeconds() or 60 end,
+    function(v)
+      if BT.SetNearbySeconds then BT.SetNearbySeconds(v or 60) end
+    end)
   -- which way it grows from where you parked it, so a list at the bottom of
   -- the screen does not grow off it. Also on right-click, on the list itself.
   opt.nearbyGrow = Button(opt, "", 140, 18, function()

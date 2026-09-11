@@ -166,14 +166,37 @@ function BT.NoteEnemy(name, info)
 end
 
 -- Everyone seen lately, newest first
+-- Marked players first, then whoever was seen most recently.
+--
+-- The list is cut off at a row count, so the order decides who you never see.
+-- Somebody you marked dropping off the bottom because three strangers walked
+-- past is the one failure this list cannot afford.
 function BT.Nearby(within)
-  local cut = time() - (within or NEARBY)
+  local cut = time() - (within or ChainDB.nearbySeconds or NEARBY)
   local out = {}
   for _, e in pairs(ChainDB.enemies or {}) do
     if (e.at or 0) >= cut then table.insert(out, e) end
   end
-  table.sort(out, function(a, b) return (a.at or 0) > (b.at or 0) end)
+  table.sort(out, function(a, b)
+    local ak = BT.IsKOS(a.name, a.guild) and 1 or 0
+    local bk = BT.IsKOS(b.name, b.guild) and 1 or 0
+    if ak ~= bk then return ak > bk end
+    return (a.at or 0) > (b.at or 0)
+  end)
   return out
+end
+
+-- How long somebody stays on the list after you stop seeing them.
+function BT.NearbySeconds()
+  return math.max(10, math.min(1800, math.floor(ChainDB.nearbySeconds or NEARBY)))
+end
+
+function BT.SetNearbySeconds(v)
+  v = tonumber(v)
+  if not v then return BT.NearbySeconds() end
+  ChainDB.nearbySeconds = math.max(10, math.min(1800, math.floor(v)))
+  BT.RefreshNearby()
+  return ChainDB.nearbySeconds
 end
 
 function BT.SeenList()
@@ -209,12 +232,12 @@ function BT.EnemyAlert(e)
   if note then what = what .. "  " .. note end
 
   if why then
-    BT.EnemyBanner(C.bad .. "KOS   " .. what .. C.off, true)
+    BT.Alert("kos", e)
     if ChainDB.enemySound and BT.Beep then BT.Beep("out") end
     -- and tell the people who can do something about it, if you asked us to
     if ChainDB.announceKOS then BT.AnnounceSighting(e) end
   else
-    BT.EnemyBanner(C.warn .. what .. C.off, false)
+    BT.Alert("seen", e)
   end
 end
 
@@ -228,33 +251,10 @@ end
 -- A stealthed player is spotted the moment the client renders them at all -
 -- a nameplate, a target, a combat-log line - which in practice means they are
 -- already close, or they have just broken stealth on somebody.
-local sframe
-function BT.StealthBanner(text)
-  if not sframe then
-    sframe = CreateFrame("Frame", "ChainStealthBanner", UIParent)
-    sframe:SetSize(560, 40)
-    -- above the middle, clear of the cast bar and clear of the reset banner
-    sframe:SetPoint("CENTER", UIParent, "CENTER", 0, 140)
-    sframe:SetFrameStrata("FULLSCREEN_DIALOG")
-    sframe.fs = sframe:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    sframe.fs:SetPoint("CENTER")
-    sframe.t = 0
-    sframe:SetScript("OnUpdate", function(self, elapsed)
-      self.t = self.t + elapsed
-      -- a hard pulse: this is the one alert that is allowed to be rude
-      self.fs:SetAlpha(0.45 + 0.55 * math.abs(math.sin(self.t * 5)))
-      local grow = 1 + 0.05 * math.max(0, 1 - self.t * 2)
-      self.fs:SetScale(grow)
-      if self.t > 8 then self:Hide() end
-    end)
-    sframe:Hide()
-  end
-  sframe.fs:SetText(text)
-  sframe.t = 0
-  sframe:Show()
-  return sframe
+function BT.StealthBanner(e)
+  return BT.Alert("stealth", e)
 end
-BT.stealthBanner = function() return sframe end
+BT.stealthBanner = function() return eframe end
 
 function BT.StealthAlert(e)
   if ChainDB.stealthAlert == false then return end
@@ -263,12 +263,155 @@ function BT.StealthAlert(e)
   if (time() - (ChainDB.stealthQuiet[e.name] or 0)) < REALERT then return end
   ChainDB.stealthQuiet[e.name] = time()
 
-  local why = BT.IsKOS(e.name, e.guild)
-  local what = e.name
-  if e.level and e.level > 0 then what = what .. "  " .. e.level end
-  if e.class then what = what .. "  " .. BT.ClassLabel(e.class) end
-  BT.StealthBanner((why and C.bad or C.warn) .. "STEALTH   " .. what
-    .. (why and "   KOS" or "") .. C.off)
+  BT.Alert("stealth", e)
+  if BT.Beep then BT.Beep("out") end
+  return true
+end
+
+-- The announcement.
+--
+-- One frame for all of it - marked, stealthed, or just somebody there - with
+-- the kind said in words at the top and the name under it. A line of plain
+-- text at the top of the screen is something you read; this is something you
+-- notice, which is the entire job.
+--
+-- Its own frame rather than the reset banner's: a reset and a rogue behind
+-- you are both worth saying, and neither should silence the other.
+local eframe
+local KINDS = {
+  kos     = { text = "Kill-on-sight player detected!", r = 1, g = 0.25, b = 0.25,
+              hold = 12, pulse = true },
+  stealth = { text = "Stealthed player detected!", r = 0.72, g = 0.45, b = 1,
+              hold = 10, pulse = true },
+  seen    = { text = "Enemy player detected", r = 1, g = 0.78, b = 0.3,
+              hold = 6, pulse = false },
+}
+
+local function BuildBanner()
+  if eframe then return eframe end
+  eframe = CreateFrame("Frame", "ChainEnemyBanner", UIParent)
+  eframe:SetSize(300, 46)
+  local p = ChainDB.alertPos
+  if p and p.x and p.y then
+    eframe:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", p.x, p.y)
+  else
+    eframe:SetPoint("CENTER", UIParent, "CENTER", 0, 160)
+  end
+  eframe:SetFrameStrata("FULLSCREEN_DIALOG")
+  eframe:SetMovable(true)
+  eframe:EnableMouse(true)
+  eframe:RegisterForDrag("LeftButton")
+  eframe:SetScript("OnDragStart", function(self)
+    if not ChainDB.alertLocked then self:StartMoving() end
+  end)
+  eframe:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    if self:GetLeft() then
+      ChainDB.alertPos = { x = self:GetLeft(), y = self:GetBottom() }
+    end
+  end)
+
+  eframe.edge = eframe:CreateTexture(nil, "BACKGROUND")
+  eframe.edge:SetPoint("TOPLEFT", -2, 2)
+  eframe.edge:SetPoint("BOTTOMRIGHT", 2, -2)
+  eframe.bg = eframe:CreateTexture(nil, "BACKGROUND")
+  eframe.bg:SetAllPoints()
+  if eframe.bg.SetColorTexture then
+    eframe.bg:SetColorTexture(0, 0, 0, 0.8)
+  end
+  eframe.bg:SetDrawLayer("BACKGROUND", 2)
+
+  -- the class ring the game uses everywhere else, so it reads as a player
+  eframe.icon = eframe:CreateTexture(nil, "ARTWORK")
+  eframe.icon:SetSize(34, 34)
+  eframe.icon:SetPoint("LEFT", 6, 0)
+
+  eframe.head = eframe:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  eframe.head:SetPoint("TOPLEFT", 46, -5)
+  eframe.head:SetJustifyH("LEFT")
+  eframe.name = eframe:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  eframe.name:SetPoint("TOPLEFT", 46, -22)
+  eframe.name:SetJustifyH("LEFT")
+
+  eframe.t = 0
+  eframe:SetScript("OnUpdate", function(self, elapsed)
+    self.t = self.t + elapsed
+    if self.pulse then
+      local a = 0.55 + 0.45 * math.abs(math.sin(self.t * 4))
+      self.head:SetAlpha(a)
+      if self.edge.SetColorTexture and self.tint then
+        self.edge:SetColorTexture(self.tint[1], self.tint[2], self.tint[3], a)
+      end
+    else
+      self.head:SetAlpha(1)
+    end
+    if self.t > (self.hold or 6) then self:Hide() end
+  end)
+  eframe:Hide()
+  return eframe
+end
+
+-- The class ring, if the client has the coordinates for it
+local function SetIcon(tex, class)
+  if not tex then return end
+  local coords = _G.CLASS_ICON_TCOORDS
+  if class and coords and coords[class] then
+    tex:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+    local c = coords[class]
+    if tex.SetTexCoord then tex:SetTexCoord(c[1], c[2], c[3], c[4]) end
+  else
+    tex:SetTexture("Interface\\Icons\\Ability_Rogue_Sprint")
+    if tex.SetTexCoord then tex:SetTexCoord(0.07, 0.93, 0.07, 0.93) end
+  end
+end
+
+function BT.Alert(kind, e)
+  local k = KINDS[kind] or KINDS.seen
+  BuildBanner()
+  local who = e and e.name or "?"
+  local sub = {}
+  if e and e.level and e.level > 0 then
+    sub[#sub + 1] = e.level .. (e.levelGuess and "+" or "")
+  end
+  if e and e.class then sub[#sub + 1] = BT.ClassLabel(e.class) end
+  if #sub > 0 then
+    who = who .. "  |cff909090" .. table.concat(sub, " ") .. "|r"
+  end
+
+  eframe.head:SetText(k.text)
+  eframe.head:SetTextColor(k.r, k.g, k.b)
+  eframe.name:SetText(who)
+  eframe.tint = { k.r, k.g, k.b }
+  eframe.pulse = k.pulse
+  eframe.hold = k.hold
+  if eframe.edge.SetColorTexture then
+    eframe.edge:SetColorTexture(k.r, k.g, k.b, 1)
+  end
+  SetIcon(eframe.icon, e and e.class)
+
+  -- wide enough for whichever of the two lines is longer
+  local w = math.max(eframe.head:GetStringWidth() or 0,
+                     eframe.name:GetStringWidth() or 0)
+  eframe:SetWidth(math.max(260, math.min(520, w + 62)))
+  eframe.t = 0
+  eframe:Show()
+  return eframe
+end
+BT.alertFrame = function() return eframe end
+
+-- kept for anything that still says it in one line
+function BT.EnemyBanner(text, loud)
+  return BT.Alert(loud and "kos" or "seen", { name = text })
+end
+
+function BT.StealthAlert(e)
+  if ChainDB.stealthAlert == false then return end
+  if not e or not e.name then return end
+  ChainDB.stealthQuiet = ChainDB.stealthQuiet or {}
+  if (time() - (ChainDB.stealthQuiet[e.name] or 0)) < REALERT then return end
+  ChainDB.stealthQuiet[e.name] = time()
+
+  BT.Alert("stealth", e)
   if BT.Beep then BT.Beep("out") end
   return true
 end
@@ -1248,7 +1391,7 @@ function BT.RefreshNearby()
     return
   end
   BT.BuildNearby()
-  local list = BT.Nearby(ChainDB.nearbySeconds or NEARBY)
+  local list = BT.Nearby(BT.NearbySeconds())
   if #list == 0 then
     nearby:Hide()
     if menu then menu:Hide() end
@@ -1268,7 +1411,7 @@ function BT.RefreshNearby()
       -- faded as the sighting gets old, so the top of the list is the one
       -- that is actually still there
       local age = time() - (e.at or time())
-      local a = 1 - math.min(0.6, age / (ChainDB.nearbySeconds or NEARBY))
+      local a = 1 - math.min(0.6, age / BT.NearbySeconds())
 
       if row.stripe.SetColorTexture then
         -- marked ones go red whatever they play: that is the thing you need

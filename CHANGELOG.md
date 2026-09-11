@@ -53,6 +53,18 @@ parts that are not.
   tinted by class, with the name on the left and "45 Warrior" on the right.
   A marked one goes red whatever he plays, because that is the thing you have
   to see and it beats knowing the class.
+- **Marked players sort to the top of the list.** It is cut off at a row
+  count, so the order decides who you never see - and somebody you marked
+  dropping off the bottom because three strangers walked past is the one
+  failure this list cannot afford.
+- How long somebody stays on the list after you stop seeing them is yours to
+  set. Too short and a rogue who stepped behind a rock is gone; too long and
+  the list is a history of the zone rather than who is here.
+- The alert is a proper banner rather than a line of text: the class ring, the
+  kind said in words - "Kill-on-sight player detected!", "Stealthed player
+  detected!" - and the name, level and class under it. Marked and stealthed
+  ones pulse and stay twice as long; a passing stranger does neither. It can
+  be dragged where you want it.
 - **A stealthed player gets its own alert, in the middle of the screen**, and
   is marked in the list. It is the one sighting where knowing is the whole of
   the advantage: a rogue you have seen is a rogue who has lost the opening,

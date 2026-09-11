@@ -2370,10 +2370,10 @@ do
     BT.NoteUnit("nameplate7", "nameplate")
     local e = ChainDB.enemies["Snikar"]
     ok(e and e.stealth, "vi ser at han er stealtha")
-    local sb = BT.stealthBanner()
+    local sb = BT.alertFrame()
     ok(sb and sb:IsShown(), "og det kjem eit varsel midt på skjermen")
-    ok((sb.fs:GetText() or ""):find("STEALTH"), "som seier kva det er")
-    ok((sb.fs:GetText() or ""):find("Snikar"), "og kven det er")
+    ok((sb.head:GetText() or ""):find("Stealthed"), "som seier kva det er")
+    ok((sb.name:GetText() or ""):find("Snikar"), "og kven det er")
 
     -- og han skal ikkje skrike kvar gong same mannen dukkar opp
     sb:Hide()
@@ -2430,7 +2430,54 @@ do
       ok(not nb.__moving, "låst lar seg ikkje dra")
       ChainDB.nearbyLocked = nil
 
-        -- Ei evne set eit golv under nokon du aldri har sett: ein rang kan ikkje
+        -- Dei merka skal stå øvst. Lista blir kutta ved eit tal rader, så
+      -- rekkjefylgja avgjer kven du aldri ser - og at ein du har merka fell
+      -- av botnen fordi tre framande gjekk forbi er den eine feilen denne
+      -- lista ikkje har råd til.
+      do
+        ChainDB.enemies, ChainDB.kos, ChainDB.kosGuilds = {}, {}, {}
+        BT.NoteEnemy("Gammalmerka", { level = 40 })
+        BT.AddKOS("Gammalmerka")
+        S.now = S.now + 5
+        BT.NoteEnemy("Fersk1", { level = 20 })
+        S.now = S.now + 1
+        BT.NoteEnemy("Fersk2", { level = 21 })
+        local list = BT.Nearby(600)
+        eq(list[1].name, "Gammalmerka", "den merka står øvst")
+        eq(list[2].name, "Fersk2", "og resten etter kor nyleg dei er sett")
+
+        -- og ein merka gjennom guilden likeeins
+        BT.NoteEnemy("Guildmann", { level = 30, guild = "Bad Bois" })
+        BT.AddKOSGuild("Bad Bois")
+        S.now = S.now + 10
+        BT.NoteEnemy("Heilt Fersk", { level = 22 })
+        local l2 = BT.Nearby(600)
+        ok(l2[1].name == "Gammalmerka" or l2[1].name == "Guildmann",
+           "begge dei merka kjem før den ferskaste")
+        ok(l2[2].name == "Gammalmerka" or l2[2].name == "Guildmann",
+           "og dei tek dei to øvste plassane")
+        ChainDB.kos, ChainDB.kosGuilds = {}, {}
+      end
+
+      -- Kor lenge dei blir liggjande etter at du slutta å sjå dei
+      do
+        ChainDB.enemies = {}
+        BT.SetNearbySeconds(30)
+        eq(BT.NearbySeconds(), 30, "du kan setje kor lenge")
+        BT.NoteEnemy("Forsvinn", { level = 10 })
+        eq(#BT.Nearby(), 1, "han er der no")
+        S.now = S.now + 40
+        eq(#BT.Nearby(), 0, "og borte etter tretti sekund")
+        BT.SetNearbySeconds(600)
+        eq(#BT.Nearby(), 1, "set du lenger, er han der igjen")
+        BT.SetNearbySeconds(1)
+        eq(BT.NearbySeconds(), 10, "og det finst eit golv")
+        BT.SetNearbySeconds(99999)
+        eq(BT.NearbySeconds(), 1800, "og eit tak")
+        ChainDB.nearbySeconds = nil
+      end
+
+      -- Ei evne set eit golv under nokon du aldri har sett: ein rang kan ikkje
       -- kastast under det levelet han blir lært på. Det er eit golv og ikkje
       -- meir - ein level 60 som kastar Rank 1 les framleis som "4+" - så det
       -- blir lagra som ei gjetting og vist med "+".
@@ -2621,11 +2668,14 @@ do
   do
     ChainDB.alertEveryone = false
     ChainDB.enemyQuiet = {}
-    _G.ChainEnemyBanner = nil
     BT.EnemyAlert({ name = "Gankar", level = 60, class = "ROGUE", guild = "Bad Bois" })
-    local b = _G.ChainEnemyBanner
+    local b = BT.alertFrame()
     ok(b ~= nil and b:IsShown(), "ein merka spelar gjev varsel")
-    ok((b.fs:GetText() or ""):find("KOS"), "og det står kvifor")
+    ok((b.head:GetText() or ""):find("Kill%-on%-sight"), "og det står kvifor")
+    ok((b.name:GetText() or ""):find("Gankar"), "og kven")
+    -- level og klasse ligg attmed namnet, som på varselet elles
+    ok((b.name:GetText() or ""):find("60"), "med level")
+    ok((b.name:GetText() or ""):find("Rogue"), "og klasse")
 
     -- ein tilfeldig framand gjer det ikkje, med mindre du har bedt om det
     ChainDB.enemyQuiet = {}
@@ -2749,12 +2799,19 @@ do
     ChainDB.enemyQuiet = {}
     BT.AddKOS("Slem")
     BT.EnemyAlert({ name = "Slem", level = 60 })
-    local b = _G.ChainEnemyBanner
-    ok(b.loud == true, "ein merka gjev eit høgt varsel")
+    local b = BT.alertFrame()
+    -- ein merka pulsar og står dobbelt så lenge; ein framand gjer ingen av
+    -- delane. Ei linje som oppfører seg likt anten det er ein forbipasserande
+    -- eller mannen som har drepe deg fire gonger er ei linje du lærer å
+    -- ignorere.
+    ok(b.pulse == true, "ein merka gjev eit høgt varsel")
+    local loudHold = b.hold
     ChainDB.enemyQuiet = {}
     ChainDB.alertEveryone = true
     BT.EnemyAlert({ name = "Framand", level = 30 })
-    ok(b.loud == false, "ein framand eit stille eitt")
+    ok(b.pulse == false, "ein framand eit stille eitt")
+    ok(b.hold < loudHold, "og han står kortare (" .. b.hold ..
+       " mot " .. loudHold .. ")")
     ChainDB.alertEveryone = false
     ChainDB.kos = {}
   end
