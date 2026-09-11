@@ -16,6 +16,9 @@ local BUDGET = 74
 local bar
 -- the level markers drawn inside the bar, kept here rather than on the frame
 local ticks = {}
+-- and the milestone marks on the honour bar under it
+local hticks = {}
+local HONOR_H = 12
 
 --------------------------------------------------------------------------
 -- The text
@@ -110,7 +113,7 @@ local function BoostText()
   -- to a label saying 57% reads as broken rather than as two different
   -- things. Both are worth knowing; they just have to say which is which.
   do
-    local doneSoFar, totalSpan = BT.StageSpan()
+    local doneSoFar, totalSpan = BT.StepProgress()
     if totalSpan and totalSpan > 0 then
       S.topLeft = S.topLeft .. C.dim .. "  " .. BT.Pct(doneSoFar / totalSpan) .. C.off
     end
@@ -209,36 +212,13 @@ local function BoostText()
   S.topRight = lock
   if dayLock then table.insert(two, dayLock) end
 
-  -- The run you are in, with how far it deviates from the usual
-  local r = c.run
-  if r and ((r.xp or 0) > 0 or (r.k or 0) > 0
-            or (time() - (r.start or time())) >= 30) then
-    local pieces = { BT.N(r.xp or 0) .. " xp" }
-    if (r.k or 0) > 0 then table.insert(pieces, r.k .. " mobs") end
-    table.insert(pieces, BT.T(time() - (r.start or time())))
-    if r.partial then table.insert(pieces, "not in average") end
-    if r.reentry then table.insert(pieces, "same instance") end
-    local col = (r.partial or r.reentry) and "|cff909090" or C.good
-    local dev, over = BT.RunDeviation(st)
-    -- pace and overtime say the same thing from two angles, so they travel
-    -- together rather than one being stranded on its own line
-    local pace = {}
-    if dev and not r.partial then
-      table.insert(pace, string.format("%+.0f%% pace", dev * 100))
-      col = (dev <= -0.15) and C.bad or (dev >= 0.15) and C.good or C.dim
-    end
-    if over and over > 30 then
-      table.insert(pace, "+" .. BT.T(over) .. " over")
-      if not dev then col = C.alert end
-    end
-    if #pace > 0 then table.insert(pieces, table.concat(pace, " ")) end
-    for _, p in ipairs(pieces) do table.insert(three, col .. p .. C.off) end
-  end
-
-  -- The booster's name, his rate, gold per level and experience per gold all
-  -- used to sit here. Every one of them is in the tooltip, said better and
-  -- with room to explain itself, and repeating them under the bar bought
-  -- nothing but a second line to read past. The bar keeps what you act on.
+  -- The run you are in used to have a line of its own here - experience so
+  -- far, mobs, elapsed, pace, and whether it counts. All of it is on the
+  -- tooltip now, where there is room to say what it means, and none of it is
+  -- something you act on mid-run: you are already in the instance.
+  --
+  -- The booster's name, his rate, gold per level and experience per gold went
+  -- the same way earlier, for the same reason. The bar keeps what you act on.
 
   -- the first group is short enough to sit in the two bottom corners
   S.bottomLeft = one[1]
@@ -255,7 +235,11 @@ local function BoostText()
   BT.Pack(two, lines, BUDGET)
   S.barRight = right
   S.extra = table.concat(lines, "\n")
-  S.cur, S.max = done, total
+  -- The fill measures the step you configured, not the stretch left from here.
+  -- The label above it says "28 > 42", and a bar sitting at two per cent under
+  -- a label that says 28 > 42 while you are level 35 reads as broken.
+  S.cur, S.max = BT.StepProgress()
+  if not S.max or S.max <= 0 then S.cur, S.max = done, total end
   return S
 end
 
@@ -402,6 +386,93 @@ local function MakeTexture(parent, layer, sublevel, r, g, b, a)
   return t
 end
 
+-- The week's honour, drawn as the staircase it is.
+--
+-- Scaled to the largest milestone open to you this week, with a mark at each
+-- one. Two colours, and the difference between them is the whole point:
+-- crimson is honour that has already bought a step and cannot be taken away,
+-- amber is honour earned since, which is worth precisely nothing until the
+-- next mark is crossed. A long amber tail means stop or push - never carry on
+-- at the same speed.
+function BT.RefreshHonorBar(w)
+  if not bar or not bar.honor then return end
+  if ChainDB.honorBar == false or not BT.PvPState then
+    bar.honor:Hide()
+    BT.PlaceBarText(false)
+    return
+  end
+  local p = BT.PvPState()
+  local top = p.best and p.best.honor or nil
+  -- nothing to draw for somebody who has never been in a fight
+  if not top or top <= 0 or ((p.honor or 0) <= 0 and (p.rank or 0) <= 0) then
+    bar.honor:Hide()
+    BT.PlaceBarText(false)
+    return
+  end
+
+  w = w or bar:GetWidth() or 0
+  local honor = math.min(p.honor or 0, top)
+  local banked = p.met and p.met.honor or 0
+
+  local function seg(tex, from, to)
+    from, to = math.max(0, from), math.min(top, to)
+    if to <= from or w <= 0 then tex:Hide() return end
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", bar.honor, "TOPLEFT", w * from / top, 0)
+    tex:SetPoint("BOTTOMLEFT", bar.honor, "BOTTOMLEFT", w * from / top, 0)
+    tex:SetWidth(w * (to - from) / top)
+    tex:Show()
+  end
+  seg(bar.honor.banked, 0, banked)
+  seg(bar.honor.pending, banked, honor)
+
+  local n = 0
+  for _, m in ipairs(p.milestones or {}) do
+    if m.honor > 0 and m.honor <= top then
+      n = n + 1
+      local t = hticks[n]
+      if not t then
+        t = MakeTexture(bar.honor, "ARTWORK", 4, 0, 0, 0, 0.55)
+        t:SetWidth(1)
+        hticks[n] = t
+      end
+      t:ClearAllPoints()
+      t:SetPoint("TOP", bar.honor, "TOPLEFT", w * m.honor / top, 0)
+      t:SetPoint("BOTTOM", bar.honor, "BOTTOMLEFT", w * m.honor / top, 0)
+      t:Show()
+    end
+  end
+  for i = n + 1, #hticks do hticks[i]:Hide() end
+
+  -- The one actionable sentence, inside the bar. Kills first when there are
+  -- not enough of them, because until there are, none of the honour counts.
+  local txt
+  if not p.enoughKills then
+    txt = C.bad .. p.killsShort .. " more kills before any honor counts" .. C.off
+  elseif p.nextMilestone then
+    txt = BT.N(p.short) .. " to " .. BT.RankName(p.nextMilestone.rank)
+  else
+    txt = C.good .. "this week is spent - " .. p.newRankName .. C.off
+  end
+  bar.honor.fs:SetText(txt)
+  bar.honor:Show()
+  BT.PlaceBarText(true)
+end
+
+-- The two bottom corners and the spill-over line sit under the bar, so they
+-- have to move out of the way when the honour bar is there and come back when
+-- it is not.
+function BT.PlaceBarText(honorShown)
+  if not bar or not bar.bottomLeft then return end
+  local drop = honorShown and (HONOR_H + 4) or 0
+  bar.bottomLeft:ClearAllPoints()
+  bar.bottomLeft:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 2, -3 - drop)
+  bar.bottomRight:ClearAllPoints()
+  bar.bottomRight:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", -2, -3 - drop)
+  bar.text:ClearAllPoints()
+  bar.text:SetPoint("TOP", bar, "BOTTOM", 0, -18 - drop)
+end
+
 function BT.InitUI()
   if bar then return end
   local db = ChainDB
@@ -431,6 +502,30 @@ function BT.InitUI()
   bar.fill = MakeTexture(bar, "ARTWORK", 3, 0.13, 0.45, 0.16, 1)
   bar.fill:SetPoint("TOPLEFT")
   bar.fill:SetPoint("BOTTOMLEFT")
+
+  -- A second, slimmer bar underneath for the week's honour.
+  --
+  -- The honour system is a staircase, so a staircase is what gets drawn: the
+  -- marks are the milestones, and the flat stretch between two of them is
+  -- honour that buys nothing at all. Seeing that you are standing in the
+  -- middle of one of those gaps says it better than any number does.
+  bar.honor = CreateFrame("Frame", nil, bar)
+  bar.honor:SetHeight(HONOR_H)
+  bar.honor:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
+  bar.honor:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, -2)
+  bar.honor.bg = MakeTexture(bar.honor, "BACKGROUND", 0, 0, 0, 0, 0.75)
+  bar.honor.bg:SetAllPoints()
+  -- banked: honour that has already bought a milestone, and cannot be lost
+  bar.honor.banked = MakeTexture(bar.honor, "ARTWORK", 1, 0.62, 0.14, 0.14, 1)
+  bar.honor.banked:SetPoint("TOPLEFT")
+  bar.honor.banked:SetPoint("BOTTOMLEFT")
+  -- pending: earned since, and worth nothing until the next mark is crossed
+  bar.honor.pending = MakeTexture(bar.honor, "ARTWORK", 2, 0.55, 0.42, 0.12, 0.85)
+  bar.honor.pending:SetPoint("TOPLEFT")
+  bar.honor.pending:SetPoint("BOTTOMLEFT")
+  bar.honor.fs = bar.honor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  bar.honor.fs:SetPoint("CENTER")
+  bar.honor:Hide()
 
   -- Seven fixed slots: two above, three inside, two below. Every figure has
   -- its own corner, so you look at a place rather than reading a line.
@@ -607,8 +702,9 @@ function BT.Refresh()
   -- however honest it is. The ticks give it something to cross: you can see
   -- which level you are in and how far the next one is, without the fill
   -- having to pretend the step is shorter than it is.
+  -- and the ticks are measured on the same scale as the fill
   local step = select(5, BT.StageSpan())
-  local base = select(6, BT.StageSpan())
+  local _, _, base = BT.StepProgress()
   local shown = 0
   if step and base and BT.Mode() == "boost" then
     for l = base + 1, (step.to or base) - 1 do
@@ -629,6 +725,8 @@ function BT.Refresh()
     end
   end
   for i = shown + 1, #ticks do ticks[i]:Hide() end
+
+  BT.RefreshHonorBar(w)
 
   -- the overlays only make sense against your own level bar
   if BT.Mode() ~= "boost" or #BT.Plan() == 0 then
@@ -773,6 +871,39 @@ function BT.BarTooltip(owner)
   end
 
   -- what is true wherever you are
+  -- The run you are in. First, because while you are in one it is the thing
+  -- you are actually wondering about.
+  do
+    local r = ChainCharDB.run
+    if r and ((r.xp or 0) > 0 or (r.k or 0) > 0
+              or (time() - (r.start or time())) >= 30) then
+      GameTooltip:AddLine(" ")
+      local st2 = select(1, BT.StepStats(step))
+      local elapsed = time() - (r.start or time())
+      Pair("this run", C.gold .. BT.N(r.xp or 0) .. " xp" .. C.off
+        .. ((r.k or 0) > 0 and (C.dim .. "   " .. r.k .. " mobs" .. C.off) or "")
+        .. C.dim .. "   " .. BT.T(elapsed) .. C.off)
+
+      local dev, over = BT.RunDeviation(st2)
+      if dev and not r.partial then
+        local col = (dev <= -0.15) and C.bad or (dev >= 0.15) and C.good or C.dim
+        Pair("against the usual here",
+             col .. string.format("%+.0f%%", dev * 100) .. C.off)
+      end
+      if over and over > 30 then
+        Pair("longer than usual", C.alert .. "+" .. BT.T(over) .. C.off)
+      end
+      -- why it will or will not count, said in words rather than as a tag
+      if r.partial then
+        GameTooltip:AddLine("you were part way in when this started, so it is "
+          .. "left out of the averages", 0.6, 0.6, 0.6, true)
+      elseif r.reentry then
+        GameTooltip:AddLine("the same instance again rather than a fresh one",
+                            0.6, 0.6, 0.6, true)
+      end
+    end
+  end
+
   GameTooltip:AddLine(" ")
   local avg, n, ratio = BT.GroupInfo()
   if avg then

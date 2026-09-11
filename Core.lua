@@ -1257,7 +1257,7 @@ function BT.OnEvent(_, event, ...)
     local watching = ChainDB.watchEnemies and BT.NoteCombatLogUnit
     if (not r or r.instId) and not watching then return end
     if CombatLogGetCurrentEventInfo then
-      local _, _, _, src, srcName, srcFlags, _, dst, dstName, dstFlags =
+      local _, sub, _, src, srcName, srcFlags, _, dst, dstName, dstFlags =
         CombatLogGetCurrentEventInfo()
       if r and not r.instId then
         BT.NoteInstance(src)
@@ -1268,6 +1268,11 @@ function BT.OnEvent(_, event, ...)
       if watching then
         BT.NoteCombatLogUnit(src, srcName, srcFlags)
         BT.NoteCombatLogUnit(dst, dstName, dstFlags)
+        -- who beat whom, which is the one piece of history about a player
+        -- that is genuinely yours rather than the server's
+        if BT.NoteFight then
+          BT.NoteFight(sub, src, srcName, srcFlags, dst, dstName, dstFlags)
+        end
       end
     end
     return

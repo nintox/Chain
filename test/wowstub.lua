@@ -222,6 +222,40 @@ StaticPopupDialogs = {}
 -- The client knows the class and race of any player it has seen, from the
 -- GUID alone - which is how somebody found only in the combat log gets a
 -- colour instead of a grey question mark.
+-- who you are with, for anything that picks a chat channel
+-- in a guild by default: that is the ordinary case, and the share tests
+-- were written before anything asked
+S.inRaid, S.inGuild = false, true
+function IsInRaid() return S.inRaid end
+function IsInGuild() return S.inGuild end
+
+-- where you are standing, for anything that reports a position
+S.mapPos = nil
+C_Map = {
+  GetBestMapForUnit = function() return S.mapPos and 1 or nil end,
+  GetPlayerMapPosition = function()
+    if not S.mapPos then return nil end
+    return { GetXY = function() return S.mapPos[1], S.mapPos[2] end }
+  end,
+}
+function GetSubZoneText() return S.subZone or "" end
+
+S.auras = {}          -- [token] = { "Stealth", ... }
+function UnitAura(unit, i)
+  local a = S.auras[unit]
+  return a and a[i] or nil
+end
+
+-- /who, the only way an addon can learn a level it never saw
+S.whoResults = {}
+S.whoSent = nil
+C_FriendList = {
+  SetWhoToUI = function(v) S.whoToUI = v end,
+  SendWho = function(q) S.whoSent = q end,
+  GetNumWhoResults = function() return #S.whoResults end,
+  GetWhoInfo = function(i) return S.whoResults[i] end,
+}
+
 S.guids = {}
 function GetPlayerInfoByGUID(guid)
   local g = S.guids[guid]
@@ -262,9 +296,18 @@ local frameMeta = {}
 frameMeta.__index = function(t, k)
   local fn = rawget(frameMeta, k)
   if fn then return fn end
-  -- our own bookkeeping fields are plain data, not methods
-  if type(k) == "string" and k:sub(1, 2) == "__" then return nil end
-  -- any widget method we did not bother to implement is a no-op
+  if type(k) ~= "string" then return nil end
+  -- Only names that look like the client's own API get the no-op treatment.
+  -- Every method WoW puts on a widget is PascalCase, and every field an addon
+  -- hangs off one is not - so a lowercase name that was never set reads as
+  -- nil, the way it does in the game.
+  --
+  -- This distinction has caught three real bugs: a nil check on `bar.ticks`,
+  -- one on `nearby.dragging` and one on `row.rec`, each of which was true
+  -- forever here and nil in the game. A stub that is wrong in a direction the
+  -- client is not is worse than no stub.
+  local first = k:sub(1, 1)
+  if first ~= first:upper() or first == "_" then return nil end
   return function() end
 end
 
@@ -303,7 +346,14 @@ function frameMeta:GetHeight() return self.__h or 24 end
 function frameMeta:SetSize(w, h) self.__w, self.__h = w, h end
 function frameMeta:SetWidth(w) self.__w = w end
 function frameMeta:SetHeight(h) self.__h = h end
-function frameMeta:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
+-- The real client hands back the anchors you actually set, and code that
+-- re-lays-out a panel reads them - so the stub has to as well, or the layout
+-- pass is never exercised.
+function frameMeta:GetPoint(i)
+  local p = self.__points and self.__points[i or 1]
+  if not p then return "CENTER", nil, "CENTER", 0, 0 end
+  return p.point, p.rel, p.relPoint or p.point, p.x or 0, p.y or 0
+end
 function frameMeta:SetText(v) self.__text = v end
 function frameMeta:GetText() return self.__text or "" end
 -- rough but monotonic: enough for the layout to make the same decisions
@@ -319,9 +369,45 @@ function frameMeta:RegisterEvent(e)
   self.__events = self.__events or {}
   self.__events[e] = true
 end
+-- Enough of a screen position for code that reads where a frame ended up
+-- after the user dragged it. A test moves a frame by setting __left/__top.
+function frameMeta:GetLeft()
+  if self.__left then return self.__left end
+  local p = self.__points and self.__points[1]
+  return p and p.x or 0
+end
+function frameMeta:GetTop()
+  if self.__top then return self.__top end
+  local p = self.__points and self.__points[1]
+  return p and p.y or 0
+end
+function frameMeta:GetBottom() return (self:GetTop() or 0) - (self:GetHeight() or 0) end
+function frameMeta:GetEffectiveScale() return self.__scale or 1 end
+function frameMeta:StartMoving() self.__moving = true end
+function frameMeta:StopMovingOrSizing() self.__moving = false end
+
 function frameMeta:CreateTexture() return newObject("Texture", self) end
 function frameMeta:CreateFontString() return newObject("FontString", self) end
-function frameMeta:GetChildren() return table.unpack(self.__children) end
+-- Frames and regions are two different lists in the real API, and code that
+-- walks a panel has to ask for both. Keeping them separate here is what makes
+-- forgetting one of them show up in a test.
+local function isRegion(o)
+  return o.__kind == "Texture" or o.__kind == "FontString"
+end
+function frameMeta:GetChildren()
+  local out = {}
+  for _, c in ipairs(self.__children or {}) do
+    if not isRegion(c) then table.insert(out, c) end
+  end
+  return table.unpack(out)
+end
+function frameMeta:GetRegions()
+  local out = {}
+  for _, c in ipairs(self.__children or {}) do
+    if isRegion(c) then table.insert(out, c) end
+  end
+  return table.unpack(out)
+end
 function frameMeta:GetParent() return self.__parent end
 
 function CreateFrame(kind, name, parent, template)

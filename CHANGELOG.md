@@ -49,9 +49,63 @@ parts that are not.
   name with a question mark, because the combat log carries no class. The GUID
   is enough to ask the client, so they now arrive class-coloured with the
   class written out, and the level stays an honest question mark.
+- The on-screen list reads like the other watchers now: one row per player,
+  tinted by class, with the name on the left and "45 Warrior" on the right.
+  A marked one goes red whatever he plays, because that is the thing you have
+  to see and it beats knowing the class.
+- **A stealthed player gets its own alert, in the middle of the screen**, and
+  is marked in the list. It is the one sighting where knowing is the whole of
+  the advantage: a rogue you have seen is a rogue who has lost the opening,
+  and the top of the screen is where you are not looking when you are being
+  opened on. Read from the aura rather than guessed from the class, because
+  half the ones that matter are druids.
+- **Right-click anybody** for everything you might want to do about them:
+  mark, mark the whole guild, target, whisper, look them up - and the list's
+  own settings under that.
+- **Your score against each player**: kills you or your group made, and deaths
+  they caused, counted off the combat log and shown on the tooltip. It is the
+  one piece of history about another player that is genuinely yours - the
+  server will tell you nothing about them, but it will tell you who stopped
+  moving. A death is blamed on whoever hit you last inside fifteen seconds:
+  not perfect in a five-man gank, but the same thing you would remember.
+- **A note on anybody, from the right-click menu.** The reason you marked
+  somebody is worth more than the mark: "ganks the SM entrance at 2am" is a
+  plan, a red name is a colour. Writing one marks him, because you do not
+  write a note about somebody you do not care about. Never shared.
+- Levels are picked up from every unit the client will give one for, not only
+  the one you are pointing at: your target's target, your mouseover's target,
+  and whatever the rest of the group is swinging at. Most of the people you
+  are actually in a fight with now arrive with a level instead of "??".
+- The sighting remembers where you were standing, so the tooltip reads
+  "Scarlet Monastery (47, 19)" rather than just the zone.
+- The tooltip lost the paragraph explaining why a level was missing. It was
+  longer than everything else on there put together; it is one dim line now.
+- **Call out a sighting to your own side**: name, level if known, class,
+  guild, the zone and your coordinates, straight into party, raid, guild or
+  say. From the right-click menu, or `/chain spot`. Marked players can be
+  called out automatically - off by default, because it puts a line in a
+  channel other people read.
+- A /who lookup for the missing levels was built and then removed, because it
+  could never have worked: /who only returns your own faction, and everybody
+  in this list is on the other one. Whispering them is impossible for the same
+  reason, so that went too. A button that looks like a feature and quietly
+  does nothing is worse than no button - the level says "??" and the tooltip
+  says why.
+- The list can be dragged wider or taller by the corner. Width is what closes
+  the gap between a short name and the class beside it, and the extra room
+  goes to the name rather than into the middle. Height is stored as a number
+  of rows rather than pixels, so it survives a change of font or scale.
 - The on-screen list grows up or down from wherever you parked it, can be
   locked, and how many rows it shows is yours to set. Right-click the list for
-  all three.
+  all three, and "back to the middle" if it ever ends up somewhere you cannot
+  reach.
+- **It can be dragged properly now.** It jumped about and would not sit still,
+  for two reasons: the refresh tick re-applied the anchor a few times a second
+  while you were holding it, pulling the frame out from under the cursor, and
+  the box grew or shrank under your finger as people came and went. Neither
+  happens during a drag any more. You can also grab it by any row rather than
+  hunting for the sliver of background the rows leave uncovered, and a click
+  that does not move still marks somebody.
 
 **Trade**
 
@@ -62,12 +116,24 @@ parts that are not.
 
 **Smaller things**
 
+- The line under the bar describing the run you are in - experience so far,
+  mobs, elapsed, pace, whether it counts - has moved to the tooltip. It was
+  not there before, so it was worth putting there before taking it away.
+  Nothing on it is something you act on mid-run: you are already inside. The
+  two flags now say what they mean in words instead of being tags: "you were
+  part way in when this started, so it is left out of the averages".
+
 - Grey quests are left out of the "ready to hand in" count. They give no
   experience, so counting them made the number wrong in the one direction
   that matters.
 - The bar's heading shows the span you configured rather than the level you
-  happen to be, and the fill and the percentage are of the whole step, not of
-  the level inside it, with a tick drawn at each level boundary.
+  happen to be - and now so does the fill. It measured the stretch left from
+  your current level, so a step set to 28 > 42 sat at two per cent while you
+  were level 35, under a label saying 28 > 42. The two numbers are different
+  questions and both are still asked: the fill and the percentage measure the
+  step as you set it up, and the runs, hours and gold still count from where
+  you actually are, because you cannot earn experience you already have.
+  A tick is drawn at each level boundary.
 - The search box moved below the tab row, which had grown too long to share
   the line with it.
 - The minimap button goes through LibDBIcon now. The hand-rolled one drew the
@@ -82,10 +148,19 @@ parts that are not.
 - The push program's install instructions are rewritten as three numbered
   steps, and the shell version now carries settings over from either of the
   older names rather than one.
-- The settings panel is in named sections. Twenty-odd controls in one
-  undifferentiated block is a wall you read every time rather than a list you
-  learn the shape of, and things that belonged together were nowhere near each
-  other.
+- A slim second bar under the main one for the week's honour, with a mark at
+  each milestone. Two colours, and the difference is the point: crimson is
+  honour that has already bought a step and cannot be taken away, amber is
+  honour earned since, which is worth nothing until the next mark is crossed.
+  A long amber tail means stop or push, never carry on at this speed. Inside
+  it, the one sentence worth acting on.
+- The settings panel is in named sections, and **every section folds**. Click
+  a heading to put it away; which ones are folded is remembered. There is a
+  zoom on the title bar too, because the panel is taller than some screens
+  even folded up.
+  Twenty-odd controls in one undifferentiated block is a wall you read every
+  time rather than a list you learn the shape of, and things that belonged
+  together were nowhere near each other.
 - "share with" is a label and a short value on its own button instead of a
   sentence that ran straight through the button beside it, and the value is
   gold when sharing is on and grey when it is off.

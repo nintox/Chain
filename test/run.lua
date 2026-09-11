@@ -903,6 +903,43 @@ do  -- ingenting skal stikke ut av ramma: det er slik knappane hamna utanfor
      .. " endar på " .. math.floor(tallY) .. " av " .. frameH .. ")")
 end
 
+do  -- seksjonar som kan brettast saman: panelet var høgare enn mange skjermar
+  local o = _G.ChainOptions
+  ok(o.sections and #o.sections >= 4, "panelet er delt i seksjonar")
+  ChainDB.optFold = {}
+  BT.RenderOptions()
+  local openH = o:GetHeight()
+  local sec = o.sections[2]
+  local widget = sec.widgets[1] and sec.widgets[1].w
+  ok(widget ~= nil, "seksjonen har noko i seg")
+  ok(widget and widget:IsShown(), "og det er framme når han er open")
+
+  -- brett saman, og panelet skal faktisk bli lågare - ikkje berre gøyme ting
+  ChainDB.optFold[sec.key] = true
+  BT.RenderOptions()
+  ok(not widget:IsShown(), "brettar du saman, forsvinn innhaldet")
+  ok(o:GetHeight() < openH, "og panelet blir lågare (" ..
+     math.floor(o:GetHeight()) .. " mot " .. math.floor(openH) .. ")")
+  ok(sec.head:IsShown(), "men overskrifta står att, så du finn han igjen")
+
+  -- alt under skal ha flytta seg opp, ikkje stått att med eit hol
+  local below = o.sections[#o.sections]
+  local bw = below.widgets[1] and below.widgets[1].w
+  if bw then
+    local _, _, _, _, foldedY = bw:GetPoint(1)
+    ChainDB.optFold[sec.key] = nil
+    BT.RenderOptions()
+    local _, _, _, _, openY = bw:GetPoint(1)
+    ok(foldedY > openY, "det som ligg under kjem opp (" ..
+       math.floor(foldedY) .. " mot " .. math.floor(openY) .. ")")
+  end
+
+  -- og opp igjen skal gje nøyaktig same høgd som før
+  ChainDB.optFold = {}
+  BT.RenderOptions()
+  near(o:GetHeight(), openH, "og opp igjen er akkurat som før", 0.5)
+end
+
 do  -- og kva level spelet slepp deg inn på
   local spans, mins = 0, 0
   for _, row in ipairs(_G.ChainOptions.rows or {}) do
@@ -1968,6 +2005,26 @@ do
   ok(not (slots.topLeft or ""):find("34 > 42"),
      "og ikkje kva level du tilfeldigvis er")
 
+  -- Fyllet skal måle steget du sette opp. Han stod på 1,9% på level 35 i eit
+  -- steg frå 28 til 42, under ei overskrift som sa "28 > 42" - og ein bar på
+  -- to prosent under den overskrifta les som øydelagt.
+  do
+    local doneP, totalP, fromP, toP = BT.StepProgress()
+    eq(fromP, 28, "fyllet måler frå der steget byrjar")
+    eq(toP, 42, "og til der det sluttar")
+    near(totalP, BT.Span(28, 42), "heile spennet er nemnaren", 1)
+    near(doneP, BT.Span(28, 34) + 5000, "og teljaren er kor langt du har kome", 1)
+    ok(doneP / totalP > 0.3,
+       "så baren står midt på, ikkje på to prosent (" ..
+       string.format("%.1f%%", doneP / totalP * 100) .. ")")
+    -- og prosenten i overskrifta er den same som fyllet
+    ok((slots.topLeft or ""):find(BT.Pct(doneP / totalP), 1, true),
+       "overskrifta seier same prosent som baren viser")
+    -- baren sjølv skal ha fått dei tala
+    eq(slots.max, totalP, "baren får heile spennet som maks")
+    eq(slots.cur, doneP, "og det du har gjort som fyll")
+  end
+
   -- men det som står att skal framleis reknast frå der du faktisk er
   local done, total, remain, _, step, base = BT.StageSpan()
   eq(base, 34, "rekninga startar frå level ditt")
@@ -1979,6 +2036,29 @@ do
   BT.Touch()
   slots = BT.BuildText()
   ok((slots.topLeft or ""):find("28 > 42"), "overskrifta står stille når du levlar")
+
+  S.level = 34
+  BT.Touch()
+  -- Runen du står i høyrer heime på tooltippen, ikkje under baren. Han er
+  -- ikkje noko du handlar på midt i - du er alt inne i instansen - og under
+  -- baren var han ei linje som kom og gjekk medan du las.
+  do
+    ChainCharDB.run = { start = S.now - 90, xp = 2119, k = 16,
+                        partial = true, zone = "Scarlet Monastery" }
+    local sl = BT.BuildText()
+    local under = sl.extra or ""
+    ok(not under:find("2,119"), "runen står ikkje under baren lenger")
+    ok(not under:find("not in average"), "og heller ikkje merkelappane hans")
+
+    BT.BarTooltip(BT.bar)
+    local tip = S.TipText()
+    ok(tip:find("this run"), "men han står på tooltippen")
+    ok(tip:find("2,119"), "med xp-en")
+    ok(tip:find("16 mobs"), "og mobsa")
+    ok(tip:find("left out of the averages"),
+       "og kvifor han ikkje tel, sagt med ord i staden for ein merkelapp")
+    ChainCharDB.run = nil
+  end
 
   S.level = 20
   S.xp, S.xpMax = 0, 23200
@@ -2226,6 +2306,233 @@ do
     eq(BT.ClassLabel("ROGUE"), "Rogue", "og klassa har eit namn for rada")
     eq(BT.ClassLabel(nil), "?", "ukjent klasse seier det")
   end
+
+  -- Level for motstandarar kan berre kome frå å ha sett dei. /who returnerer
+  -- berre di eiga side, så eit oppslag kunne aldri fylt inn ein einaste ein -
+  -- og ein knapp som ser ut som ein funksjon og stille ikkje gjer noko er
+  -- verre enn ingen knapp. Difor står det "??" og tooltippen seier kvifor.
+  do
+    ChainDB.enemies = ChainDB.enemies or {}
+    BT.NoteEnemy("Ukjendlvl", { class = "MAGE", how = "combat log" })
+    eq(ChainDB.enemies["Ukjendlvl"].level, nil, "ingen level frå kamploggen")
+    eq(BT.LookupPlayer, nil, "og ingen /who-knapp som lovar noko anna")
+  end
+
+  -- Det du derimot kan gjere er å seie frå til di eiga side, med koordinatar.
+  do
+    ChainDB.sightQuiet = {}
+    S.said = {}
+    S.zone = "Scarlet Monastery"
+    S.mapPos = { 0.47, 0.19 }
+    BT.NoteEnemy("Roparen", { level = 45, class = "WARRIOR", guild = "Era Enjoyers" })
+    local e = ChainDB.enemies["Roparen"]
+
+    local txt = BT.SightingText(e)
+    ok(txt:find("Roparen"), "meldinga har namnet")
+    ok(txt:find("45"), "og levelen")
+    ok(txt:find("Warrior"), "og klassa")
+    ok(txt:find("Era Enjoyers"), "og guilden")
+    ok(txt:find("47, 19"), "og kvar du står (" .. txt .. ")")
+
+    -- kanalen fylgjer kven du faktisk er saman med
+    local keepParty = S.party
+    S.party = { { name = "Kompis", lvl = 60 } }
+    S.inRaid = false
+    eq(BT.SightChannel(), "PARTY", "i gruppe går det til party")
+    S.inRaid = true
+    eq(BT.SightChannel(), "RAID", "i raid til raid")
+    S.inRaid, S.party = false, {}
+    local keepGuild = S.inGuild
+    S.inGuild = true
+    eq(BT.SightChannel(), "GUILD", "aleine, men i guild, til guilden")
+    S.inGuild = false
+    eq(BT.SightChannel(), "SAY", "og heilt aleine til say")
+
+    local said, chan = BT.AnnounceSighting(e, nil, true)
+    ok(said ~= nil, "meldinga blir sendt")
+    eq(chan, "SAY", "på den kanalen som passar")
+    ok(S.said[#S.said] and S.said[#S.said]:find("Roparen"),
+       "og klienten fekk henne (" .. tostring(S.said[#S.said]) .. ")")
+    S.party, S.inGuild = keepParty, keepGuild
+
+    -- same mann om att skal ikkje fylle party-chatten
+    eq(BT.AnnounceSighting(e), nil, "same mann med ein gong igjen blir kutta")
+  end
+
+  -- Stealth: eige varsel, midt på skjermen. Det er den eine observasjonen der
+  -- det å vite er heile fordelen - ein rogue du har sett er ein rogue som har
+  -- mista opninga.
+  do
+    ChainDB.stealthQuiet = {}
+    S.units["nameplate7"] = { name = "Snikar-Testrealm", level = 60,
+                              class = "ROGUE", hostile = true }
+    S.auras["nameplate7"] = { "Stealth" }
+    BT.NoteUnit("nameplate7", "nameplate")
+    local e = ChainDB.enemies["Snikar"]
+    ok(e and e.stealth, "vi ser at han er stealtha")
+    local sb = BT.stealthBanner()
+    ok(sb and sb:IsShown(), "og det kjem eit varsel midt på skjermen")
+    ok((sb.fs:GetText() or ""):find("STEALTH"), "som seier kva det er")
+    ok((sb.fs:GetText() or ""):find("Snikar"), "og kven det er")
+
+    -- og han skal ikkje skrike kvar gong same mannen dukkar opp
+    sb:Hide()
+    BT.NoteUnit("nameplate7", "nameplate")
+    ok(not sb:IsShown(), "same mann om att gjev ikkje nytt varsel med ein gong")
+
+    -- Å dra lista rundt: ho hoppa, fordi refresh-tikken re-ankra ramma midt i
+    -- draget. Og radene dekkjer nesten heile flata, så det einaste du kunne ta
+    -- tak i var ein tynn stripe av bakgrunn.
+    do
+      ChainDB.watchEnemies, ChainDB.nearbyList = true, true
+      ChainDB.nearbyLocked = nil
+      BT.NoteEnemy("Draaen", { level = 60, class = "MAGE" })
+      BT.RefreshNearby()
+      local nb = _G.ChainNearby
+      local r1 = nb.rows[1]
+      ok(r1.__scripts.OnDragStart ~= nil, "du kan ta tak i sjølve rada")
+
+      r1.__scripts.OnDragStart(r1)
+      ok(nb.__moving, "og då flyttar heile lista seg")
+      ok(BT.NearbyDragging(), "ho veit at ho er i eit drag")
+
+      -- brukaren dreg henne bortover, og tikken går medan han held
+      nb.__left, nb.__top = 700, 500
+      local beforeH = nb:GetHeight()
+      local p = nb.__points[#nb.__points]
+      local px, py = p.x, p.y
+      BT.NoteEnemy("Enda1", { level = 20 })
+      BT.NoteEnemy("Enda2", { level = 21 })
+      BT.RefreshNearby()
+      local q = nb.__points[#nb.__points]
+      eq(q.x, px, "tikken flyttar henne ikkje medan du held henne")
+      eq(q.y, py, "verken vassrett eller loddrett")
+      eq(nb:GetHeight(), beforeH, "og ho veks ikkje under fingeren din")
+
+      -- slepp, og då skal ho hugse kvar du la henne
+      r1.__scripts.OnDragStop(r1)
+      ok(not BT.NearbyDragging(), "draget er slutt")
+      eq(ChainDB.nearbyPos.x, 700, "og posisjonen er lagra der du slapp henne")
+
+      -- og no skal tikken få lov igjen
+      BT.RefreshNearby()
+      ok(nb:GetHeight() ~= beforeH, "etterpå får ho vekse som normalt")
+
+      -- låst betyr låst
+      ChainDB.nearbyLocked = true
+      nb.__moving = false
+      r1.__scripts.OnDragStart(r1)
+      ok(not nb.__moving, "låst lar seg ikkje dra")
+      ChainDB.nearbyLocked = nil
+
+        -- Kven som slo kven: det einaste stykket historie om ein annan spelar
+      -- som er ditt eige. Serveren fortel deg ingenting om dei, men han
+      -- fortel deg kven som slutta å røre seg.
+      do
+        ChainDB.enemies = {}
+        local keepGuid = S.guid
+        S.guid = "Player-1-0000"
+        BT.NoteEnemy("Bolla", { level = 60, class = "ROGUE" })
+        BT.NoteFight("PARTY_KILL", "Player-1-0000", "Meg", 0x511,
+                     "Player-4-0077", "Bolla-Testrealm", 0x440)
+        eq(ChainDB.enemies["Bolla"].wins, 1, "eit drap blir talt")
+
+        -- og andre vegen: den som slo deg sist får æra for at du datt
+        BT.NoteFight("SWING_DAMAGE", "Player-4-0077", "Bolla-Testrealm", 0x440,
+                     "Player-1-0000", "Meg", 0x511)
+        BT.NoteFight("UNIT_DIED", nil, nil, nil, "Player-1-0000", "Meg", 0x511)
+        eq(ChainDB.enemies["Bolla"].losses, 1, "og eit tap likeeins")
+
+        -- ein som ikkje har rørt deg på lenge skal ikkje få skulda
+        BT.lastHitBy, BT.lastHitAt = "Bolla", S.now - 600
+        BT.NoteFight("UNIT_DIED", nil, nil, nil, "Player-1-0000", "Meg", 0x511)
+        eq(ChainDB.enemies["Bolla"].losses, 1, "gammalt slag gjev ikkje skulda")
+
+        -- og det står på tooltippen, som er heile poenget
+        BT.RefreshNearby()
+        local nb2 = _G.ChainNearby
+        for _, r in ipairs(nb2.rows) do
+          if r.rec and r.rec.name == "Bolla" then
+            r.__scripts.OnEnter(r)
+          end
+        end
+        local tip = S.TipText()
+        ok(tip:find("you 1"), "scoren står på tooltippen (" .. tip:sub(1, 60) .. ")")
+        S.guid = keepGuid
+      end
+
+      -- Notat på folk, frå høgreklikk. Grunnen til at du merka nokon er verdt
+      -- meir enn merket: "gankar SM-inngangen kl 2" er ein plan, eit raudt
+      -- namn er ein farge.
+      do
+        local keepKos = ChainDB.kos
+        ChainDB.kos = {}
+        local e2 = ChainDB.enemies["Bolla"]
+        local pop = BT.NotePopup(e2)
+        ok(pop ~= nil and pop:IsShown(), "notatboksen kjem opp")
+        eq(pop.title:GetText(), "Bolla", "med namnet på han det gjeld")
+        pop.box:SetText("gankar SM-inngangen kl 2")
+        pop.save()
+        local why, note = BT.IsKOS("Bolla")
+        eq(why, "named", "å skrive eit notat merkar han")
+        eq(note, "gankar SM-inngangen kl 2", "og notatet er lagra")
+        ok(not pop:IsShown(), "og boksen lukkar seg")
+
+        -- og opnar du han igjen, står det du skreiv der
+        BT.NotePopup(e2)
+        eq(pop.box:GetText(), "gankar SM-inngangen kl 2", "notatet kjem fram igjen")
+        pop:Hide()
+        ChainDB.kos = keepKos
+      end
+
+    -- Boksen skal kunne dragast breiare og høgare. Breidda er det som lukkar
+      -- holet mellom eit kort namn og klassa ved sida av; høgda er berre kor
+      -- mange du vil sjå, så ho blir lagra som eit tal rader og ikkje som
+      -- pikslar - då overlever ho ei endring av font eller skala.
+      do
+        local g = nb.grip
+        ok(g ~= nil, "det er eit handtak i hjørnet")
+        ChainDB.nearbyWidth, ChainDB.nearbyRows = nil, nil
+        local wasName = nb.rows[1].name:GetWidth()
+
+        g.__scripts.OnDragStart(g)
+        nb:SetSize(300, 22 + 12 * 14)
+        g.__scripts.OnDragStop(g)
+        eq(ChainDB.nearbyWidth, 300, "breidda blir hugsa")
+        eq(ChainDB.nearbyRows, 12, "og høgda blir til eit tal rader")
+
+        BT.RefreshNearby()
+        eq(nb:GetWidth(), 300, "boksen er så brei som du drog henne")
+        ok(nb.rows[1].name:GetWidth() > wasName,
+           "og namnet får plassen, i staden for at det opnar seg eit hol")
+
+        -- og tikken skal ikkje endre storleik medan du held handtaket
+        g.__scripts.OnDragStart(g)
+        nb:SetSize(260, 22 + 5 * 14)
+        local wMid, hMid = nb:GetWidth(), nb:GetHeight()
+        BT.RefreshNearby()
+        eq(nb:GetWidth(), wMid, "tikken rører ikkje breidda medan du dreg")
+        eq(nb:GetHeight(), hMid, "eller høgda")
+        g.__scripts.OnDragStop(g)
+
+        ChainDB.nearbyWidth, ChainDB.nearbyRows = nil, nil
+        BT.RefreshNearby()
+      end
+
+      -- og det finst ein veg tilbake om ho hamnar utanfor skjermen
+      ok(BT.ResetNearbyPos(), "ho kan sendast heim igjen")
+      eq(ChainDB.nearbyPos, nil, "og då er posisjonen gløymd")
+      nb.__left, nb.__top = nil, nil
+    end
+
+    -- ein som ikkje er stealtha skal ikkje utløyse det
+    S.units["nameplate8"] = { name = "Openlyst-Testrealm", level = 60,
+                              class = "WARRIOR", hostile = true }
+    S.auras["nameplate8"] = {}
+    BT.NoteUnit("nameplate8", "nameplate")
+    ok(not sb:IsShown(), "og ein som står i open dag gjer det ikkje")
+    eq(ChainDB.enemies["Openlyst"].stealth, nil, "han er ikkje merkt som stealtha")
+  end
   eq(ChainDB.enemies["Snill"], nil, "og ikkje-fiendtlege blir ikkje talt")
 
   -- KOS: ved namn og ved heile guilden, som er slik det oftast går
@@ -2394,18 +2701,20 @@ do
     ok(nb ~= nil, "lista blir bygd")
     ok(nb and nb:IsShown(), "og er synleg når nokon er i nærleiken")
     ok((nb.rows[1].name:GetText() or ""):find("Naer"), "med namnet i")
-    eq(nb.rows[1].lvl:GetText(), "60", "og levelen")
+    -- level og klasse saman til høgre, slik spelet skriv det elles
+    eq(nb.rows[1].right:GetText(), "60 Rogue", "med level og klasse til høgre")
     ok((nb.title:GetText() or ""):find("1 nearby"), "og kor mange det er")
 
     -- eit klikk på rada merkar han, og tooltipen seier alt vi veit
     ChainDB.kos, ChainDB.kosGuilds = {}, {}
-    nb.rows[1].__scripts.OnClick(nb.rows[1])
+    nb.rows[1].__scripts.OnClick(nb.rows[1], "LeftButton")
     eq(select(1, BT.IsKOS("Naer")), "named", "klikk på rada merkar han")
     nb.rows[1].__scripts.OnEnter(nb.rows[1])
     local tip = S.TipText()
     ok(tip:find("Naer"), "tooltipen har namnet")
-    ok(tip:find("level 60"), "levelen")
-    ok(tip:find("ROGUE"), "klassen")
+    -- "Level 60 Rogue", slik spelet skriv det - ikkje "level 60  ROGUE"
+    ok(tip:find("Level 60"), "levelen")
+    ok(tip:find("Rogue"), "klassen")
     ok(tip:find("Bad Bois"), "guilden")
     ok(tip:find("seen"), "og kor mange gonger han er sett")
     ok(tip:find("marked by name"), "og at han er merka")

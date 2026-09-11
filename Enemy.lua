@@ -134,7 +134,14 @@ function BT.NoteEnemy(name, info)
   e.guild = info.guild or e.guild
   e.faction = info.faction or e.faction
   e.race = info.race or e.race
+  if info.stealth ~= nil then e.stealth = info.stealth end
   e.zone = info.zone or (GetRealZoneText and GetRealZoneText()) or e.zone
+  -- where you were standing when you saw them. Not where they were - there is
+  -- no way to know that - but close enough to go back and look.
+  if BT.MyPosition then
+    local _, px, py = BT.MyPosition()
+    if px and py then e.x, e.y = px, py end
+  end
   e.how = info.how or e.how
   e.at = now
   e.n = (e.n or 0) + 1
@@ -194,16 +201,73 @@ function BT.EnemyAlert(e)
 
   local what = e.name
   if e.level and e.level > 0 then what = what .. " " .. e.level end
-  if e.class then what = what .. " " .. e.class end
+  if e.class then what = what .. " " .. BT.ClassLabel(e.class) end
   if why == "guild" and e.guild then what = what .. "  <" .. e.guild .. ">" end
   if note then what = what .. "  " .. note end
 
   if why then
     BT.EnemyBanner(C.bad .. "KOS   " .. what .. C.off, true)
     if ChainDB.enemySound and BT.Beep then BT.Beep("out") end
+    -- and tell the people who can do something about it, if you asked us to
+    if ChainDB.announceKOS then BT.AnnounceSighting(e) end
   else
     BT.EnemyBanner(C.warn .. what .. C.off, false)
   end
+end
+
+-- Somebody stealthed, in the middle of the screen.
+--
+-- This one gets its own alert and its own place, because it is the only
+-- sighting where knowing is the whole of the advantage. A rogue you have seen
+-- is a rogue who has lost the opening, and the top of the screen is where you
+-- are not looking when you are being opened on.
+--
+-- A stealthed player is spotted the moment the client renders them at all -
+-- a nameplate, a target, a combat-log line - which in practice means they are
+-- already close, or they have just broken stealth on somebody.
+local sframe
+function BT.StealthBanner(text)
+  if not sframe then
+    sframe = CreateFrame("Frame", "ChainStealthBanner", UIParent)
+    sframe:SetSize(560, 40)
+    -- above the middle, clear of the cast bar and clear of the reset banner
+    sframe:SetPoint("CENTER", UIParent, "CENTER", 0, 140)
+    sframe:SetFrameStrata("FULLSCREEN_DIALOG")
+    sframe.fs = sframe:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    sframe.fs:SetPoint("CENTER")
+    sframe.t = 0
+    sframe:SetScript("OnUpdate", function(self, elapsed)
+      self.t = self.t + elapsed
+      -- a hard pulse: this is the one alert that is allowed to be rude
+      self.fs:SetAlpha(0.45 + 0.55 * math.abs(math.sin(self.t * 5)))
+      local grow = 1 + 0.05 * math.max(0, 1 - self.t * 2)
+      self.fs:SetScale(grow)
+      if self.t > 8 then self:Hide() end
+    end)
+    sframe:Hide()
+  end
+  sframe.fs:SetText(text)
+  sframe.t = 0
+  sframe:Show()
+  return sframe
+end
+BT.stealthBanner = function() return sframe end
+
+function BT.StealthAlert(e)
+  if ChainDB.stealthAlert == false then return end
+  if not e or not e.name then return end
+  ChainDB.stealthQuiet = ChainDB.stealthQuiet or {}
+  if (time() - (ChainDB.stealthQuiet[e.name] or 0)) < REALERT then return end
+  ChainDB.stealthQuiet[e.name] = time()
+
+  local why = BT.IsKOS(e.name, e.guild)
+  local what = e.name
+  if e.level and e.level > 0 then what = what .. "  " .. e.level end
+  if e.class then what = what .. "  " .. BT.ClassLabel(e.class) end
+  BT.StealthBanner((why and C.bad or C.warn) .. "STEALTH   " .. what
+    .. (why and "   KOS" or "") .. C.off)
+  if BT.Beep then BT.Beep("out") end
+  return true
 end
 
 -- Its own line on screen rather than the reset banner's. A reset and a rogue
@@ -262,8 +326,56 @@ function BT.NoteUnit(unit, how)
   if UnitClass then _, class = UnitClass(unit) end
   local guild = GetGuildInfo and GetGuildInfo(unit) or nil
   local faction = UnitFactionGroup and UnitFactionGroup(unit) or nil
-  return BT.NoteEnemy(name, { level = level, class = class, guild = guild,
-                              faction = faction, how = how })
+  -- Stealth is read from the aura list rather than guessed from the class: a
+  -- rogue standing in front of you is not the same news as a rogue who is
+  -- still stealthed, and half the ones who matter are druids anyway.
+  local stealth = BT.IsStealthed and BT.IsStealthed(unit) or nil
+  local e = BT.NoteEnemy(name, { level = level, class = class, guild = guild,
+                                 faction = faction, how = how,
+                                 stealth = stealth })
+  if stealth and e then BT.StealthAlert(e) end
+  return e
+end
+
+-- Every unit the client will actually hand us a level for. The combat log
+-- reaches furthest but carries no level; these carry one, and between them
+-- they cover most of the people you are in a fight with rather than only the
+-- one you happen to be pointing at.
+local SCAN = {
+  "target", "targettarget", "mouseover", "mouseovertarget",
+  "focus", "focustarget", "pettarget",
+}
+function BT.ScanUnits(how)
+  if not ChainDB.watchEnemies then return 0 end
+  local n = 0
+  for _, u in ipairs(SCAN) do
+    if BT.NoteUnit(u, how or "seen") then n = n + 1 end
+  end
+  -- and whoever the rest of the group is swinging at
+  local party = (IsInRaid and IsInRaid()) and "raid" or "party"
+  local size = (party == "raid") and 40 or 4
+  for i = 1, size do
+    if BT.NoteUnit(party .. i .. "target", how or "group's target") then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+-- Is that unit stealthed right now? The buff is the honest signal; there is
+-- no API that simply says so.
+local STEALTH_SPELLS = {
+  ["Stealth"] = true, ["Prowl"] = true, ["Shadowmeld"] = true,
+  ["Invisibility"] = true, ["Lesser Invisibility"] = true,
+}
+function BT.IsStealthed(unit)
+  if not unit or not UnitAura then return nil end
+  for i = 1, 40 do
+    local name = UnitAura(unit, i, "HELPFUL")
+    if not name then break end
+    if STEALTH_SPELLS[name] then return true end
+  end
+  return nil
 end
 
 -- The combat log reaches further than anything else: somebody casting two
@@ -310,13 +422,17 @@ f:SetScript("OnEvent", function(_, event, arg1)
     BT.NoteUnit("mouseover", "mouseover")
   elseif event == "PLAYER_TARGET_CHANGED" then
     BT.NoteUnit("target", "target")
+    BT.ScanUnits("seen")
+  elseif event == "UNIT_TARGET" then
+    BT.ScanUnits("group's target")
   elseif event == "UNIT_FACTION" then
     BT.NoteUnit(arg1, "faction")
   end
 end)
 for _, e in ipairs({ "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED",
                      "UPDATE_MOUSEOVER_UNIT",
-                     "PLAYER_TARGET_CHANGED", "UNIT_FACTION" }) do
+                     "PLAYER_TARGET_CHANGED", "UNIT_FACTION",
+                     "UNIT_TARGET" }) do
   f:RegisterEvent(e)
 end
 
@@ -332,6 +448,8 @@ end
 -- the thing this is meant to stop.
 
 local NEAR_ROWS = 8          -- the default; ChainDB.nearbyRows overrides it
+local NEAR_W    = 176        -- and ChainDB.nearbyWidth overrides this
+local RIGHT_W   = 74         -- room kept for "45 Warrior" on the right
 local NEAR_MAX  = 20         -- as many row frames as we ever build
 local ROW_H     = 14
 
@@ -342,6 +460,9 @@ local function NearRows()
   return math.max(1, math.min(NEAR_MAX, math.floor(ChainDB.nearbyRows or NEAR_ROWS)))
 end
 local function GrowUp() return ChainDB.nearbyGrow == "up" end
+local function NearWidth()
+  return math.max(120, math.min(420, math.floor(ChainDB.nearbyWidth or NEAR_W)))
+end
 local nearby
 
 local CLASS_COLOUR = {
@@ -367,19 +488,163 @@ function BT.ClassLabel(class)
   return CLASS_SHORT[class] or class
 end
 
+--------------------------------------------------------------------------
+-- Who beat whom
+--------------------------------------------------------------------------
+-- The one piece of history about another player that is genuinely yours: the
+-- server will not tell you anything about them, but it will tell you who
+-- stopped moving. Kills you or your group made, and deaths they caused.
+--
+-- A death is credited to whoever hit you last, inside a short window. It is
+-- not perfect - in a five-man gank the killing blow is arbitrary - but it is
+-- the same thing you would remember yourself, and it is the number you
+-- actually want when the name comes past again.
+local LAST_HIT = 15
+
+function BT.NoteFight(sub, src, srcName, srcFlags, dst, dstName, dstFlags)
+  if not sub or not bit then return end
+  local myGUID = UnitGUID and UnitGUID("player") or nil
+
+  -- somebody hit us: remember who, so a death can be blamed on them
+  if dst and myGUID and dst == myGUID and src and src ~= myGUID
+     and srcName and srcFlags
+     and bit.band(srcFlags, PLAYER_TYPE) ~= 0
+     and bit.band(srcFlags, HOSTILE) ~= 0 then
+    local key = BT.KOSKey(srcName)
+    if key then BT.lastHitBy, BT.lastHitAt = key, time() end
+  end
+
+  if sub ~= "PARTY_KILL" and sub ~= "UNIT_DIED" then return end
+
+  if sub == "PARTY_KILL" then
+    -- you or your group killed them
+    if not dstName or not dstFlags then return end
+    if bit.band(dstFlags, PLAYER_TYPE) == 0 then return end
+    if bit.band(dstFlags, HOSTILE) == 0 then return end
+    local key = BT.KOSKey(dstName)
+    local e = key and ChainDB.enemies and ChainDB.enemies[key]
+    if e then
+      e.wins = (e.wins or 0) + 1
+      e.lastFight = time()
+      if BT.RefreshNearby then BT.RefreshNearby() end
+    end
+    return
+  end
+
+  -- UNIT_DIED on us: blame whoever hit us last, if it was recent
+  if not myGUID or dst ~= myGUID then return end
+  if not BT.lastHitBy or (time() - (BT.lastHitAt or 0)) > LAST_HIT then return end
+  local e = ChainDB.enemies and ChainDB.enemies[BT.lastHitBy]
+  if e then
+    e.losses = (e.losses or 0) + 1
+    e.lastFight = time()
+    if BT.RefreshNearby then BT.RefreshNearby() end
+  end
+  BT.lastHitBy = nil
+end
+
+--------------------------------------------------------------------------
+-- Telling your own side
+--------------------------------------------------------------------------
+-- There was a /who lookup here, to fill in the levels that sit at "??". It is
+-- gone, because it could never have worked: /who only ever returns players of
+-- your own faction, and everybody in this list is on the other one. A button
+-- that looks like a feature and quietly does nothing is worse than no button.
+--
+-- The same goes for whispering them. Cross-faction whispers do not exist.
+--
+-- What you *can* do is tell your own side, which is the useful half anyway:
+-- a name, a level if you have one, a class, and where you are standing.
+function BT.MyPosition()
+  local zone = (GetRealZoneText and GetRealZoneText())
+            or (GetZoneText and GetZoneText()) or nil
+  local sub = GetSubZoneText and GetSubZoneText() or nil
+  if sub == "" then sub = nil end
+  local x, y
+  if C_Map and C_Map.GetBestMapForUnit and C_Map.GetPlayerMapPosition then
+    local id = C_Map.GetBestMapForUnit("player")
+    if id then
+      local pos = C_Map.GetPlayerMapPosition(id, "player")
+      if pos and pos.GetXY then
+        local px, py = pos:GetXY()
+        if px and py and (px > 0 or py > 0) then x, y = px * 100, py * 100 end
+      end
+    end
+  end
+  return zone, x, y, sub
+end
+
+-- Where it goes. "auto" is the right answer almost always: the people who can
+-- do something about it are whoever you are actually with.
+function BT.SightChannel(pref)
+  pref = pref or ChainDB.sightChannel or "auto"
+  if pref ~= "auto" then return pref:upper() end
+  if IsInRaid and IsInRaid() then return "RAID" end
+  if IsInGroup and IsInGroup() then return "PARTY" end
+  if IsInGuild and IsInGuild() then return "GUILD" end
+  return "SAY"
+end
+
+function BT.SightingText(e)
+  if not e or not e.name then return nil end
+  local who = e.name
+  if e.level and e.level > 0 then who = who .. " " .. e.level end
+  if e.class then who = who .. " " .. BT.ClassLabel(e.class) end
+  if e.guild then who = who .. " <" .. e.guild .. ">" end
+  if BT.IsKOS(e.name, e.guild) then who = who .. " [KOS]" end
+
+  local zone, x, y, sub = BT.MyPosition()
+  local where = sub or zone
+  if where and zone and sub then where = sub .. ", " .. zone end
+  local txt = who
+  if where then txt = txt .. " - " .. where end
+  if x and y then txt = txt .. string.format(" (%.0f, %.0f)", x, y) end
+  return txt
+end
+
+-- Throttled per player, like the banner: the same rogue running past three
+-- times is one line in party chat, not three.
+function BT.AnnounceSighting(e, chan, force)
+  if not e or not SendChatMessage then return nil end
+  ChainDB.sightQuiet = ChainDB.sightQuiet or {}
+  if not force and (time() - (ChainDB.sightQuiet[e.name] or 0)) < REALERT then
+    return nil
+  end
+  local text = BT.SightingText(e)
+  if not text then return nil end
+  chan = chan or BT.SightChannel()
+  ChainDB.sightQuiet[e.name] = time()
+  SendChatMessage("Spotted: " .. text, chan)
+  return text, chan
+end
+
 local function RowTooltip(self)
   local e = self.rec
   if not e then return end
   GameTooltip:SetOwner(self, "ANCHOR_LEFT")
   GameTooltip:AddLine(e.name, 1, 0.82, 0)
 
-  local line = ""
-  if e.level and e.level > 0 then line = "level " .. e.level
-  else line = "level unknown" end
-  if e.class then line = line .. "  " .. e.class end
-  GameTooltip:AddLine(line, 1, 1, 1)
-  if e.guild then GameTooltip:AddLine("<" .. e.guild .. ">", 0.7, 0.7, 0.7) end
+  if e.guild then GameTooltip:AddLine(e.guild, 0.6, 0.9, 0.6) end
+  -- "Level 45 Orc Warrior", the way the game says it everywhere else
+  local bits = {}
+  if e.level and e.level > 0 then table.insert(bits, "Level " .. e.level)
+  else table.insert(bits, "Level unknown") end
+  if e.race then table.insert(bits, e.race) end
+  if e.class then table.insert(bits, BT.ClassLabel(e.class)) end
+  GameTooltip:AddLine(table.concat(bits, " "), 1, 1, 1)
   if e.faction then GameTooltip:AddLine(e.faction, 0.7, 0.7, 0.7) end
+
+  -- Your own score against them. Nobody else can tell you this, which is
+  -- exactly why it is worth keeping.
+  if (e.wins or 0) > 0 or (e.losses or 0) > 0 then
+    GameTooltip:AddDoubleLine("you " .. (e.wins or 0) .. "  -  " .. (e.losses or 0)
+      .. " them",
+      (e.losses or 0) > (e.wins or 0) and "he is winning" or
+      (e.wins or 0) > (e.losses or 0) and "you are winning" or "even",
+      (e.wins or 0) >= (e.losses or 0) and 0.4 or 1,
+      (e.wins or 0) >= (e.losses or 0) and 1 or 0.4, 0.4,
+      0.7, 0.7, 0.7)
+  end
 
   GameTooltip:AddLine(" ")
   GameTooltip:AddDoubleLine("last seen", BT.T(time() - (e.at or time())) .. " ago",
@@ -391,7 +656,9 @@ local function RowTooltip(self)
                               0.7, 0.7, 0.7, 1, 1, 1)
   end
   if e.zone then
-    GameTooltip:AddDoubleLine("in", e.zone, 0.7, 0.7, 0.7, 1, 1, 1)
+    GameTooltip:AddDoubleLine("in", e.zone
+      .. ((e.x and e.y) and string.format("  (%.0f, %.0f)", e.x, e.y) or ""),
+      0.7, 0.7, 0.7, 1, 1, 1)
   end
   if e.how then
     GameTooltip:AddDoubleLine("spotted by", e.how, 0.7, 0.7, 0.7, 0.6, 0.6, 0.6)
@@ -404,9 +671,18 @@ local function RowTooltip(self)
                                         or "marked by name", 1, 0.3, 0.3)
     if note then GameTooltip:AddLine(note, 1, 1, 1, true) end
   end
+  if e.stealth then
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("was stealthed when spotted", 0.7, 0.5, 1)
+  end
   GameTooltip:AddLine(" ")
+  if not e.level or e.level <= 0 then
+    GameTooltip:AddLine("no level: you have not actually seen them yet",
+                        0.5, 0.5, 0.5)
+  end
   GameTooltip:AddLine(why and "Click: clear the mark" or "Click: mark kill on sight",
                       0.4, 0.7, 1)
+  GameTooltip:AddLine("Right-click: note, call out, and the rest", 0.4, 0.7, 1)
   GameTooltip:Show()
 end
 
@@ -414,20 +690,65 @@ end
 -- corner, anchored by its top when the list grows down and by its bottom when
 -- it grows up - so the edge you parked stays put and the list grows away from
 -- it rather than dragging the whole box about.
+-- A plain local, not a field on the frame. A widget answers any name you ask
+-- it for with a function, so nearby.dragging reads as "yes" forever - which is
+-- the same trap the bar's tick list fell into.
+local dragging = false
+local sizing = false
+
 local function AnchorNearby()
   if not nearby then return end
+  -- Never while it is under the cursor. The list refreshes on a timer, and
+  -- re-applying the anchor mid-drag yanks the frame out from under the mouse
+  -- a few times a second - which is exactly what "it jumps about and will not
+  -- sit still" is.
+  if dragging or sizing then return end
   local pos = ChainDB.nearbyPos or {}
   nearby:ClearAllPoints()
   nearby:SetPoint(GrowUp() and "BOTTOMLEFT" or "TOPLEFT",
                   UIParent, "BOTTOMLEFT", pos.x or 900, pos.y or 500)
 end
 
+-- Read back in UIParent's units. The ratio is one today, because the list
+-- hangs off UIParent and has no scale of its own - but mixing a frame's own
+-- coordinates with a parent's anchor is the bug that turns up the day either
+-- of those stops being true.
 local function SaveNearbyPos()
   if not nearby or not nearby.GetLeft or not nearby:GetLeft() then return end
+  local r = 1
+  if nearby.GetEffectiveScale and UIParent and UIParent.GetEffectiveScale then
+    local mine = nearby:GetEffectiveScale() or 1
+    local theirs = UIParent:GetEffectiveScale() or 1
+    if theirs > 0 then r = mine / theirs end
+  end
   ChainDB.nearbyPos = {
-    x = nearby:GetLeft(),
-    y = GrowUp() and nearby:GetBottom() or nearby:GetTop()
+    x = nearby:GetLeft() * r,
+    y = (GrowUp() and nearby:GetBottom() or nearby:GetTop()) * r
   }
+end
+
+-- Dragging is started from anywhere on the list, not only from the thin strip
+-- of background the rows leave uncovered. The rows fill almost the whole box,
+-- so "grab it and move it" meant finding two pixels of title bar.
+local function BeginDrag()
+  if not nearby or ChainDB.nearbyLocked then return end
+  dragging = true
+  nearby:StartMoving()
+end
+
+local function EndDrag()
+  if not nearby or not dragging then return end
+  nearby:StopMovingOrSizing()
+  dragging = false
+  SaveNearbyPos()
+  AnchorNearby()
+end
+function BT.NearbyDragging() return dragging end
+
+function BT.ResetNearbyPos()
+  ChainDB.nearbyPos = nil
+  AnchorNearby()
+  return true
 end
 
 -- Switching direction must not make the box jump: take the edge that is about
@@ -465,11 +786,12 @@ end
 -- Hand-rolled rather than the game's dropdown: three items, no library, and
 -- it cannot be broken by another addon replacing UIDropDownMenu.
 local menu
+local MENU_MAX = 9
 local function BuildMenu()
   if menu then return menu end
   menu = CreateFrame("Frame", "ChainNearbyMenu", UIParent)
-  menu:SetSize(150, 4 + 3 * 18 + 4)
-  menu:SetFrameStrata("DIALOG")
+  menu:SetSize(172, 8 + MENU_MAX * 18)
+  menu:SetFrameStrata("FULLSCREEN_DIALOG")
   menu.edge = menu:CreateTexture(nil, "BACKGROUND")
   menu.edge:SetPoint("TOPLEFT", -1, 1)
   menu.edge:SetPoint("BOTTOMRIGHT", 1, -1)
@@ -482,10 +804,14 @@ local function BuildMenu()
   menu.bg:SetDrawLayer("BACKGROUND", 2)
   menu:EnableMouse(true)
 
+  menu.head = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  menu.head:SetPoint("TOPLEFT", 8, -5)
+  menu.head:SetJustifyH("LEFT")
+
   menu.items = {}
-  for i = 1, 3 do
+  for i = 1, MENU_MAX do
     local b = CreateFrame("Button", nil, menu)
-    b:SetSize(142, 18)
+    b:SetSize(164, 18)
     b:SetPoint("TOPLEFT", 4, -4 - (i - 1) * 18)
     b.bg = b:CreateTexture(nil, "BACKGROUND")
     b.bg:SetAllPoints()
@@ -505,49 +831,243 @@ local function BuildMenu()
   return menu
 end
 
-function BT.NearbyMenu()
+-- One menu, whatever it was opened on. Items are {text, fn}; a nil entry is a
+-- gap, which is how the player's own actions are kept apart from the list's.
+local function ShowMenu(title, items, anchorTo)
   BuildMenu()
-  local function Item(i, text, fn)
-    local b = menu.items[i]
-    b.fs:SetText(text)
-    b:SetScript("OnClick", function()
-      fn()
-      menu:Hide()
-    end)
+  local top = 4
+  if title then
+    menu.head:SetText(title)
+    menu.head:Show()
+    top = 22
+  else
+    menu.head:Hide()
   end
-  Item(1, GrowUp() and (C.good .. "Grows up" .. C.off .. C.dim .. "  - flip" .. C.off)
-                   or (C.good .. "Grows down" .. C.off .. C.dim .. "  - flip" .. C.off),
-    function() BT.SetNearbyGrow(GrowUp() and "down" or "up") end)
-  Item(2, ChainDB.nearbyLocked and (C.warn .. "Locked" .. C.off .. C.dim .. "  - unlock" .. C.off)
-                               or (C.dim .. "Unlocked" .. C.off .. "  - lock"),
-    function() BT.ToggleNearbyLock() end)
-  Item(3, "Hide the list", function() BT.ToggleNearby() end)
-
-  if nearby then
-    menu:ClearAllPoints()
-    menu:SetPoint("TOPLEFT", nearby, "BOTTOMLEFT", 0, -2)
+  local n = 0
+  for _, it in ipairs(items) do
+    if n >= MENU_MAX then break end
+    n = n + 1
+    local b = menu.items[n]
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", 4, -top - (n - 1) * 18)
+    if it.gap then
+      b.fs:SetText(C.dim .. "................." .. C.off)
+      b:SetScript("OnClick", nil)
+      b:EnableMouse(false)
+    else
+      b.fs:SetText(it.text)
+      b:EnableMouse(true)
+      b:SetScript("OnClick", function()
+        it.fn()
+        menu:Hide()
+      end)
+    end
+    b:Show()
   end
+  for i = n + 1, MENU_MAX do menu.items[i]:Hide() end
+  menu:SetHeight(top + n * 18 + 4)
+  menu:ClearAllPoints()
+  menu:SetPoint("TOPLEFT", anchorTo or nearby, "BOTTOMLEFT", 0, -2)
   menu:Show()
   return menu
+end
+BT.ShowNearbyMenu = ShowMenu
+
+-- The list's own settings
+local function ListItems()
+  return {
+    { text = GrowUp() and (C.good .. "Grows up" .. C.off .. C.dim .. " - flip" .. C.off)
+                      or (C.good .. "Grows down" .. C.off .. C.dim .. " - flip" .. C.off),
+      fn = function() BT.SetNearbyGrow(GrowUp() and "down" or "up") end },
+    { text = ChainDB.nearbyLocked
+             and (C.warn .. "Locked" .. C.off .. C.dim .. " - unlock" .. C.off)
+             or (C.dim .. "Unlocked" .. C.off .. " - lock"),
+      fn = function() BT.ToggleNearbyLock() end },
+    { text = "Back to the middle", fn = function() BT.ResetNearbyPos() end },
+    { text = "Hide the list", fn = function() BT.ToggleNearby() end },
+  }
+end
+
+function BT.NearbyMenu()
+  return ShowMenu(nil, ListItems())
+end
+
+-- Right-click on somebody: everything you might actually want to do about
+-- them, in one place. Marking is the first item because it is the reason the
+-- list exists.
+function BT.PlayerMenu(e, anchorTo)
+  if not e then return BT.NearbyMenu() end
+  local why = BT.IsKOS(e.name, e.guild)
+  local items = {}
+
+  if why == "named" then
+    items[#items + 1] = { text = C.good .. "Unmark " .. e.name .. C.off,
+                          fn = function() BT.RemoveKOS(e.name) BT.RefreshNearby() end }
+  else
+    items[#items + 1] = { text = C.bad .. "Kill on sight" .. C.off .. "  " .. e.name,
+                          fn = function() BT.AddKOS(e.name) BT.RefreshNearby() end }
+  end
+  if e.guild then
+    if why == "guild" then
+      items[#items + 1] = { text = C.good .. "Unmark <" .. e.guild .. ">" .. C.off,
+        fn = function() BT.RemoveKOSGuild(e.guild) BT.RefreshNearby() end }
+    else
+      items[#items + 1] = { text = C.bad .. "Mark the guild" .. C.off .. "  <" .. e.guild .. ">",
+        fn = function() BT.AddKOSGuild(e.guild) BT.RefreshNearby() end }
+    end
+  end
+
+  items[#items + 1] = { gap = true }
+  -- Your own words about him. The reason you marked somebody is worth more
+  -- than the mark: "ganks the SM entrance at 2am" is a plan, a red name is a
+  -- colour. Never shared with anybody.
+  local _, existing = BT.IsKOS(e.name, e.guild)
+  items[#items + 1] = {
+    text = (existing and existing ~= "")
+           and (C.gold .. "Note" .. C.off .. "  " .. existing:sub(1, 18))
+           or "Write a note",
+    fn = function() BT.NotePopup(e) end }
+
+  -- what the client will actually let an addon do about another player
+  items[#items + 1] = { text = "Target", fn = function()
+    if TargetUnit then pcall(TargetUnit, e.name) end
+  end }
+  -- No whisper and no /who: both are same-faction only, and everybody here is
+  -- on the other side.
+  local chan = BT.SightChannel()
+  items[#items + 1] = { text = "Call it out" .. C.dim .. "  " .. chan:lower() .. C.off,
+    fn = function() BT.AnnounceSighting(e, chan, true) end }
+  if chan ~= "SAY" then
+    items[#items + 1] = { text = "Call it out" .. C.dim .. "  say" .. C.off,
+      fn = function() BT.AnnounceSighting(e, "SAY", true) end }
+  end
+
+  items[#items + 1] = { gap = true }
+  for _, it in ipairs(ListItems()) do items[#items + 1] = it end
+  return ShowMenu(e.name, items, anchorTo)
+end
+
+-- A one-line box to type in. Hand-rolled for the same reason as the menu:
+-- three widgets, no library, and nothing that breaks when somebody else's
+-- addon replaces the popup system.
+local notePop
+function BT.NotePopup(e)
+  if not e then return nil end
+  if not notePop then
+    notePop = CreateFrame("Frame", "ChainNotePopup", UIParent)
+    notePop:SetSize(320, 78)
+    notePop:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    notePop:SetFrameStrata("FULLSCREEN_DIALOG")
+    notePop:EnableMouse(true)
+    notePop:SetMovable(true)
+    notePop:RegisterForDrag("LeftButton")
+    notePop:SetScript("OnDragStart", notePop.StartMoving)
+    notePop:SetScript("OnDragStop", notePop.StopMovingOrSizing)
+    notePop.edge = notePop:CreateTexture(nil, "BACKGROUND")
+    notePop.edge:SetPoint("TOPLEFT", -1, 1)
+    notePop.edge:SetPoint("BOTTOMRIGHT", 1, -1)
+    notePop.bg = notePop:CreateTexture(nil, "BACKGROUND")
+    notePop.bg:SetAllPoints()
+    if notePop.bg.SetColorTexture then
+      notePop.edge:SetColorTexture(0.3, 0.3, 0.35, 1)
+      notePop.bg:SetColorTexture(0.05, 0.05, 0.06, 0.98)
+    end
+    notePop.bg:SetDrawLayer("BACKGROUND", 2)
+
+    notePop.title = notePop:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    notePop.title:SetPoint("TOPLEFT", 10, -8)
+    notePop.hint = notePop:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    notePop.hint:SetPoint("TOPLEFT", 10, -26)
+    notePop.hint:SetText("your own words, never shared")
+
+    notePop.box = CreateFrame("EditBox", nil, notePop)
+    notePop.box:SetSize(300, 20)
+    notePop.box:SetPoint("TOPLEFT", 10, -42)
+    notePop.box:SetAutoFocus(true)
+    notePop.box:SetFontObject("GameFontHighlightSmall")
+    notePop.box:SetMaxLetters(120)
+    notePop.box.bg = notePop.box:CreateTexture(nil, "BACKGROUND")
+    notePop.box.bg:SetAllPoints()
+    if notePop.box.bg.SetColorTexture then
+      notePop.box.bg:SetColorTexture(0.12, 0.12, 0.14, 0.9)
+    end
+    local function Save()
+      local who = notePop.who
+      if who then
+        local text = notePop.box:GetText() or ""
+        -- writing a note marks him: you do not write one about somebody you
+        -- do not care about, and an unmarked note would never be seen again
+        BT.AddKOS(who.name, text ~= "" and text or nil)
+      end
+      notePop.box:ClearFocus()
+      notePop:Hide()
+      if BT.RefreshNearby then BT.RefreshNearby() end
+      if BT.RenderWindow then BT.RenderWindow() end
+    end
+    notePop.box:SetScript("OnEnterPressed", Save)
+    notePop.box:SetScript("OnEscapePressed", function()
+      notePop.box:ClearFocus()
+      notePop:Hide()
+    end)
+    notePop.save = Save
+  end
+  notePop.who = e
+  notePop.title:SetText(e.name)
+  local _, existing = BT.IsKOS(e.name, e.guild)
+  notePop.box:SetText(existing or "")
+  notePop:Show()
+  notePop.box:SetFocus()
+  return notePop
 end
 
 function BT.BuildNearby()
   if nearby then return nearby end
   nearby = CreateFrame("Frame", "ChainNearby", UIParent)
-  nearby:SetSize(196, 22 + NearRows() * ROW_H)
+  nearby:SetSize(NearWidth(), 22 + NearRows() * ROW_H)
   AnchorNearby()
   nearby:SetMovable(true)
   nearby:EnableMouse(true)
   nearby:RegisterForDrag("LeftButton")
-  nearby:SetScript("OnDragStart", function(self)
+  nearby:SetClampedToScreen(true)
+  nearby:SetScript("OnDragStart", BeginDrag)
+  nearby:SetScript("OnDragStop", EndDrag)
+
+  -- Drag the corner to make it wider or taller. Width is what closes the gap
+  -- between a short name and the class beside it; height is simply how many
+  -- of them you want to see, so it is stored as a row count rather than as
+  -- pixels and survives a change of font or scale.
+  nearby:SetResizable(true)
+  if nearby.SetResizeBounds then
+    nearby:SetResizeBounds(120, 22 + ROW_H, 420, 22 + NEAR_MAX * ROW_H)
+  elseif nearby.SetMinResize then
+    nearby:SetMinResize(120, 22 + ROW_H)
+    nearby:SetMaxResize(420, 22 + NEAR_MAX * ROW_H)
+  end
+
+  local grip = CreateFrame("Button", nil, nearby)
+  grip:SetSize(12, 12)
+  grip:SetFrameLevel((nearby:GetFrameLevel() or 1) + 5)
+  grip.tex = grip:CreateTexture(nil, "OVERLAY")
+  grip.tex:SetAllPoints()
+  if grip.tex.SetColorTexture then grip.tex:SetColorTexture(1, 1, 1, 0.18) end
+  grip:RegisterForDrag("LeftButton")
+  grip:SetScript("OnDragStart", function()
     if ChainDB.nearbyLocked then return end
-    self:StartMoving()
+    sizing = true
+    nearby:StartSizing(GrowUp() and "TOPRIGHT" or "BOTTOMRIGHT")
   end)
-  nearby:SetScript("OnDragStop", function(self)
-    self:StopMovingOrSizing()
+  grip:SetScript("OnDragStop", function()
+    if not sizing then return end
+    nearby:StopMovingOrSizing()
+    sizing = false
+    ChainDB.nearbyWidth = math.floor(nearby:GetWidth() or NEAR_W)
+    -- height back into whole rows, so the box never ends on half a name
+    local rows = math.floor(((nearby:GetHeight() or 0) - 22) / ROW_H + 0.5)
+    ChainDB.nearbyRows = math.max(1, math.min(NEAR_MAX, rows))
     SaveNearbyPos()
-    AnchorNearby()
+    BT.RefreshNearby()
   end)
+  nearby.grip = grip
   nearby:SetScript("OnMouseUp", function(_, button)
     if button == "RightButton" then BT.NearbyMenu() end
   end)
@@ -565,26 +1085,30 @@ function BT.BuildNearby()
   nearby.rows = {}
   for i = 1, NEAR_MAX do
     local row = CreateFrame("Button", nil, nearby)
-    row:SetSize(184, 13)
+    row:SetSize(NearWidth() - 12, 13)
     row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    -- a row is part of the box: hold and move and the whole thing comes with
+    -- you, while a click that does not move still marks him
+    row:RegisterForDrag("LeftButton")
+    row:SetScript("OnDragStart", BeginDrag)
+    row:SetScript("OnDragStop", EndDrag)
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.name:SetPoint("LEFT", 0, 0)
     row.name:SetJustifyH("LEFT")
-    row.name:SetWidth(104)
-    -- the class said in words as well as in the colour of the name. A colour
-    -- alone asks you to have the palette memorised, and half of it is only a
-    -- shade apart anyway.
-    row.class = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.class:SetPoint("LEFT", 106, 0)
-    row.class:SetJustifyH("LEFT")
-    row.class:SetWidth(60)
-    row.lvl = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.lvl:SetPoint("RIGHT", 0, 0)
-    row.lvl:SetJustifyH("RIGHT")
+    row.name:SetWidth(NearWidth() - 12 - RIGHT_W)
+    -- The class as a tint across the whole row rather than only on the name.
+    -- A coloured word asks you to have the palette memorised and half of it is
+    -- a shade apart; a coloured band you read at a glance.
+    row.stripe = row:CreateTexture(nil, "BACKGROUND")
+    row.stripe:SetAllPoints()
+    -- level and class together on the right, the way the game writes it
+    row.right = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.right:SetPoint("RIGHT", -2, 0)
+    row.right:SetJustifyH("RIGHT")
     row:SetScript("OnEnter", RowTooltip)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     row:SetScript("OnClick", function(self, button)
-      if button == "RightButton" then BT.NearbyMenu() return end
+      if button == "RightButton" then BT.PlayerMenu(self.rec, self) return end
       local e = self.rec
       if not e then return end
       local why = BT.IsKOS(e.name, e.guild)
@@ -611,8 +1135,14 @@ local function LayoutNearby(shown)
   else
     nearby.title:SetPoint("TOPLEFT", 6, -5)
   end
+  local w = NearWidth()
+  if not sizing then nearby:SetWidth(w) end
   for i = 1, NEAR_MAX do
     local row = nearby.rows[i]
+    row:SetWidth(w - 12)
+    -- the name takes whatever the class does not need, so a wider box gives
+    -- the name more room rather than opening a hole in the middle
+    row.name:SetWidth(w - 12 - RIGHT_W)
     row:ClearAllPoints()
     if up then
       row:SetPoint("BOTTOMLEFT", 6, 20 + (i - 1) * ROW_H)
@@ -620,7 +1150,16 @@ local function LayoutNearby(shown)
       row:SetPoint("TOPLEFT", 6, -20 - (i - 1) * ROW_H)
     end
   end
-  nearby:SetHeight(22 + math.max(1, shown) * ROW_H)
+  if nearby.grip then
+    nearby.grip:ClearAllPoints()
+    nearby.grip:SetPoint(GrowUp() and "TOPRIGHT" or "BOTTOMRIGHT", 0, 0)
+  end
+
+  -- and the height stays put while you are holding it: a box that grows or
+  -- shrinks under the cursor drifts away from where you are putting it
+  if not dragging and not sizing then
+    nearby:SetHeight(22 + math.max(1, shown) * ROW_H)
+  end
   AnchorNearby()
 end
 
@@ -646,21 +1185,31 @@ function BT.RefreshNearby()
     local e = (i <= want) and list[i] or nil
     if e then
       row.rec = e
-      local col = e.class and CLASS_COLOUR[e.class] or { 0.8, 0.8, 0.8 }
+      local col = e.class and CLASS_COLOUR[e.class] or { 0.7, 0.7, 0.7 }
       local why = BT.IsKOS(e.name, e.guild)
-      row.name:SetText((why and "|cffff2020* |r" or "") .. e.name)
-      row.name:SetTextColor(col[1], col[2], col[3])
-      row.class:SetText(e.class and BT.ClassLabel(e.class) or "?")
-      row.class:SetTextColor(col[1], col[2], col[3])
-      row.lvl:SetText((e.level and e.level > 0) and tostring(e.level) or "?")
       -- faded as the sighting gets old, so the top of the list is the one
       -- that is actually still there
       local age = time() - (e.at or time())
       local a = 1 - math.min(0.6, age / (ChainDB.nearbySeconds or NEARBY))
+
+      if row.stripe.SetColorTexture then
+        -- marked ones go red whatever they play: that is the thing you need
+        -- to see, and it beats knowing the class
+        if why then row.stripe:SetColorTexture(0.55, 0.08, 0.08, 0.75 * a)
+        else row.stripe:SetColorTexture(col[1] * 0.45, col[2] * 0.45,
+                                        col[3] * 0.45, 0.7 * a) end
+      end
+      row.name:SetText((why and "|cffff4040!|r " or "")
+        .. (e.stealth and "|cffb080ff~|r " or "") .. e.name)
+      row.name:SetTextColor(1, 1, 1)
+      row.right:SetText(((e.level and e.level > 0) and tostring(e.level) or "??")
+        .. " " .. (e.class and BT.ClassLabel(e.class) or "?"))
+      row.right:SetTextColor(col[1], col[2], col[3])
       row.name:SetAlpha(a)
-      row.class:SetAlpha(a)
-      row.lvl:SetAlpha(a)
+      row.right:SetAlpha(a)
       row:Show()
+
+
     else
       row.rec = nil
       row:Hide()

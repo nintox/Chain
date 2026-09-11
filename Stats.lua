@@ -202,6 +202,36 @@ function BT.StageSpan()
   return done, total, total - done, i, e, base
 end
 
+-- How far through the step **as you set it up**. 28 > 42 on the label means
+-- 28 > 42 on the bar, and at level 35 that is halfway, not two per cent.
+--
+-- Deliberately not StageSpan. That one rebases to your current level, and it
+-- has to: runs, hours and gold remaining cannot count experience you already
+-- have. Both are right, they answer different questions - and the bar answers
+-- this one, because the bar sits directly under the label.
+function BT.StepProgress()
+  local _, e = BT.Stage()
+  if not e then return 0, 0 end
+  local from = tonumber(e.from) or 1
+  local to = tonumber(e.to) or from
+  if to <= from then return 0, 0 end
+  local lvl = UnitLevel("player") or 1
+  local total = BT.Span(from, to)
+  if not total or total <= 0 then return 0, 0 end
+  local done
+  if lvl >= to then
+    done = total
+  elseif lvl <= from then
+    -- below the step: the bar is empty rather than negative
+    done = (lvl == from) and (UnitXP("player") or 0) or 0
+  else
+    done = BT.Span(from, lvl) + (UnitXP("player") or 0)
+  end
+  if done > total then done = total end
+  if done < 0 then done = 0 end
+  return done, total, from, to
+end
+
 function BT.GoldFor(step)
   if not step then return 0 end
   local r = ChainDB.route[step.id]

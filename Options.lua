@@ -90,6 +90,22 @@ local function BuildOptions()
   local close = Button(opt, "X", 22, 18, function() opt:Hide() end)
   close:SetPoint("TOPRIGHT", -6, -6)
 
+  -- A panel this tall does not fit every screen even folded up, so it can be
+  -- shrunk outright. Steps rather than a free number: the point is to make it
+  -- fit, not to tune it.
+  opt.zoom = Button(opt, "", 46, 18, function()
+    local steps = { 0.8, 0.9, 1, 1.1 }
+    local now = ChainDB.optScale or 1
+    local at = 1
+    for i, v in ipairs(steps) do if math.abs(v - now) < 0.01 then at = i end end
+    ChainDB.optScale = steps[(at % #steps) + 1]
+    opt:SetScale(ChainDB.optScale)
+    BT.RenderOptions()
+  end)
+  opt.zoom:SetPoint("TOPRIGHT", -32, -6)
+
+  opt:SetScale(ChainDB.optScale or 1)
+
   opt.help = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   opt.help:SetPoint("TOPLEFT", 10, -26)
   opt.help:SetJustifyH("LEFT")
@@ -207,16 +223,35 @@ local function BuildOptions()
   -- undifferentiated block is a wall you read every time instead of a list you
   -- learn the shape of - and the things that belong together were nowhere near
   -- each other.
-  local function Section(title)
+  -- A heading and a hairline, and the heading is a button: click it and the
+  -- section folds away. Twenty-odd controls in one undifferentiated block is a
+  -- wall you read every time rather than a list you learn the shape of, and
+  -- the panel was taller than a lot of screens.
+  --
+  -- Which ones are folded is remembered, so the two settings you actually
+  -- change stay open and the rest stay out of the way.
+  opt.sections = {}
+  local function Section(title, key)
     row = row + 0.35
     local x, ly = At(1)
-    local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", x, ly)
-    fs:SetText(C.gold .. title .. C.off)
+    local head = CreateFrame("Button", nil, opt)
+    head:SetSize(WIDTH - 24, 14)
+    head:SetPoint("TOPLEFT", x, ly + 2)
+    head.fs = head:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    head.fs:SetPoint("LEFT", 0, 0)
+    head.fs:SetJustifyH("LEFT")
     local line = Tex(opt, "ARTWORK", 0.35, 0.35, 0.42, 0.8)
     line:SetHeight(1)
     line:SetPoint("TOPLEFT", x, ly - 13)
     line:SetPoint("TOPRIGHT", opt, "TOPLEFT", WIDTH - 12, ly - 13)
+
+    local sec = { key = key, title = title, head = head, line = line, y = ly }
+    head:SetScript("OnClick", function()
+      ChainDB.optFold = ChainDB.optFold or {}
+      ChainDB.optFold[key] = not ChainDB.optFold[key]
+      BT.RenderOptions()
+    end)
+    table.insert(opt.sections, sec)
     row = row + 0.75
   end
 
@@ -234,7 +269,7 @@ local function BuildOptions()
   end
 
   y = y - 26
-  Section("Runs and prices")
+  Section("Runs and prices", "runs")
   opt.pack = Field(1, "Runs per price", 40, function() return ChainDB.pack end,
     -- the fallback only: the 'runs' column above beats it per instance, and a
     -- pack typed against a booster beats them both while he is boosting you
@@ -245,7 +280,7 @@ local function BuildOptions()
     function(v) ChainDB.limit = math.max(1, math.floor(v or 5)) end)
   NextRow()
 
-  Section("Resets and alerts")
+  Section("Resets and alerts", "resets")
   opt.sound = Toggle(1, "Sound on reset", function(v) ChainDB.sound = v end)
   do
     local x, ly = At(1)
@@ -289,7 +324,7 @@ local function BuildOptions()
   end
   NextRow()
 
-  Section("What to read out of chat")
+  Section("What to read out of chat", "chat")
   -- Its history is taken into our own log on every login whether this is on
   -- or off. This only decides whether its live count is trusted over ours.
   opt.nit = Toggle(1, "Read NIT's count",
@@ -324,7 +359,7 @@ local function BuildOptions()
   end
   NextRow()
 
-  Section("Who is out there")
+  Section("Who is out there", "enemies")
   opt.watch = Toggle(1, "Watch for enemies", function(v)
     ChainDB.watchEnemies = v
   end)
@@ -334,6 +369,30 @@ local function BuildOptions()
   opt.enemySound = Toggle(3, "Sound on a marked one", function(v)
     ChainDB.enemySound = v
   end)
+  NextRow()
+  -- The one alert that is allowed to be rude, because it is the only sighting
+  -- where knowing is the whole of the advantage.
+  opt.stealth = Toggle(1, "Shout about stealth", function(v)
+    ChainDB.stealthAlert = v
+  end)
+  -- Off by default: it puts a line in a chat channel other people read.
+  opt.announceKOS = Toggle(2, "Call out marked ones", function(v)
+    ChainDB.announceKOS = v
+  end)
+  -- Where the call-out goes. "auto" is the right answer almost always: the
+  -- people who can do anything about it are whoever you are with.
+  opt.sightChan = Button(opt, "", 140, 18, function()
+    local order = { "auto", "party", "raid", "guild", "say" }
+    local now = ChainDB.sightChannel or "auto"
+    local at = 1
+    for i, v in ipairs(order) do if v == now then at = i end end
+    ChainDB.sightChannel = order[(at % #order) + 1]
+    BT.RenderOptions()
+  end)
+  do
+    local x3, ly3 = At(3)
+    opt.sightChan:SetPoint("TOPLEFT", x3, ly3 - 1)
+  end
   NextRow()
   opt.nearbyList = Toggle(1, "List on screen", function(v)
     ChainDB.nearbyList = v
@@ -360,7 +419,7 @@ local function BuildOptions()
   end
   NextRow()
 
-  Section("Sharing and the bar")
+  Section("Sharing and the bar", "share")
   opt.announceLock = Toggle(1, "Tell the group your lockout",
     function(v) ChainDB.announceLock = v end)
   opt.minimap = Toggle(3, "Button on the minimap", function(v)
@@ -441,6 +500,12 @@ local function BuildOptions()
       ChainDB.scale = v
       if BT.bar then BT.bar:SetScale(v) end
     end)
+  -- The week's honour as a second, slimmer bar under the first, with a mark at
+  -- each milestone. Off for anybody who never goes near a battleground.
+  opt.honorBar = Toggle(3, "Honor bar too", function(v)
+    ChainDB.honorBar = v
+    if BT.Refresh then BT.Refresh() end
+  end)
   opt.width = Field(2, "Bar width", 50, function() return ChainDB.width end,
     function(v)
       v = tonumber(v) or 380
@@ -463,12 +528,94 @@ local function BuildOptions()
   -- The frame is as tall as what is in it. Every hand-picked height so far
   -- has been wrong the moment a row was added, and a button drawn past the
   -- bottom edge still works, which is how it went unnoticed.
-  opt:SetSize(WIDTH, -y + 20 + 12)
+  opt.fullHeight = -y + 20 + 12
+  opt:SetSize(WIDTH, opt.fullHeight)
+
+  -- Everything below the first section heading has to be able to move, so its
+  -- built position is recorded once, here, and the layout pass works from
+  -- that rather than from wherever it was last put.
+  opt.placed = {}
+  local function remember(w)
+    if not w or not w.GetPoint then return end
+    local pt, rel, relPt, px, py = w:GetPoint(1)
+    if not pt or not py then return end
+    table.insert(opt.placed, { w = w, pt = pt, rel = rel, relPt = relPt,
+                              x = px, y = py })
+  end
+  for _, c in ipairs({ opt:GetChildren() }) do remember(c) end
+  for _, r in ipairs({ opt:GetRegions() }) do remember(r) end
+
+  -- Which section each thing sits in: by where it is, not by when it was
+  -- made, so the inline blocks that build their own widgets need no special
+  -- handling.
+  for i, sec in ipairs(opt.sections) do
+    local nextY = opt.sections[i + 1] and opt.sections[i + 1].y or -math.huge
+    sec.widgets = {}
+    for _, p in ipairs(opt.placed) do
+      if p.w ~= sec.head and p.w ~= sec.line
+         and p.y < sec.y - 14 and p.y > nextY + 2 then
+        table.insert(sec.widgets, p)
+      end
+    end
+    -- how much height folding this one away saves
+    local lowest = sec.y - 14
+    for _, p in ipairs(sec.widgets) do
+      local bottom = p.y - (p.w.GetHeight and p.w:GetHeight() or 16)
+      if bottom < lowest then lowest = bottom end
+    end
+    sec.contentH = (sec.y - 14) - lowest
+  end
 end
+
+-- Fold the closed sections away and slide everything under them up. Positions
+-- come from what was recorded at build time, never from where things are now,
+-- so folding and unfolding cannot drift.
+local function LayoutSections()
+  if not opt or not opt.sections then return end
+  local fold = ChainDB.optFold or {}
+  local shift, cut = 0, 0
+
+  local hidden = {}
+  for _, sec in ipairs(opt.sections) do
+    local closed = fold[sec.key] and true or false
+    sec.head.fs:SetText((closed and (C.dim .. "+ ") or (C.gold .. "- "))
+      .. sec.title .. C.off)
+    sec.head:ClearAllPoints()
+    sec.head:SetPoint("TOPLEFT", 12, sec.y + 2 + shift)
+    sec.line:ClearAllPoints()
+    sec.line:SetPoint("TOPLEFT", 12, sec.y - 13 + shift)
+    sec.line:SetPoint("TOPRIGHT", opt, "TOPLEFT", WIDTH - 12, sec.y - 13 + shift)
+    for _, p in ipairs(sec.widgets) do
+      hidden[p.w] = closed
+      if not closed then
+        p.w:ClearAllPoints()
+        p.w:SetPoint(p.pt, p.rel or opt, p.relPt or p.pt, p.x, p.y + shift)
+      end
+      p.w:SetShown(not closed)
+    end
+    if closed then
+      shift = shift + sec.contentH
+      cut = cut + sec.contentH
+    end
+  end
+
+  -- and the buttons below the last section come up with it
+  local lastY = opt.sections[#opt.sections] and opt.sections[#opt.sections].y or 0
+  for _, p in ipairs(opt.placed) do
+    if hidden[p.w] == nil and p.y < lastY - 14 then
+      p.w:ClearAllPoints()
+      p.w:SetPoint(p.pt, p.rel or opt, p.relPt or p.pt, p.x, p.y + shift)
+    end
+  end
+  opt:SetHeight(math.max(120, (opt.fullHeight or 400) - cut))
+end
+BT.LayoutOptions = LayoutSections
 
 function BT.RenderOptions()
   if not opt or not opt:IsShown() then return end
   local db = ChainDB
+  LayoutSections()
+  opt.zoom.fs:SetText(math.floor((db.optScale or 1) * 100 + 0.5) .. "%")
   local pages = math.ceil(#BT.DUNGEONS / PER_PAGE)
   if optPage > pages then optPage = pages end
   if optPage < 1 then optPage = 1 end
@@ -534,6 +681,11 @@ function BT.RenderOptions()
   opt.share:SetChecked(db.share and true or false)
   opt.nit:SetChecked(db.useNIT and true or false)
   opt.lock:SetChecked(db.locked and true or false)
+  opt.honorBar:SetChecked(db.honorBar ~= false)
+  opt.stealth:SetChecked(db.stealthAlert ~= false)
+  opt.announceKOS:SetChecked(db.announceKOS and true or false)
+  opt.sightChan.fs:SetText((db.announceKOS and C.gold or C.dim)
+    .. "call out in: " .. (db.sightChannel or "auto") .. C.off)
   opt.showBar:SetChecked(db.shown and true or false)
   -- short on purpose: the long version ran into the column beside it
   opt.nit.label:SetText(_G.NIT and "Read NIT's count"
@@ -925,6 +1077,19 @@ SlashCmdList["CHAIN"] = function(input)
       end
     end
     BT.ShowTab("pvp")
+  elseif cmd == "spot" or cmd == "callout" then
+    -- the nearest one, or the one you have targeted
+    local e
+    local want = (rest ~= "" ) and BT.KOSKey(rest) or nil
+    for _, x in ipairs(BT.Nearby(ChainDB.nearbySeconds or 60)) do
+      if want then
+        if x.name == want then e = x break end
+      elseif not e then e = x end
+    end
+    if not e then Say("nobody to call out") return end
+    local txt, chan = BT.AnnounceSighting(e, nil, true)
+    Say(txt and ("told " .. (chan or "?"):lower() .. ": " .. txt)
+             or "could not send that")
   elseif cmd == "nearby" then
     Say("the list on screen is " .. (BT.ToggleNearby() and "on" or "off"))
   elseif cmd == "minimap" then
@@ -1003,6 +1168,7 @@ SlashCmdList["CHAIN"] = function(input)
     print("  /chain enemies    everyone seen out there, and the KOS list")
     print("  /chain kos NAME   mark somebody kill on sight")
     print("  /chain nearby     the list of players on screen, on or off")
+    print("  /chain spot       call out who is nearby, with where you are")
     print("  /chain minimap    show or hide the minimap button")
     print("  /chain export     every run as CSV (add 'trade' for trades)")
     print("  /chain show       show or hide the bar")
