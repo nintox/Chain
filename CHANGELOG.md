@@ -53,6 +53,75 @@ parts that are not.
   tinted by class, with the name on the left and "45 Warrior" on the right.
   A marked one goes red whatever he plays, because that is the thing you have
   to see and it beats knowing the class.
+- The note box on the Enemies tab did not work, and the reason is worth
+  writing down: it was positioned, filled in and shown - and then hidden again
+  on the same pass, because the Boosters branch further down turned it off in
+  its else. It had been saving perfectly well the whole time; you could just
+  never see it. The three fields that decide where a typed note goes are now
+  cleared on every row too, so what you type cannot land on whoever was on
+  that row on the last tab you looked at.
+- **The list and the alert can both be placed properly.** Neither could be
+  before: the list is only on screen while somebody is nearby, so you would
+  drag it, the last enemy would age out, and it vanished mid-move; the alert
+  showed for six seconds when somebody happened to walk past. Both now have a
+  "move it" mode that holds them on screen - the list filled with examples so
+  you can see the width and row count you are choosing, the alert cycling
+  through its three kinds so you can see how wide each gets - until you say
+  you are done.
+  The settings have **Unlock / show list** and **Move the alert...**, which
+  are the way back when you cannot see the thing at all: they turn it on,
+  unlock it, and bring it home if it was left off the edge of the screen.
+- The checkboxes of the first row in each settings section were left behind
+  when that section folded, and stayed on screen on top of whatever moved up
+  into their place. A checkbox sits four pixels above its own label, the
+  boundary between two sections was a fixed margin, and the boxes landed six
+  tenths of a pixel on the wrong side of it. Sections are worked out by
+  identity now rather than by a magic number, and there is a test that every
+  control belongs to a section and that a box and its label belong to the
+  same one.
+- The alert's "done" menu closed itself before you could reach it. One menu is
+  shared by the list and the alert, and the list's refresh was closing it on
+  every tick whatever it happened to be open on; it only closes its own now.
+- A stealthed player gets the stealth icon rather than the class ring. What
+  matters about a rogue you cannot see is that you cannot see him, and a druid
+  in cat form is the same news - the class is on the line underneath either
+  way.
+- The settings have a row of buttons at the top that opens one section and
+  folds the rest, and opens everything again if you click the same one twice.
+  Six blocks the length of a screen, and almost nobody wants two of them at
+  once.
+- **A note no longer marks anybody.** They are not the same thing: "always
+  rides with two friends" is worth writing about somebody you have no
+  intention of hunting, and having to mark him to say it made the mark mean
+  less than it should. Notes live in their own store, and old ones written
+  inside a mark are moved across on the first load.
+  The catch a separate note has to answer is where you find it again, so the
+  kill-on-sight list shows everyone you have *written about* as well as
+  everyone you have marked, labelled "note only" and in gold rather than red.
+  On the screen list a marked one gets a red "!" and somebody you have only
+  written about a quieter gold "*".
+- The note popup has Save, Cancel and a Save-and-mark button. Enter saved and
+  Escape cancelled before, and neither was written anywhere.
+- **Wins and losses are a column now**, on both enemy views, not
+  just on the tooltip. Green when you are ahead, red when you are not, and a
+  dash when you have never fought - a column of "0-0" is a column of noise.
+- **A kill-on-sight list of its own**, under the Enemies tab - one button
+  switches between "everyone seen" and "kill on sight", or `/chain marked`.
+  They are not the same list: somebody you marked three weeks ago is not in
+  Enemies at all once the sighting has aged out, and that is exactly the one
+  you want to find again. Names and whole guilds together, with your notes
+  editable in place and a clear button on every row.
+- **Left-click a name in the on-screen list to target him**, and shift-click
+  to target and mark in one go.
+  This one needed doing properly: `TargetUnit` is a protected function and an
+  addon cannot call it at all, not even out of combat - so the "Target" entry
+  added to the right-click menu earlier did nothing whatsoever, and it is
+  gone. The rows are secure buttons running a `/target` macro instead, which
+  is the only way it can work.
+  A secure button's attributes are frozen in combat, so the list holds still
+  there and says so in its heading, rather than pointing a click at whoever
+  used to be on that row. The banner still announces everyone who turns up,
+  which is the part that matters mid-fight.
 - **Marked players sort to the top of the list.** It is cut off at a row
   count, so the order decides who you never see - and somebody you marked
   dropping off the bottom because three strangers walked past is the one
@@ -60,6 +129,14 @@ parts that are not.
 - How long somebody stays on the list after you stop seeing them is yours to
   set. Too short and a rogue who stepped behind a rock is gone; too long and
   the list is a history of the zone rather than who is here.
+- Giving the list a scale of its own broke the dragging, and this is why: a
+  frame answers GetLeft in its own units, and a SetPoint offset is read in
+  those same units - but the two are only the same number while the scale is
+  1. Saving one and setting the other moved the box by the scale factor every
+  time you let go. Position is kept in screen pixels now and converted on the
+  way in and out, so it lands where you put it at any size. The test only
+  checked what was saved, never the round trip, which is exactly how it got
+  through; it checks the round trip now, at a scale other than 1.
 - The alert is a proper banner rather than a line of text: the class ring, the
   kind said in words - "Kill-on-sight player detected!", "Stealthed player
   detected!" - and the name, level and class under it. Marked and stealthed
@@ -138,6 +215,27 @@ parts that are not.
   you gave, what you got back, both ways. Half of what crosses the table in a
   boost is a stack of cloth or the greens off the run, and a log that only
   counts money says you paid less than you did.
+
+**At the top of the ladder**
+
+- **At max level the bar becomes the honour bar, by itself.** There is no
+  experience left to measure, so an experience bar there is a bar that will
+  never move again; the week's honour is the only thing still going up.
+- The fill runs from the milestone you have already banked to the next one,
+  because that gap is the only stretch where the honour you earn is worth
+  anything, and where you are inside it is precisely the question. The
+  heading is your rank and, if you have set a target, how many weeks away it
+  is. Under it: what the week ends at if you stop now, honour per hour and
+  how long the next milestone is at that rate - and, first, how many kills
+  short of fifteen you are, since nothing counts without them.
+- Enemy players nearby get a line there too, since that is the bar you are
+  looking at out in the world rather than in an instance.
+- The slim second honour bar switches itself off in that mode: it would be
+  the same thing drawn twice.
+- Max level is asked of the client rather than assumed to be 60 - this runs
+  on Era and on the anniversary realms, and it is not the same number
+  everywhere. There is a switch for anybody who wants the empty experience
+  bar back.
 
 **Smaller things**
 

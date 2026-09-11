@@ -243,6 +243,82 @@ local function BoostText()
   return S
 end
 
+-- At the top of the ladder: the whole bar becomes the week's honour.
+--
+-- The staircase drawn full size. The fill runs from the milestone you have
+-- already banked to the next one, because that gap is the only stretch where
+-- the honour you earn is worth anything - and where you are inside it is
+-- precisely the question.
+local function HonorText()
+  local S = {}
+  local lvl = UnitLevel("player") or 1
+  if not BT.PvPState then
+    S.barLeft = "Level " .. lvl
+    S.cur, S.max = 1, 1
+    return S
+  end
+  local p = BT.PvPState()
+
+  local from = 0
+  if p.met then from = p.met.honor end
+  local to = p.nextMilestone and p.nextMilestone.honor or from
+  S.cur = math.max(0, (p.honor or 0) - from)
+  S.max = math.max(1, to - from)
+  if not p.nextMilestone then S.cur, S.max = 1, 1 end
+
+  S.topLeft = p.rankName .. C.dim .. "  " .. BT.Pct(p.progress or 0) .. C.off
+  local target = ChainCharDB.pvpTarget
+  if target and target > (p.rank or 0) then
+    local plan = BT.PlanToRank(target, p.rank, p.progress)
+    if plan and #plan.weeks > 0 then
+      S.topLeft = S.topLeft .. C.dim .. "  -> " .. BT.RankName(target)
+        .. " in " .. #plan.weeks .. (#plan.weeks == 1 and " week" or " weeks") .. C.off
+    end
+  end
+  S.topRight = C.dim .. (p.kills or 0) .. " kills this week" .. C.off
+
+  S.barLeft = BT.N(p.honor or 0) .. C.dim .. " honor" .. C.off
+  if p.nextMilestone then
+    S.barCenter = BT.N(p.short) .. " to " .. BT.RankName(p.nextMilestone.rank)
+    S.barRight = BT.N(p.nextMilestone.honor)
+  else
+    S.barCenter = "this week is spent"
+    S.barRight = p.newRankName
+  end
+
+  -- the two things you act on: whether the kills are there at all, and where
+  -- the week ends if you stop now
+  local one = {}
+  if not p.enoughKills then
+    table.insert(one, C.bad .. p.killsShort .. " more kills before any counts" .. C.off)
+  end
+  table.insert(one, (p.met and C.good or C.dim) .. "stop now: "
+    .. (p.met and (p.newRankName .. " " .. BT.Pct(p.newProgress)) or "no progress")
+    .. C.off)
+  if p.rate and p.rate > 0 then
+    local txt = BT.N(p.rate) .. " honor/h"
+    if p.short and p.short > 0 then
+      txt = txt .. C.dim .. "  " .. BT.T(p.short / p.rate * 3600) .. " to the next" .. C.off
+    end
+    table.insert(one, txt)
+  end
+  S.bottomLeft = one[1]
+  S.bottomRight = one[2] and table.concat(one, "   ", 2, #one) or nil
+
+  local lines = {}
+  local alert = ResetAlert()
+  if alert then table.insert(lines, alert) end
+  -- somebody nearby is worth a line here, since this is the bar you are
+  -- looking at when you are out in the world rather than in an instance
+  local near = BT.Nearby and BT.Nearby() or nil
+  if near and #near > 0 then
+    table.insert(lines, C.warn .. #near .. " enemy player"
+      .. (#near == 1 and "" or "s") .. " nearby" .. C.off)
+  end
+  S.extra = table.concat(lines, "\n")
+  return S
+end
+
 -- Regular levelling
 local function LevelText()
   local c = ChainCharDB
@@ -348,8 +424,27 @@ local function LevelText()
   return S
 end
 
+-- The level the client stops handing out experience at. Asked rather than
+-- assumed: this addon runs on Era and on the anniversary realms, and it is
+-- not the same number everywhere.
+function BT.MaxLevel()
+  if GetMaxPlayerLevel then
+    local m = GetMaxPlayerLevel()
+    if m and m > 0 then return m end
+  end
+  return _G.MAX_PLAYER_LEVEL or 60
+end
+
+function BT.AtMax()
+  return (UnitLevel("player") or 1) >= BT.MaxLevel()
+end
+
 function BT.Mode()
   local c = ChainCharDB
+  -- At the top there is no experience left to measure, so an experience bar
+  -- is a bar that will never move again. The week's honour is the only thing
+  -- still going up, so that is what the bar becomes - without being asked.
+  if BT.AtMax() and ChainDB.honorMode ~= false then return "honor" end
   if c.run then return "boost" end
   if c.lastEnd and (time() - c.lastEnd) < 1200 then return "boost" end
   return "level"
@@ -371,8 +466,10 @@ function BT.AllLines(S)
 end
 
 function BT.BuildText()
+  local mode = BT.Mode()
+  if mode == "honor" then return HonorText() end
   if #BT.Plan() == 0 then return LevelText() end
-  if BT.Mode() == "boost" then return BoostText() end
+  if mode == "boost" then return BoostText() end
   return LevelText()
 end
 
@@ -396,6 +493,12 @@ end
 -- at the same speed.
 function BT.RefreshHonorBar(w)
   if not bar or not bar.honor then return end
+  -- and it is not drawn twice: at max level the main bar IS the honour bar
+  if BT.Mode and BT.Mode() == "honor" then
+    bar.honor:Hide()
+    BT.PlaceBarText(false)
+    return
+  end
   if ChainDB.honorBar == false or not BT.PvPState then
     bar.honor:Hide()
     BT.PlaceBarText(false)

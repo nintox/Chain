@@ -108,11 +108,28 @@ local LAYOUTS = {
       { "lvl",      38, "level" },
       { "class",    70, "class" },
       { "guild",   118, "guild" },
-      { "where",    98, "zone" },
-      { "seen",     44, "n" },
-      { "how",      74, "how" },
-      { "kos",      56, nil },
-      { "your note",130, nil }
+      { "where",    92, "zone" },
+      { "seen",     40, "n" },
+      { "W / L",    52, "score" },
+      { "how",      68, "how" },
+      { "kos",      52, nil },
+      { "your note",124, nil }
+    }
+  },
+  koslist = {
+    title = "Everyone you have marked or written about, whether or not they "
+      .. "are anywhere near you. Your notes are never shared.",
+    cols = {
+      { "who",       130, "who" },
+      { "kind",       64, "kind" },
+      { "lvl",        40, "level" },
+      { "class",      74, "class" },
+      { "last seen",  94, "at" },
+      { "seen",       46, "n" },
+      { "W / L",      54, "score" },
+      { "where",     108, "zone" },
+      { "",           56, nil },        -- the unmark button
+      { "your note", 200, nil }
     }
   },
   groups = {
@@ -493,6 +510,16 @@ local CLASS_COL = {
   MAGE = "|cff69ccf0", WARLOCK = "|cff9482c9", DRUID = "|cffff7d0a"
 }
 
+-- Your record against somebody, as one cell. Green when you are ahead, red
+-- when you are not, and nothing at all when you have never fought - a column
+-- of "0-0" is a column of noise.
+local function Record(e)
+  local w, l = e.wins or 0, e.losses or 0
+  if w == 0 and l == 0 then return C.dim .. "-" .. C.off, 0 end
+  local col = (w > l) and C.good or (l > w) and C.bad or C.dim
+  return col .. w .. "-" .. l .. C.off, w - l
+end
+
 local function EnemyRows()
   local out = {}
   local now = time()
@@ -505,7 +532,7 @@ local function EnemyRows()
     out[#out + 1] = {
       at = e.at, name = e.name, level = e.level, class = e.class,
       guild = e.guild, zone = e.zone, n = e.n, how = e.how,
-      rec = e, kosWhy = why, note = note,
+      rec = e, kosWhy = why, note = note, score = select(2, Record(e)),
       cells = {
         col .. BT.T(age) .. " ago" .. C.off,
         col .. e.name .. C.off,
@@ -515,6 +542,7 @@ local function EnemyRows()
           or (C.dim .. "-" .. C.off),
         C.dim .. (BT.Short(e.zone) or e.zone or "-") .. C.off,
         C.dim .. tostring(e.n or 1) .. C.off,
+        (Record(e)),
         C.dim .. (e.how or "-") .. C.off,
         "",           -- the KOS button sits here
         ""            -- and the note box
@@ -615,6 +643,102 @@ local function PvPRows()
       "you are already at " .. BT.RankName(target)
     } })
   end
+  return out
+end
+
+-- Everyone you have marked - which is not the same list as everyone nearby,
+-- and gets long enough to be worth its own view. A name you marked three
+-- weeks ago is not in the Enemies tab at all once the sighting has aged out,
+-- and it is exactly the one you want to be able to find and edit.
+local function KOSRows()
+  local out = {}
+  local now = time()
+  local seen = ChainDB.enemies or {}
+
+  -- Marked, plus anybody you have written about. A note on somebody you did
+  -- not mark has to be findable, or it is a note you will never read again.
+  local names, kosSet = {}, {}
+  for _, k in ipairs(BT.KOSList()) do
+    names[#names + 1] = k.name
+    kosSet[k.name] = true
+  end
+  for _, n in ipairs(BT.NotedList()) do
+    if not kosSet[n.name] then names[#names + 1] = n.name end
+  end
+
+  for _, who in ipairs(names) do
+    local k = { name = who, note = BT.EnemyNote(who) }
+    local marked = kosSet[who]
+    local e = seen[k.name] or {}
+    local age = e.at and (now - e.at) or nil
+    out[#out + 1] = {
+      who = k.name, kind = marked and "name" or "note", note = k.note,
+      kosName = k.name, marked = marked,
+      level = e.level, class = e.class, at = e.at or 0, n = e.n, zone = e.zone,
+      score = select(2, Record(e)),
+      cells = {
+        (marked and C.bad or C.gold) .. k.name .. C.off,
+        C.dim .. (marked and "marked" or "note only") .. C.off,
+        (e.level and e.level > 0)
+          and (e.level .. (e.levelGuess and "+" or "")) or (C.dim .. "??" .. C.off),
+        e.class and ((CLASS_COL[e.class] or C.dim) .. BT.ClassLabel(e.class) .. C.off)
+          or (C.dim .. "-" .. C.off),
+        age and (C.dim .. BT.T(age) .. " ago" .. C.off)
+            or (C.dim .. "not since you marked him" .. C.off),
+        C.dim .. tostring(e.n or 0) .. C.off,
+        (Record(e)),
+        C.dim .. (BT.Short(e.zone) or e.zone or "-") .. C.off,
+        "", ""
+      },
+      tip = { k.name, marked and "marked by name" or "written about, not marked",
+              k.note }
+    }
+  end
+
+  local guilds, gSet = {}, {}
+  for _, g in ipairs(BT.KOSGuildList()) do
+    local n = g.guild or g.name
+    if n then guilds[#guilds + 1] = n gSet[n] = true end
+  end
+  for _, g in ipairs(BT.NotedGuildList()) do
+    if not gSet[g.guild] then guilds[#guilds + 1] = g.guild end
+  end
+
+  for _, gname in ipairs(guilds) do
+    local g = { guild = gname, note = BT.GuildNote(gname) }
+    local marked = gSet[gname]
+    if gname then
+      -- how many of them you have actually run into
+      local count, last = 0, nil
+      for _, e in pairs(seen) do
+        if e.guild == gname then
+          count = count + 1
+          if not last or (e.at or 0) > last then last = e.at end
+        end
+      end
+      out[#out + 1] = {
+        who = gname, kind = "guild", note = g.note, kosGuild = gname,
+        at = last or 0, n = count, marked = marked,
+        cells = {
+          (marked and C.bad or C.gold) .. "<" .. gname .. ">" .. C.off,
+          C.dim .. (marked and "guild" or "guild note") .. C.off,
+          C.dim .. "-" .. C.off,
+          C.dim .. "-" .. C.off,
+          last and (C.dim .. BT.T(now - last) .. " ago" .. C.off)
+               or (C.dim .. "never met one" .. C.off),
+          C.dim .. tostring(count) .. C.off,
+          C.dim .. "-" .. C.off,
+          C.dim .. "-" .. C.off,
+          "", ""
+        },
+        tip = { "<" .. gname .. ">",
+                marked and "the whole guild is marked" or "a note, no mark",
+                count > 0 and (count .. " of them seen") or nil, g.note }
+      }
+    end
+  end
+
+  table.sort(out, function(a, b) return (a.at or 0) > (b.at or 0) end)
   return out
 end
 
@@ -781,6 +905,7 @@ local function Data()
   if mode == "groups" then return GroupRows() end
   if mode == "enemies" then return EnemyRows() end
   if mode == "pvp" then return PvPRows() end
+  if mode == "koslist" then return KOSRows() end
   if mode == "route" then return RouteRows() end
   if mode == "gold" then return GoldRows() end
   if mode == "locks" then return LockRows() end
@@ -990,6 +1115,17 @@ local function Render()
       or (C.dim .. "listed everywhere" .. C.off))
   end
 
+  -- Enemies and the kill-on-sight list are two views of one tab: they answer
+  -- different questions ("who is here" and "who am I watching for") and the
+  -- second one gets long, but they belong together.
+  local enemyish = (mode == "enemies" or mode == "koslist")
+  if win.enemyView then
+    win.enemyView:SetShown(enemyish)
+    win.enemyView.fs:SetText(mode == "koslist"
+      and (C.bad .. "kill on sight" .. C.off .. C.dim .. "  - show everyone" .. C.off)
+      or ("everyone seen" .. C.dim .. "  - show marked" .. C.off))
+  end
+
   -- and the rank box belongs to the Rank tab, on the same line
   local planning = (mode == "pvp")
   for _, w in ipairs({ win.targetLabel, win.targetBox, win.targetUp,
@@ -1086,13 +1222,43 @@ local function Render()
         row.whisper:Hide()
       end
 
-      if mode == "enemies" and d.name then
+      -- One note box, three tabs that want it. The branches below each show
+      -- it, and the last one used to hide it again in its else - so the note
+      -- on Enemies was positioned, filled in, and then switched off on the
+      -- same pass. It saved perfectly well; you could just never see it.
+      local noteShown = false
+      if mode == "koslist" and (d.kosName or d.kosGuild) then
+        local kx, nx = 0, 0
+        for ci, col in ipairs(layout.cols) do
+          if ci < #layout.cols - 1 then kx = kx + col[2] end
+          if ci < #layout.cols then nx = nx + col[2] end
+        end
+        row.kos.name, row.kos.guild = d.kosName, d.kosGuild
+        row.kos.clearGuild = d.marked and d.kosGuild or nil
+        row.kos.markGuild = (not d.marked) and d.kosGuild or nil
+        row.kos.fs:SetText(d.marked and "clear" or "mark")
+        row.kos.bg:SetColorTexture(d.marked and 0.45 or 0.15,
+                                   d.marked and 0.12 or 0.15, 0.15, 0.9)
+        row.kos:ClearAllPoints()
+        row.kos:SetPoint("LEFT", row, "LEFT", kx, 0)
+        row.kos:Show()
+
+        -- all three every time: a stale one routes what you type into
+        -- whoever happened to be on this row on the last tab you looked at
+        row.note.by, row.note.kos, row.note.kosGuild = nil, d.kosName, d.kosGuild
+        noteShown = true
+        if not row.note:HasFocus() then row.note:SetText(d.note or "") end
+        row.note:ClearAllPoints()
+        row.note:SetPoint("LEFT", row, "LEFT", nx, 0)
+        row.note:Show()
+      elseif mode == "enemies" and d.name then
         local kx, nx = 0, 0
         for ci, col in ipairs(layout.cols) do
           if ci < #layout.cols - 1 then kx = kx + col[2] end
           if ci < #layout.cols then nx = nx + col[2] end
         end
         row.kos.name, row.kos.guild = d.name, d.guild
+        row.kos.clearGuild = nil
         row.kos.fs:SetText(d.kosWhy and "clear" or "KOS")
         row.kos.bg:SetColorTexture(d.kosWhy and 0.45 or 0.15,
                                    d.kosWhy and 0.12 or 0.15, 0.15, 0.9)
@@ -1100,8 +1266,8 @@ local function Render()
         row.kos:SetPoint("LEFT", row, "LEFT", kx, 0)
         row.kos:Show()
 
-        row.note.by = nil
-        row.note.kos = d.name
+        row.note.by, row.note.kos, row.note.kosGuild = nil, d.name, nil
+        noteShown = true
         if not row.note:HasFocus() then row.note:SetText(d.note or "") end
         row.note:ClearAllPoints()
         row.note:SetPoint("LEFT", row, "LEFT", nx, 0)
@@ -1139,7 +1305,8 @@ local function Render()
         for ci, col in ipairs(layout.cols) do
           if ci < #layout.cols then nx = nx + col[2] end
         end
-        row.note.by = d.by
+        row.note.by, row.note.kos, row.note.kosGuild = d.by, nil, nil
+        noteShown = true
         if not row.note:HasFocus() then row.note:SetText(d.info.note or "") end
         row.note:ClearAllPoints()
         row.note:SetPoint("LEFT", row, "LEFT", nx, 0)
@@ -1147,8 +1314,8 @@ local function Render()
       else
         row.price:Hide()
         row.pack:Hide()
-        row.note:Hide()
       end
+      if not noteShown then row.note:Hide() end
       row:Show()
     else
       row.tip = nil
@@ -1164,7 +1331,8 @@ local function SetMode(m)
   page = 1
   sortKey, sortDesc = nil, false
   for key, b in pairs(tabs) do
-    b.active = (key == m)
+    -- the kill-on-sight list lives under Enemies, so that tab stays lit
+    b.active = (key == m) or (key == "enemies" and m == "koslist")
     b.bg:SetColorTexture(b.active and 0.25 or 0.15, b.active and 0.25 or 0.15,
                          b.active and 0.35 or 0.15, 0.9)
   end
@@ -1367,8 +1535,10 @@ local function Build()
     row.note:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     row.note:SetScript("OnEditFocusLost", function(self)
       if self.by then BT.SetBoosterNote(self.by, self:GetText()) end
-      -- the same box, on the Enemies tab: a note against a name you marked
-      if self.kos then BT.AddKOS(self.kos, self:GetText()) end
+      -- the same box on the enemy tabs: a note, and nothing more. Marking is
+      -- the KOS button's job.
+      if self.kos then BT.SetEnemyNote(self.kos, self:GetText()) end
+      if self.kosGuild then BT.SetGuildNote(self.kosGuild, self:GetText()) end
       Render()
     end)
     row.note:Hide()
@@ -1390,6 +1560,18 @@ local function Build()
     -- Marking somebody is one click, and the button says what it will do
     -- rather than what the state is: "KOS" to mark, "clear" to unmark.
     row.kos = Button(row, "KOS", 50, 15, function(self)
+      -- on the kill-on-sight list this button only ever clears, and a guild
+      -- row has no name to clear
+      if self.clearGuild then
+        BT.RemoveKOSGuild(self.clearGuild)
+        Render()
+        return
+      end
+      if self.markGuild then
+        BT.AddKOSGuild(self.markGuild)
+        Render()
+        return
+      end
       if not self.name then return end
       local why = BT.IsKOS(self.name, self.guild)
       if why == "named" then BT.RemoveKOS(self.name)
@@ -1474,6 +1656,11 @@ local function Build()
 
   -- The rank you are aiming at, on the same line and in the same place as the
   -- add-someone row, because only one of the two is ever on screen.
+  win.enemyView = Button(win, "", 210, 18, function()
+    SetMode(mode == "koslist" and "enemies" or "koslist")
+  end)
+  win.enemyView:SetPoint("TOPLEFT", 12, addY + 3)
+
   win.targetLabel = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   win.targetLabel:SetPoint("TOPLEFT", 12, addY)
   win.targetLabel:SetText("rank you want")

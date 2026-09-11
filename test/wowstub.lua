@@ -225,6 +225,13 @@ StaticPopupDialogs = {}
 -- who you are with, for anything that picks a chat channel
 -- in a guild by default: that is the ordinary case, and the share tests
 -- were written before anything asked
+S.maxLevel = 60
+function GetMaxPlayerLevel() return S.maxLevel end
+
+S.inCombat, S.shiftDown = false, false
+function InCombatLockdown() return S.inCombat end
+function IsShiftKeyDown() return S.shiftDown end
+
 S.inRaid, S.inGuild = false, true
 function IsInRaid() return S.inRaid end
 function IsInGuild() return S.inGuild end
@@ -336,6 +343,12 @@ function frameMeta:GetPoints() return self.__points end
 function frameMeta:ClearAllPoints() self.__points = {} end
 
 function frameMeta:SetScript(name, fn) self.__scripts[name] = fn end
+function frameMeta:HookScript(name, fn) self.__scripts[name] = fn end
+function frameMeta:SetAttribute(k, v)
+  self.__attrs = self.__attrs or {}
+  self.__attrs[k] = v
+end
+function frameMeta:GetAttribute(k) return self.__attrs and self.__attrs[k] end
 function frameMeta:GetScript(name) return self.__scripts[name] end
 function frameMeta:Show() self.__shown = true end
 function frameMeta:Hide() self.__shown = false end
@@ -355,6 +368,8 @@ function frameMeta:GetPoint(i)
   return p.point, p.rel, p.relPoint or p.point, p.x or 0, p.y or 0
 end
 function frameMeta:SetText(v) self.__text = v end
+function frameMeta:SetTexture(v) self.__tex = v end
+function frameMeta:GetTexture() return self.__tex end
 function frameMeta:GetText() return self.__text or "" end
 -- rough but monotonic: enough for the layout to make the same decisions
 function frameMeta:GetStringWidth()

@@ -922,6 +922,7 @@ do  -- seksjonar som kan brettast saman: panelet var høgare enn mange skjermar
      math.floor(o:GetHeight()) .. " mot " .. math.floor(openH) .. ")")
   ok(sec.head:IsShown(), "men overskrifta står att, så du finn han igjen")
 
+
   -- alt under skal ha flytta seg opp, ikkje stått att med eit hol
   local below = o.sections[#o.sections]
   local bw = below.widgets[1] and below.widgets[1].w
@@ -938,6 +939,79 @@ do  -- seksjonar som kan brettast saman: panelet var høgare enn mange skjermar
   ChainDB.optFold = {}
   BT.RenderOptions()
   near(o:GetHeight(), openH, "og opp igjen er akkurat som før", 0.5)
+
+  -- Ein avkryssingsboks ligg fire piksler over etiketten sin. Grensa mellom
+  -- to seksjonar var eit fast tal, og første rada sine boksar hamna seks
+  -- tidelar på feil side av det - så dei blei ståande igjen medan etikettane
+  -- flytta seg, og ein brettet seksjon la att boksane sine på skjermen.
+  do
+    ChainDB.optFold = {}
+    BT.RenderOptions()
+    local function whose(w)
+      for i, sec2 in ipairs(o.sections) do
+        for _, pp in ipairs(sec2.widgets) do if pp.w == w then return i end end
+      end
+      return nil
+    end
+    -- kvar einaste kontroll skal høyre til ein seksjon, og boks og etikett
+    -- skal høyre til den SAME
+    local orphans, split = 0, 0
+    for _, name in ipairs({ "watch", "alertAll", "enemySound", "stealth",
+                            "announceKOS", "nearbyList", "sound", "announce",
+                            "banner", "nit", "ads", "signal", "snap", "groups",
+                            "announceLock", "minimap", "share", "showBar",
+                            "lock", "honorBar" }) do
+      local t = o[name]
+      if t then
+        local si = whose(t)
+        if not si then orphans = orphans + 1 end
+        if t.label then
+          local li = whose(t.label)
+          if si ~= li then split = split + 1 end
+        end
+      end
+    end
+    eq(orphans, 0, "ingen kontroll fell utanfor alle seksjonar")
+    eq(split, 0, "og boks og etikett hamnar i same seksjon")
+
+    -- og brettar du ein seksjon, skal boksane forsvinne med etikettane
+    ChainDB.optFold = { enemies = true }
+    BT.RenderOptions()
+    ok(not o.watch:IsShown(), "boksen forsvinn når seksjonen blir brettet")
+    ok(not o.watch.label:IsShown(), "og etiketten med han")
+    ChainDB.optFold = {}
+    BT.RenderOptions()
+    ok(o.watch:IsShown() and o.watch.label:IsShown(), "og begge kjem tilbake")
+  end
+
+  -- Knapperada øvst opnar éin seksjon og brettar resten. Panelet hadde vakse
+  -- til seks blokker og lengda av ein skjerm, og nesten ingen vil ha to av
+  -- dei framme samtidig.
+  do
+    ChainDB.optFold = {}
+    BT.RenderOptions()
+    local tall = o:GetHeight()
+    ok(o.picker and #o.picker == #o.sections, "ein knapp per seksjon")
+    local pick = o.picker[3]
+    pick.__scripts.OnClick(pick)
+    ok(not (ChainDB.optFold or {})[pick.key], "den du klikka er open")
+    local others = 0
+    for _, sec2 in ipairs(o.sections) do
+      if sec2.key ~= pick.key and ChainDB.optFold[sec2.key] then others = others + 1 end
+    end
+    eq(others, #o.sections - 1, "og alle dei andre er brettet vekk")
+    ok(o:GetHeight() < tall, "så panelet blir mykje kortare")
+
+    -- og klikkar du den same igjen, opnar alt seg
+    pick.__scripts.OnClick(pick)
+    local anyFolded = false
+    for _, sec2 in ipairs(o.sections) do
+      if ChainDB.optFold[sec2.key] then anyFolded = true end
+    end
+    ok(not anyFolded, "eit klikk til opnar alt igjen")
+    ChainDB.optFold = {}
+    BT.RenderOptions()
+  end
 end
 
 do  -- og kva level spelet slepp deg inn på
@@ -2254,6 +2328,57 @@ do
   end
 end
 
+print("== baren på level 60 ==")
+-- På toppen er det ingen xp igjen å måle, så ein xp-bar er ein bar som aldri
+-- meir kjem til å røre seg. Veka sin honor er det einaste som framleis går
+-- opp, så det er det baren blir - utan å bli spurd.
+do
+  local keepLevel, keepRun = S.level, ChainCharDB.run
+  ChainCharDB.run = nil
+  S.level = 59
+  BT.Touch()
+  ok(BT.Mode() ~= "honor", "på veg opp er det framleis ein xp-bar")
+
+  S.level = 60
+  S.pvpRank, S.pvpProgress = 6, 0.25
+  S.weekHonor, S.weekKills = 30000, 40
+  BT.Touch()
+  eq(BT.Mode(), "honor", "på 60 byter han av seg sjølv")
+
+  local sl = BT.BuildText()
+  ok((sl.barLeft or ""):find("honor"), "baren tel honor")
+  ok((sl.topLeft or ""):find("%%"), "og overskrifta er ranken din")
+
+  -- Fyllet går frå milepælen du har banka til den neste, for det er den
+  -- einaste strekninga der honoren du tener er verdt noko.
+  local p = BT.PvPState()
+  local from = p.met and p.met.honor or 0
+  eq(sl.max, p.nextMilestone.honor - from, "nemnaren er spranget til neste")
+  eq(sl.cur, p.honor - from, "og teljaren kor langt inn i det du er")
+  ok((sl.barCenter or ""):find(" to "), "midten seier kor mykje som står att")
+
+  -- og den slanke andre-baren skal ikkje teikne det same om att
+  BT.Refresh()
+  ok(not BT.bar.honor:IsShown(),
+     "den vesle honor-baren er borte, han ville vore det same to gonger")
+
+  -- for få drap skal seiast, sidan ingenting tel utan dei
+  S.weekKills = 3
+  BT.Touch()
+  ok(table.concat(BT.AllLines(BT.BuildText()), " "):find("more kills"),
+     "for få drap blir sagt rett ut")
+
+  -- og du kan slå det av om du vil ha den tomme xp-baren tilbake
+  ChainDB.honorMode = false
+  ok(BT.Mode() ~= "honor", "det kan skruast av")
+  ChainDB.honorMode = nil
+
+  S.level, ChainCharDB.run = keepLevel, keepRun
+  S.weekKills = 40
+  BT.Touch()
+end
+
+
 print("== kven som er der ute ==")
 -- To ting som berre gjev meining saman: ei liste over kven du vil vite om,
 -- og sjølve vaktinga. Deteksjonen er ikkje smart og treng ikkje vere det -
@@ -2373,6 +2498,10 @@ do
     local sb = BT.alertFrame()
     ok(sb and sb:IsShown(), "og det kjem eit varsel midt på skjermen")
     ok((sb.head:GetText() or ""):find("Stealthed"), "som seier kva det er")
+    -- og stealth får sitt eige ikon, ikkje klasseringen: det som betyr noko
+    -- med ein rogue du ikkje ser er at du ikkje ser han
+    ok((sb.icon.__tex or ""):find("Stealth"),
+       "med stealth-ikonet (" .. tostring(sb.icon.__tex) .. ")")
     ok((sb.name:GetText() or ""):find("Snikar"), "og kven det er")
 
     -- og han skal ikkje skrike kvar gong same mannen dukkar opp
@@ -2419,6 +2548,38 @@ do
       eq(ChainDB.nearbyPos.x, 700 * nb:GetScale(),
          "og posisjonen er lagra i skjermen sine einingar")
 
+      -- Rundturen, som er det som faktisk braut: legg henne ein stad, lagre,
+      -- ankre på nytt, og ho skal lande på same staden på SKJERMEN. GetLeft
+      -- svarar i ramma sine einingar og ein SetPoint-offset blir lese i dei
+      -- same - men dei to er berre same tal så lenge skalaen er 1. Den gamle
+      -- testen såg berre på lagringa, og difor gjekk dette rett forbi han.
+      do
+        BT.SetNearbyScale(1.15)
+        nb.__left, nb.__top = 700, 500
+        r1.__scripts.OnDragStart(r1)
+        r1.__scripts.OnDragStop(r1)
+        local savedX, savedY = ChainDB.nearbyPos.x, ChainDB.nearbyPos.y
+        near(savedX, 700 * 1.15, "lagra i skjermpikslar", 0.01)
+
+        -- la ramma finne plassen sin frå ankeret i staden for frå testen
+        nb.__left, nb.__top = nil, nil
+        BT.RefreshNearby()
+        local pt = nb.__points[#nb.__points]
+        near(pt.x * nb:GetScale(), savedX,
+             "og ho kjem tilbake til same skjermplass", 0.01)
+        near(pt.y * nb:GetScale(), savedY, "både vassrett og loddrett", 0.01)
+
+        -- og å skru opp storleiken skal ikkje flytte henne
+        BT.SetNearbyScale(1.5)
+        local pt2 = nb.__points[#nb.__points]
+        near(pt2.x * nb:GetScale(), savedX,
+             "større boks står på same staden", 0.01)
+
+        ChainDB.nearbyScale = nil
+        nb.__left, nb.__top = 700, 500
+        BT.RefreshNearby()
+      end
+
       -- og no skal tikken få lov igjen
       BT.RefreshNearby()
       ok(nb:GetHeight() ~= beforeH, "etterpå får ho vekse som normalt")
@@ -2430,7 +2591,122 @@ do
       ok(not nb.__moving, "låst lar seg ikkje dra")
       ChainDB.nearbyLocked = nil
 
-        -- Dei merka skal stå øvst. Lista blir kutta ved eit tal rader, så
+        -- Å plassere lista er umogleg så lenge ho berre er på skjermen når
+      -- nokon er i nærleiken: du dreg i henne, den siste blir forelda, og ho
+      -- forsvinn midt i flyttinga.
+      do
+        ChainDB.enemies = {}
+        ChainDB.nearbyLocked = true
+        BT.RefreshNearby()
+        local nb6 = _G.ChainNearby
+        ok(not nb6:IsShown(), "tom liste er borte til vanleg")
+
+        ok(BT.PlaceNearby(true), "men plasseringsmodus slår henne på")
+        ok(nb6:IsShown(), "og då står ho der sjølv om ingen er i nærleiken")
+        eq(ChainDB.nearbyLocked, nil, "og ho er låst opp, elles kan du ikkje dra")
+        ok((nb6.title:GetText() or ""):find("drag me"), "og ho seier kva du skal gjere")
+        -- fylt ut med døme, så du ser breidda og radtalet du faktisk vel
+        local filled = 0
+        for _, r in ipairs(nb6.rows) do if r:IsShown() then filled = filled + 1 end end
+        eq(filled, 8, "og er fylt ut med døme")
+
+        -- og ho blir ståande medan du held på
+        BT.RefreshNearby()
+        ok(nb6:IsShown(), "ho blir ståande gjennom oppdateringar")
+
+        -- ferdig
+        BT.PlaceNearby(false)
+        ok(not nb6:IsShown(), "og forsvinn igjen når du er ferdig")
+
+        -- har ho hamna utanfor skjermen, kjem ho heim att - det er vegen
+        -- tilbake når du ikkje kan sjå henne for å høgreklikke
+        ChainDB.nearbyPos = { x = 99999, y = 99999 }
+        BT.PlaceNearby(true)
+        eq(ChainDB.nearbyPos, nil, "ei liste utanfor skjermen kjem heim")
+        BT.PlaceNearby(false)
+        ChainDB.nearbyLocked = nil
+      end
+
+      -- Same for varselet: eit varsel du berre ser i seks sekund når nokon
+      -- tilfeldigvis går forbi er eit varsel du ikkje kan plassere.
+      do
+        ok(BT.PlaceAlert(true), "varselet kan haldast på skjermen")
+        local ab = BT.alertFrame()
+        ok(ab:IsShown(), "og då står det der")
+        ok((ab.head:GetText() or ""):find("right%-click"), "med beskjed om kva du gjer")
+        -- menyen er delt mellom lista og varselet, og lista si oppdatering
+        -- lukka han kvar tikk uansett kva han stod open på - difor rakk du
+        -- aldri fram til "done"
+        ChainDB.enemies, ChainDB.nearbyList = {}, false
+        BT.AlertMenu()
+        local mn = _G.ChainNearbyMenu
+        ok(mn:IsShown(), "menyen er oppe")
+        BT.RefreshNearby()
+        ok(mn:IsShown(), "og lista si oppdatering lukkar han ikkje")
+        ChainDB.nearbyList = true
+        mn:Hide()
+        -- det skal ikkje forsvinne av seg sjølv medan du held på
+        ab.__scripts.OnUpdate(ab, 30)
+        ok(ab:IsShown(), "og det forsvinn ikkje under fingeren din")
+        BT.PlaceAlert(false)
+        ok(not ab:IsShown(), "ferdig, og det er borte")
+
+        -- utanfor skjermen kjem det heim att
+        ChainDB.alertPos = { x = 99999, y = 99999 }
+        BT.PlaceAlert(true)
+        eq(ChainDB.alertPos, nil, "eit varsel utanfor skjermen kjem heim")
+        BT.PlaceAlert(false)
+      end
+
+      -- Targeting er protected: TargetUnit kan ikkje kallast frå ein addon i
+      -- det heile, heller ikkje utanfor kamp. Einaste vegen er at sjølve
+      -- klikket køyrer ein /target-makro på ein secure knapp.
+      do
+        S.inCombat = false
+        ChainDB.enemies = {}
+        BT.NoteEnemy("Maal", { level = 40, class = "HUNTER" })
+        BT.RefreshNearby()
+        local nb5 = _G.ChainNearby
+        local r = nb5.rows[1]
+        eq(r:GetAttribute("type1"), "macro", "rada er ein makro-knapp")
+        eq(r:GetAttribute("macrotext1"), "/target Maal",
+           "som targetar den som står der")
+
+        -- i kamp er attributta fryste, så lista ventar i staden for å peike
+        -- klikket på feil person
+        S.inCombat = true
+        BT.NoteEnemy("Ny I Kamp", { level = 50 })
+        BT.RefreshNearby()
+        eq(r:GetAttribute("macrotext1"), "/target Maal",
+           "i kamp blir klikket ståande der det var")
+        ok((nb5.title:GetText() or ""):find("held"),
+           "og lista seier frå at ho held igjen")
+
+        -- ute av kamp igjen tek ho att
+        S.inCombat = false
+        BT.RefreshNearby()
+        local names = {}
+        for _, row in ipairs(nb5.rows) do
+          if type(row.rec) == "table" then names[row.rec.name] = row end
+        end
+        ok(names["Ny I Kamp"] ~= nil, "etter kampen er den nye der")
+        eq(names["Ny I Kamp"]:GetAttribute("macrotext1"), "/target Ny I Kamp",
+           "og klikket peikar på han")
+
+        -- shift targetar OG merkar, sidan den sikre delen køyrer uansett
+        ChainDB.kos = {}
+        S.shiftDown = true
+        names["Maal"].__scripts.PostClick(names["Maal"], "LeftButton")
+        S.shiftDown = false
+        eq(select(1, BT.IsKOS("Maal")), "named", "shift-klikk merkar han òg")
+
+        -- og eit vanleg venstreklikk merkar ikkje: det berre targetar
+        ChainDB.kos = {}
+        names["Maal"].__scripts.PostClick(names["Maal"], "LeftButton")
+        eq(BT.IsKOS("Maal"), nil, "vanleg klikk merkar ikkje")
+      end
+
+      -- Dei merka skal stå øvst. Lista blir kutta ved eit tal rader, så
       -- rekkjefylgja avgjer kven du aldri ser - og at ein du har merka fell
       -- av botnen fordi tre framande gjekk forbi er den eine feilen denne
       -- lista ikkje har råd til.
@@ -2588,9 +2864,17 @@ do
         eq(pop.title:GetText(), "Bolla", "med namnet på han det gjeld")
         pop.box:SetText("gankar SM-inngangen kl 2")
         pop.save()
-        local why, note = BT.IsKOS("Bolla")
-        eq(why, "named", "å skrive eit notat merkar han")
-        eq(note, "gankar SM-inngangen kl 2", "og notatet er lagra")
+        -- eit notat merkar han IKKJE. "Ryr alltid med to venner" er verdt å
+        -- skrive om ein du ikkje har tenkt å jakte på, og å måtte merke han
+        -- for å seie det gjorde merket mindre verdt enn det skal vere.
+        eq(BT.IsKOS("Bolla"), nil, "å skrive eit notat merkar han ikkje")
+        eq(BT.EnemyNote("Bolla"), "gankar SM-inngangen kl 2", "men notatet er lagra")
+
+        -- og den eine knappen gjer begge delar når det er den slags notat
+        pop.mark.__scripts.OnClick(pop.mark)
+        eq(select(1, BT.IsKOS("Bolla")), "named", "knappen merkar òg")
+        eq(BT.EnemyNote("Bolla"), "gankar SM-inngangen kl 2",
+           "og notatet står framleis")
         ok(not pop:IsShown(), "og boksen lukkar seg")
 
         -- og opnar du han igjen, står det du skreiv der
@@ -2694,6 +2978,168 @@ do
     b:Hide()
     BT.EnemyAlert({ name = "Gankar", guild = "Bad Bois" })
     ok(not b:IsShown(), "same person varslar ikkje om att med ein gong")
+  end
+
+  -- Notatboksen på Enemies blei plassert, fylt ut - og så slått av igjen på
+  -- same teikninga, fordi Boosters si else-grein gøymde han. Han lagra heilt
+  -- fint; du fekk berre aldri sjå han.
+  do
+    ChainDB.enemies, ChainDB.kos, ChainDB.kosGuilds = {}, {}, {}
+    BT.NoteEnemy("Notatmann", { level = 40, class = "MAGE" })
+    BT.ShowTab("enemies")
+    local w9 = _G.ChainWindow
+    local r
+    for _, x in ipairs(w9.rows) do
+      if x:IsShown() and (x.cells[2]:GetText() or ""):find("Notatmann") then r = x end
+    end
+    ok(r ~= nil, "rada er der")
+    ok(r and r.note:IsShown(), "og notatboksen er faktisk synleg")
+    eq(r and r.note.kos, "Notatmann", "og peikar på rett person")
+    r.note:SetText("test notat")
+    r.note.__scripts.OnEditFocusLost(r.note)
+    eq(BT.EnemyNote("Notatmann"), "test notat", "det du skriv blir lagra")
+    eq(BT.IsKOS("Notatmann"), nil, "og det merkar han ikkje")
+
+    -- og dei tre rutingfelta skal nullstillast, elles hamnar det du skriv hos
+    -- den som stod på rada på førre fana
+    BT.ShowTab("boosters")
+    local rb
+    for _, x in ipairs(w9.rows) do if x:IsShown() and x.note:IsShown() then rb = x end end
+    if rb then
+      eq(rb.note.kos, nil, "kos blir nullstilt på Boosters")
+      eq(rb.note.kosGuild, nil, "og kosGuild òg")
+    end
+    BT.ShowTab("enemies")
+    ChainDB.kos, ChainDB.kosGuilds = {}, {}
+  end
+
+  -- Og notatboksen frå høgreklikk skal verke like eins
+  do
+    ChainDB.kos = {}
+    local e = ChainDB.enemies["Notatmann"]
+    local pop = BT.NotePopup(e)
+    ok(pop:IsShown(), "popupen kjem opp")
+    pop.box:SetText("frå menyen")
+    pop.save()
+    eq(BT.EnemyNote("Notatmann"), "frå menyen", "og lagrar")
+    eq(BT.IsKOS("Notatmann"), nil, "utan å merke han")
+    ChainDB.kos = {}
+  end
+
+  -- Kor mange gonger du har vunne og tapt, i sjølve lista og ikkje berre på
+  -- tooltippen
+  do
+    ChainDB.enemies, ChainDB.kos = {}, {}
+    BT.NoteEnemy("Vinnar", { level = 60 })
+    BT.NoteEnemy("Taper", { level = 60 })
+    BT.NoteEnemy("Ukjend", { level = 60 })
+    ChainDB.enemies["Vinnar"].wins = 3
+    ChainDB.enemies["Vinnar"].losses = 1
+    ChainDB.enemies["Taper"].wins = 0
+    ChainDB.enemies["Taper"].losses = 4
+    BT.ShowTab("enemies")
+    local w10, got = _G.ChainWindow, {}
+    for _, x in ipairs(w10.rows) do
+      if x:IsShown() then
+        local who = (x.cells[2]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        got[who] = (x.cells[8]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+      end
+    end
+    eq(got["Vinnar"], "3-1", "vunne-tapt står i lista")
+    eq(got["Taper"], "0-4", "begge vegar")
+    eq(got["Ukjend"], "-", "og ein du aldri har slåst med får ein strek, ikkje 0-0")
+    ChainDB.enemies = {}
+  end
+
+  -- Ei eiga liste for dei merka, under Enemies. Det er ikkje same lista som
+  -- "kven er her": ein du merka for tre veker sidan står ikkje i Enemies i det
+  -- heile når observasjonen er forelda - og det er nettopp han du vil finne
+  -- att og skrive om.
+  do
+    ChainDB.enemies, ChainDB.kos, ChainDB.kosGuilds = {}, {}, {}
+    ChainDB.notes, ChainDB.guildNotes = {}, {}
+    BT.NoteEnemy("Sett", { level = 44, class = "ROGUE" })
+    BT.AddKOS("Sett", "tok meg i SM")
+    BT.AddKOS("AldriSett", "ein eg fekk tips om")
+    BT.AddKOSGuild("Bad Bois", "heile gjengen")
+
+    BT.ShowTab("koslist")
+    local w5 = _G.ChainWindow
+    local found = {}
+    for _, r in ipairs(w5.rows) do
+      if r:IsShown() then found[#found + 1] = r.cells[1]:GetText() or "" end
+    end
+    eq(#found, 3, "alle tre står der")
+    local all = table.concat(found, " ")
+    ok(all:find("Sett"), "den du har sett")
+    ok(all:find("AldriSett"), "og den du aldri har sett")
+    ok(all:find("Bad Bois"), "og guilden")
+
+    -- ein du aldri har møtt skal seie det i staden for å lyge om level
+    for _, r in ipairs(w5.rows) do
+      if r:IsShown() and (r.cells[1]:GetText() or ""):find("AldriSett") then
+        ok((r.cells[5]:GetText() or ""):find("not since"),
+           "aldri sett blir sagt rett ut")
+      end
+    end
+
+    -- fana over skal framleis lyse
+    ok(w5.enemyView and w5.enemyView:IsShown(), "og det er ein veg tilbake")
+
+    -- clear-knappen fjernar guilden
+    for _, r in ipairs(w5.rows) do
+      if r:IsShown() and (r.cells[2]:GetText() or ""):find("guild") then
+        r.kos.__scripts.OnClick(r.kos)
+      end
+    end
+    eq(#BT.KOSGuildList(), 0, "guilden kan fjernast herifrå")
+
+    -- og ein du berre har skrive om, utan å merke, skal òg vere å finne her -
+    -- elles er det eit notat du aldri les igjen
+    BT.SetEnemyNote("BereNotat", "ryr alltid med to venner")
+    BT.ShowTab("koslist")
+    local withNote = {}
+    for _, r in ipairs(w5.rows) do
+      if r:IsShown() then withNote[#withNote + 1] = r.cells[1]:GetText() or "" end
+    end
+    ok(table.concat(withNote, " "):find("BereNotat"),
+       "ein umerka med notat står i lista")
+    for _, r in ipairs(w5.rows) do
+      if r:IsShown() and (r.cells[1]:GetText() or ""):find("BereNotat") then
+        ok((r.cells[2]:GetText() or ""):find("note only"),
+           "og det står at han berre har eit notat")
+      end
+    end
+
+    BT.ShowTab("enemies")
+    ChainDB.kos, ChainDB.kosGuilds = {}, {}
+    ChainDB.notes, ChainDB.guildNotes = {}, {}
+  end
+
+  -- Både KOS og stealth skal ropast ut på same måten, midt på skjermen.
+  do
+    ChainDB.alertPos = nil
+    ChainDB.enemyQuiet, ChainDB.stealthQuiet = {}, {}
+    ChainDB.kos, ChainDB.kosGuilds = {}, {}
+    BT.AddKOS("Merka")
+
+    BT.EnemyAlert({ name = "Merka", level = 55, class = "WARRIOR" })
+    local b = BT.alertFrame()
+    ok(b:IsShown(), "ein merka blir ropt ut")
+    ok((b.head:GetText() or ""):find("Kill%-on%-sight"), "med KOS i klartekst")
+
+    BT.StealthAlert({ name = "Snik", level = 60, class = "ROGUE" })
+    ok(b:IsShown(), "og ein stealtha likeeins")
+    ok((b.head:GetText() or ""):find("Stealthed"), "med stealth i klartekst")
+
+    -- same ramma, så dei to kan ikkje tie kvarandre i hel eller stable seg
+    eq(BT.alertFrame(), BT.stealthBanner(), "begge bruker same ramma")
+
+    -- og ho står midt på skjermen til du flyttar henne
+    local pt = b.__points[1]
+    ok(pt and (pt.point or ""):find("CENTER"),
+       "forankra i midten (" .. tostring(pt and pt.point) .. ")")
+    ChainDB.kos, ChainDB.kosGuilds = {}, {}
   end
 
   -- nærleik: den som blei sett for lenge sidan er ikkje i nærleiken lenger
@@ -2832,7 +3278,9 @@ do
 
     -- eit klikk på rada merkar han, og tooltipen seier alt vi veit
     ChainDB.kos, ChainDB.kosGuilds = {}, {}
-    nb.rows[1].__scripts.OnClick(nb.rows[1], "LeftButton")
+    S.shiftDown = true
+    nb.rows[1].__scripts.PostClick(nb.rows[1], "LeftButton")
+    S.shiftDown = false
     eq(select(1, BT.IsKOS("Naer")), "named", "klikk på rada merkar han")
     nb.rows[1].__scripts.OnEnter(nb.rows[1])
     local tip = S.TipText()

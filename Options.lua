@@ -130,6 +130,12 @@ local function BuildOptions()
     hx = hx + h[2]
   end
 
+  -- A row of buttons that opens one section and folds the rest. The panel had
+  -- grown to six blocks and the length of a screen; almost nobody wants two
+  -- of them at once, and the folding was already there - this is just the
+  -- shortcut for "only that one".
+  opt.picker = {}
+
   opt.rows = {}
   for i = 1, PER_PAGE do
     local row = CreateFrame("Frame", nil, opt)
@@ -252,6 +258,25 @@ local function BuildOptions()
       BT.RenderOptions()
     end)
     table.insert(opt.sections, sec)
+
+    -- and a button up in the picker row for it
+    local b = Button(opt, title, 0, 16, function()
+      local only = {}
+      for _, other in ipairs(opt.sections) do only[other.key] = (other.key ~= key) end
+      -- clicking the one that is already alone opens everything again
+      local alone = true
+      for _, other in ipairs(opt.sections) do
+        local folded = (ChainDB.optFold or {})[other.key] and true or false
+        if folded ~= (other.key ~= key) then alone = false end
+      end
+      ChainDB.optFold = alone and {} or only
+      BT.RenderOptions()
+    end)
+    b.fs:SetText(title)
+    b:SetWidth((b.fs:GetStringWidth() or 40) + 14)
+    b.key = key
+    table.insert(opt.picker, b)
+
     row = row + 0.75
   end
 
@@ -268,7 +293,11 @@ local function BuildOptions()
     return chk
   end
 
-  y = y - 26
+  -- the picker sits between the route table and the first section, on a line
+  -- of its own: above it, it ran into the two-line help text
+  y = y - 24
+  opt.pickerY = y
+  y = y - 22
   Section("Runs and prices", "runs")
   opt.pack = Field(1, "Runs per price", 40, function() return ChainDB.pack end,
     -- the fallback only: the 'runs' column above beats it per instance, and a
@@ -353,9 +382,10 @@ local function BuildOptions()
     fs:SetPoint("TOPLEFT", x, ly + 4)
     fs:SetWidth(WIDTH - 30)
     fs:SetJustifyH("LEFT")
-    fs:SetText("The chat log is written in 48 KB blocks and can lag ten minutes. "
-      .. "A screenshot reaches the disk at once, so that is what the phone "
-      .. "program watches for.")
+    -- What it is for, not how it works. The 48 KB block story belongs in the
+    -- push program's own instructions, where somebody is actually asking.
+    fs:SetText("The two above are only needed if you want alerts on your phone. "
+      .. "Turn them on, then set up Chain Push - see push/README.")
   end
   NextRow()
 
@@ -375,6 +405,7 @@ local function BuildOptions()
   opt.stealth = Toggle(1, "Shout about stealth", function(v)
     ChainDB.stealthAlert = v
   end)
+
   -- Off by default: it puts a line in a chat channel other people read.
   opt.announceKOS = Toggle(2, "Call out marked ones", function(v)
     ChainDB.announceKOS = v
@@ -394,6 +425,17 @@ local function BuildOptions()
     opt.sightChan:SetPoint("TOPLEFT", x3, ly3 - 1)
   end
   NextRow()
+  -- The way back when you cannot see the list at all: it turns it on,
+  -- unlocks it, brings it back on screen if it was left off the edge, and
+  -- holds it there while you move it.
+  opt.place = Button(opt, "Unlock / show list", 140, 18, function()
+    if BT.PlaceNearby then BT.PlaceNearby(true) end
+    opt:Hide()
+  end)
+  do
+    local x3, ly3 = At(3)
+    opt.place:SetPoint("TOPLEFT", x3, ly3 - 1)
+  end
   opt.nearbyList = Toggle(1, "List on screen", function(v)
     ChainDB.nearbyList = v
     if BT.RefreshNearby then BT.RefreshNearby() end
@@ -416,6 +458,15 @@ local function BuildOptions()
     end)
   -- which way it grows from where you parked it, so a list at the bottom of
   -- the screen does not grow off it. Also on right-click, on the list itself.
+  -- the same escape hatch for the alert as for the list
+  opt.placeAlert = Button(opt, "Move the alert...", 140, 18, function()
+    if BT.PlaceAlert then BT.PlaceAlert(true) end
+    opt:Hide()
+  end)
+  do
+    local x2, ly2 = At(2)
+    opt.placeAlert:SetPoint("TOPLEFT", x2, ly2 - 1)
+  end
   opt.nearbyGrow = Button(opt, "", 140, 18, function()
     if BT.SetNearbyGrow then
       BT.SetNearbyGrow((ChainDB.nearbyGrow == "up") and "down" or "up")
@@ -515,6 +566,7 @@ local function BuildOptions()
     ChainDB.honorBar = v
     if BT.Refresh then BT.Refresh() end
   end)
+
   opt.width = Field(2, "Bar width", 50, function() return ChainDB.width end,
     function(v)
       v = tonumber(v) or 380
@@ -522,6 +574,14 @@ local function BuildOptions()
       ChainDB.width = v
       if BT.bar then BT.bar:SetWidth(v) end
     end)
+  NextRow()
+
+  -- At the top there is no experience left to measure, so the bar becomes the
+  -- honour bar on its own. Off for anybody who wants the empty one back.
+  opt.honorMode = Toggle(1, "Honor bar at max level", function(v)
+    ChainDB.honorMode = v
+    if BT.Refresh then BT.Refresh() end
+  end)
   NextRow()
 
   y = y - row * 24 - 14
@@ -537,6 +597,16 @@ local function BuildOptions()
   -- The frame is as tall as what is in it. Every hand-picked height so far
   -- has been wrong the moment a row was added, and a button drawn past the
   -- bottom edge still works, which is how it went unnoticed.
+  do
+    -- laid out left to right by their actual widths, wrapping if need be
+    local px, py = 12, opt.pickerY or -44
+    for _, b in ipairs(opt.picker) do
+      if px + b:GetWidth() > WIDTH - 12 then px, py = 12, py - 18 end
+      b:SetPoint("TOPLEFT", px, py)
+      px = px + b:GetWidth() + 4
+    end
+  end
+
   opt.fullHeight = -y + 20 + 12
   opt:SetSize(WIDTH, opt.fullHeight)
 
@@ -557,12 +627,22 @@ local function BuildOptions()
   -- Which section each thing sits in: by where it is, not by when it was
   -- made, so the inline blocks that build their own widgets need no special
   -- handling.
+  -- Headings and their hairlines are excluded by identity, not by a margin.
+  -- The margin was -14, and a checkbox on the first row of a section sits at
+  -- its label's y plus four - which landed six tenths of a pixel on the wrong
+  -- side of it. The boxes were left out of the section, so they stayed put
+  -- while their labels moved, and a folded section left its checkboxes behind
+  -- on the screen. No magic numbers here now.
+  local chrome = {}
+  for _, sec in ipairs(opt.sections) do
+    chrome[sec.head], chrome[sec.line] = true, true
+  end
+
   for i, sec in ipairs(opt.sections) do
     local nextY = opt.sections[i + 1] and opt.sections[i + 1].y or -math.huge
     sec.widgets = {}
     for _, p in ipairs(opt.placed) do
-      if p.w ~= sec.head and p.w ~= sec.line
-         and p.y < sec.y - 14 and p.y > nextY + 2 then
+      if not chrome[p.w] and p.y < sec.y and p.y > nextY then
         table.insert(sec.widgets, p)
       end
     end
@@ -583,6 +663,11 @@ local function LayoutSections()
   if not opt or not opt.sections then return end
   local fold = ChainDB.optFold or {}
   local shift, cut = 0, 0
+  for _, b in ipairs(opt.picker or {}) do
+    local open = not fold[b.key]
+    b.bg:SetColorTexture(open and 0.25 or 0.12, open and 0.25 or 0.12,
+                         open and 0.35 or 0.12, 0.9)
+  end
 
   local hidden = {}
   for _, sec in ipairs(opt.sections) do
@@ -691,6 +776,7 @@ function BT.RenderOptions()
   opt.nit:SetChecked(db.useNIT and true or false)
   opt.lock:SetChecked(db.locked and true or false)
   opt.honorBar:SetChecked(db.honorBar ~= false)
+  opt.honorMode:SetChecked(db.honorMode ~= false)
   opt.stealth:SetChecked(db.stealthAlert ~= false)
   opt.announceKOS:SetChecked(db.announceKOS and true or false)
   opt.sightChan.fs:SetText((db.announceKOS and C.gold or C.dim)
@@ -1078,6 +1164,8 @@ SlashCmdList["CHAIN"] = function(input)
     end
   elseif cmd == "enemies" or cmd == "spy" then
     BT.ShowTab("enemies")
+  elseif cmd == "koslist" or cmd == "marked" then
+    BT.ShowTab("koslist")
   elseif cmd == "pvp" or cmd == "honor" or cmd == "honour" or cmd == "rank" then
     if rest and rest ~= "" then
       local v = tonumber(rest)
@@ -1099,6 +1187,10 @@ SlashCmdList["CHAIN"] = function(input)
     local txt, chan = BT.AnnounceSighting(e, nil, true)
     Say(txt and ("told " .. (chan or "?"):lower() .. ": " .. txt)
              or "could not send that")
+  elseif cmd == "place" or cmd == "move" then
+    Say(BT.PlaceNearby(true)
+      and "drag the list where you want it, then right-click it"
+      or "nothing to place")
   elseif cmd == "nearby" then
     Say("the list on screen is " .. (BT.ToggleNearby() and "on" or "off"))
   elseif cmd == "minimap" then
@@ -1176,7 +1268,9 @@ SlashCmdList["CHAIN"] = function(input)
     print("  /chain pvp        the rank planner - add a number to set a target")
     print("  /chain enemies    everyone seen out there, and the KOS list")
     print("  /chain kos NAME   mark somebody kill on sight")
+    print("  /chain marked     everyone you have marked, near or not")
     print("  /chain nearby     the list of players on screen, on or off")
+    print("  /chain place      put the list where you want it")
     print("  /chain spot       call out who is nearby, with where you are")
     print("  /chain minimap    show or hide the minimap button")
     print("  /chain export     every run as CSV (add 'trade' for trades)")
