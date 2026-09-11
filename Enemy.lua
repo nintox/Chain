@@ -133,6 +133,7 @@ function BT.NoteEnemy(name, info)
   e.level = (info.level and info.level > 0) and info.level or e.level
   e.guild = info.guild or e.guild
   e.faction = info.faction or e.faction
+  e.race = info.race or e.race
   e.zone = info.zone or (GetRealZoneText and GetRealZoneText()) or e.zone
   e.how = info.how or e.how
   e.at = now
@@ -281,7 +282,19 @@ function BT.NoteCombatLogUnit(guid, name, flags)
   if not bit or not flags then return end
   if bit.band(flags, PLAYER_TYPE) == 0 then return end
   if bit.band(flags, HOSTILE) == 0 then return end
-  BT.NoteEnemy(name, { how = "combat log" })
+
+  -- The combat log itself carries no class, which is why everyone found this
+  -- way used to sit in the list as a grey name with a question mark. The GUID
+  -- is enough to ask the client, though: it knows the class and race of any
+  -- player it has seen, whether or not they are on screen now. Level it does
+  -- not know, and that stays a question mark honestly rather than guessed.
+  local class, race
+  if GetPlayerInfoByGUID then
+    local _, englishClass, _, englishRace = GetPlayerInfoByGUID(guid)
+    if englishClass and englishClass ~= "" then class = englishClass end
+    if englishRace and englishRace ~= "" then race = englishRace end
+  end
+  BT.NoteEnemy(name, { how = "combat log", class = class, race = race })
 end
 
 local f = CreateFrame("Frame", "ChainEnemyFrame")
@@ -318,7 +331,17 @@ end
 -- A row you have to parse is a row you look away from, and looking away is
 -- the thing this is meant to stop.
 
-local NEAR_ROWS = 8
+local NEAR_ROWS = 8          -- the default; ChainDB.nearbyRows overrides it
+local NEAR_MAX  = 20         -- as many row frames as we ever build
+local ROW_H     = 14
+
+-- How many rows to actually show, and which way the list grows from where you
+-- put it. Both are yours: a list that grows down is wrong if you have parked
+-- it at the bottom of the screen.
+local function NearRows()
+  return math.max(1, math.min(NEAR_MAX, math.floor(ChainDB.nearbyRows or NEAR_ROWS)))
+end
+local function GrowUp() return ChainDB.nearbyGrow == "up" end
 local nearby
 
 local CLASS_COLOUR = {
@@ -328,6 +351,21 @@ local CLASS_COLOUR = {
   MAGE    = { 0.41, 0.80, 0.94 }, WARLOCK = { 0.58, 0.51, 0.79 },
   DRUID   = { 1.00, 0.49, 0.04 }
 }
+
+-- The class in words, short enough for a narrow row. The client's own
+-- localised name where there is one, so a Norwegian client says what a
+-- Norwegian player expects.
+local CLASS_SHORT = {
+  WARRIOR = "Warrior", PALADIN = "Paladin", HUNTER = "Hunter",
+  ROGUE = "Rogue", PRIEST = "Priest", SHAMAN = "Shaman",
+  MAGE = "Mage", WARLOCK = "Warlock", DRUID = "Druid"
+}
+function BT.ClassLabel(class)
+  if not class then return "?" end
+  local loc = _G.LOCALIZED_CLASS_NAMES_MALE
+  if loc and loc[class] then return loc[class] end
+  return CLASS_SHORT[class] or class
+end
 
 local function RowTooltip(self)
   local e = self.rec
@@ -372,25 +410,146 @@ local function RowTooltip(self)
   GameTooltip:Show()
 end
 
+-- Where the frame hangs. Always absolute against the screen's bottom-left
+-- corner, anchored by its top when the list grows down and by its bottom when
+-- it grows up - so the edge you parked stays put and the list grows away from
+-- it rather than dragging the whole box about.
+local function AnchorNearby()
+  if not nearby then return end
+  local pos = ChainDB.nearbyPos or {}
+  nearby:ClearAllPoints()
+  nearby:SetPoint(GrowUp() and "BOTTOMLEFT" or "TOPLEFT",
+                  UIParent, "BOTTOMLEFT", pos.x or 900, pos.y or 500)
+end
+
+local function SaveNearbyPos()
+  if not nearby or not nearby.GetLeft or not nearby:GetLeft() then return end
+  ChainDB.nearbyPos = {
+    x = nearby:GetLeft(),
+    y = GrowUp() and nearby:GetBottom() or nearby:GetTop()
+  }
+end
+
+-- Switching direction must not make the box jump: take the edge that is about
+-- to become the anchor from where the frame is standing right now.
+function BT.SetNearbyGrow(dir)
+  dir = (dir == "up") and "up" or "down"
+  if nearby and nearby.GetLeft and nearby:GetLeft() then
+    ChainDB.nearbyPos = {
+      x = nearby:GetLeft(),
+      y = (dir == "up") and nearby:GetBottom() or nearby:GetTop()
+    }
+  end
+  ChainDB.nearbyGrow = dir
+  AnchorNearby()
+  BT.RefreshNearby()
+  return dir
+end
+
+function BT.ToggleNearbyLock()
+  ChainDB.nearbyLocked = not ChainDB.nearbyLocked
+  return ChainDB.nearbyLocked
+end
+
+function BT.SetNearbyRows(n)
+  n = tonumber(n)
+  if not n then return NearRows() end
+  ChainDB.nearbyRows = math.max(1, math.min(NEAR_MAX, math.floor(n)))
+  BT.RefreshNearby()
+  return ChainDB.nearbyRows
+end
+
+--------------------------------------------------------------------------
+-- The little menu on right-click
+--------------------------------------------------------------------------
+-- Hand-rolled rather than the game's dropdown: three items, no library, and
+-- it cannot be broken by another addon replacing UIDropDownMenu.
+local menu
+local function BuildMenu()
+  if menu then return menu end
+  menu = CreateFrame("Frame", "ChainNearbyMenu", UIParent)
+  menu:SetSize(150, 4 + 3 * 18 + 4)
+  menu:SetFrameStrata("DIALOG")
+  menu.edge = menu:CreateTexture(nil, "BACKGROUND")
+  menu.edge:SetPoint("TOPLEFT", -1, 1)
+  menu.edge:SetPoint("BOTTOMRIGHT", 1, -1)
+  menu.bg = menu:CreateTexture(nil, "BACKGROUND")
+  menu.bg:SetAllPoints()
+  if menu.bg.SetColorTexture then
+    menu.edge:SetColorTexture(0.3, 0.3, 0.35, 1)
+    menu.bg:SetColorTexture(0.05, 0.05, 0.06, 0.98)
+  end
+  menu.bg:SetDrawLayer("BACKGROUND", 2)
+  menu:EnableMouse(true)
+
+  menu.items = {}
+  for i = 1, 3 do
+    local b = CreateFrame("Button", nil, menu)
+    b:SetSize(142, 18)
+    b:SetPoint("TOPLEFT", 4, -4 - (i - 1) * 18)
+    b.bg = b:CreateTexture(nil, "BACKGROUND")
+    b.bg:SetAllPoints()
+    if b.bg.SetColorTexture then b.bg:SetColorTexture(0, 0, 0, 0) end
+    b.fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.fs:SetPoint("LEFT", 6, 0)
+    b.fs:SetJustifyH("LEFT")
+    b:SetScript("OnEnter", function(self)
+      if self.bg.SetColorTexture then self.bg:SetColorTexture(0.25, 0.25, 0.35, 0.9) end
+    end)
+    b:SetScript("OnLeave", function(self)
+      if self.bg.SetColorTexture then self.bg:SetColorTexture(0, 0, 0, 0) end
+    end)
+    menu.items[i] = b
+  end
+  menu:Hide()
+  return menu
+end
+
+function BT.NearbyMenu()
+  BuildMenu()
+  local function Item(i, text, fn)
+    local b = menu.items[i]
+    b.fs:SetText(text)
+    b:SetScript("OnClick", function()
+      fn()
+      menu:Hide()
+    end)
+  end
+  Item(1, GrowUp() and (C.good .. "Grows up" .. C.off .. C.dim .. "  - flip" .. C.off)
+                   or (C.good .. "Grows down" .. C.off .. C.dim .. "  - flip" .. C.off),
+    function() BT.SetNearbyGrow(GrowUp() and "down" or "up") end)
+  Item(2, ChainDB.nearbyLocked and (C.warn .. "Locked" .. C.off .. C.dim .. "  - unlock" .. C.off)
+                               or (C.dim .. "Unlocked" .. C.off .. "  - lock"),
+    function() BT.ToggleNearbyLock() end)
+  Item(3, "Hide the list", function() BT.ToggleNearby() end)
+
+  if nearby then
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", nearby, "BOTTOMLEFT", 0, -2)
+  end
+  menu:Show()
+  return menu
+end
+
 function BT.BuildNearby()
   if nearby then return nearby end
   nearby = CreateFrame("Frame", "ChainNearby", UIParent)
-  nearby:SetSize(176, 22 + NEAR_ROWS * 14)
-  local pos = ChainDB.nearbyPos
-  if pos then
-    nearby:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER",
-                    pos.x or 0, pos.y or 0)
-  else
-    nearby:SetPoint("RIGHT", UIParent, "RIGHT", -220, 120)
-  end
+  nearby:SetSize(196, 22 + NearRows() * ROW_H)
+  AnchorNearby()
   nearby:SetMovable(true)
   nearby:EnableMouse(true)
   nearby:RegisterForDrag("LeftButton")
-  nearby:SetScript("OnDragStart", nearby.StartMoving)
+  nearby:SetScript("OnDragStart", function(self)
+    if ChainDB.nearbyLocked then return end
+    self:StartMoving()
+  end)
   nearby:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
-    local point, _, _, x, y = self:GetPoint()
-    ChainDB.nearbyPos = { point = point, x = x, y = y }
+    SaveNearbyPos()
+    AnchorNearby()
+  end)
+  nearby:SetScript("OnMouseUp", function(_, button)
+    if button == "RightButton" then BT.NearbyMenu() end
   end)
 
   nearby.bg = nearby:CreateTexture(nil, "BACKGROUND")
@@ -402,23 +561,30 @@ function BT.BuildNearby()
   end
 
   nearby.title = nearby:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  nearby.title:SetPoint("TOPLEFT", 6, -5)
 
   nearby.rows = {}
-  for i = 1, NEAR_ROWS do
+  for i = 1, NEAR_MAX do
     local row = CreateFrame("Button", nil, nearby)
-    row:SetSize(164, 13)
-    row:SetPoint("TOPLEFT", 6, -20 - (i - 1) * 14)
+    row:SetSize(184, 13)
+    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.name:SetPoint("LEFT", 0, 0)
     row.name:SetJustifyH("LEFT")
-    row.name:SetWidth(120)
+    row.name:SetWidth(104)
+    -- the class said in words as well as in the colour of the name. A colour
+    -- alone asks you to have the palette memorised, and half of it is only a
+    -- shade apart anyway.
+    row.class = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.class:SetPoint("LEFT", 106, 0)
+    row.class:SetJustifyH("LEFT")
+    row.class:SetWidth(60)
     row.lvl = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.lvl:SetPoint("RIGHT", 0, 0)
     row.lvl:SetJustifyH("RIGHT")
     row:SetScript("OnEnter", RowTooltip)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    row:SetScript("OnClick", function(self)
+    row:SetScript("OnClick", function(self, button)
+      if button == "RightButton" then BT.NearbyMenu() return end
       local e = self.rec
       if not e then return end
       local why = BT.IsKOS(e.name, e.guild)
@@ -435,33 +601,64 @@ function BT.BuildNearby()
   return nearby
 end
 
+-- Title and rows both have to flip: growing up means the heading belongs at
+-- the bottom, next to where the list starts.
+local function LayoutNearby(shown)
+  local up = GrowUp()
+  nearby.title:ClearAllPoints()
+  if up then
+    nearby.title:SetPoint("BOTTOMLEFT", 6, 5)
+  else
+    nearby.title:SetPoint("TOPLEFT", 6, -5)
+  end
+  for i = 1, NEAR_MAX do
+    local row = nearby.rows[i]
+    row:ClearAllPoints()
+    if up then
+      row:SetPoint("BOTTOMLEFT", 6, 20 + (i - 1) * ROW_H)
+    else
+      row:SetPoint("TOPLEFT", 6, -20 - (i - 1) * ROW_H)
+    end
+  end
+  nearby:SetHeight(22 + math.max(1, shown) * ROW_H)
+  AnchorNearby()
+end
+
 function BT.RefreshNearby()
   if ChainDB.nearbyList == false or not ChainDB.watchEnemies then
     if nearby then nearby:Hide() end
+    if menu then menu:Hide() end
     return
   end
   BT.BuildNearby()
   local list = BT.Nearby(ChainDB.nearbySeconds or NEARBY)
   if #list == 0 then
     nearby:Hide()
+    if menu then menu:Hide() end
     return
   end
-  nearby.title:SetText(C.warn .. #list .. " nearby" .. C.off)
-  for i = 1, NEAR_ROWS do
+  local want = NearRows()
+  nearby.title:SetText(C.warn .. #list .. " nearby" .. C.off
+    .. ((#list > want) and (C.dim .. "  (" .. want .. " shown)" .. C.off) or "")
+    .. (ChainDB.nearbyLocked and (C.dim .. "  locked" .. C.off) or ""))
+  for i = 1, NEAR_MAX do
     local row = nearby.rows[i]
-    local e = list[i]
+    local e = (i <= want) and list[i] or nil
     if e then
       row.rec = e
       local col = e.class and CLASS_COLOUR[e.class] or { 0.8, 0.8, 0.8 }
       local why = BT.IsKOS(e.name, e.guild)
       row.name:SetText((why and "|cffff2020* |r" or "") .. e.name)
       row.name:SetTextColor(col[1], col[2], col[3])
+      row.class:SetText(e.class and BT.ClassLabel(e.class) or "?")
+      row.class:SetTextColor(col[1], col[2], col[3])
       row.lvl:SetText((e.level and e.level > 0) and tostring(e.level) or "?")
       -- faded as the sighting gets old, so the top of the list is the one
       -- that is actually still there
       local age = time() - (e.at or time())
       local a = 1 - math.min(0.6, age / (ChainDB.nearbySeconds or NEARBY))
       row.name:SetAlpha(a)
+      row.class:SetAlpha(a)
       row.lvl:SetAlpha(a)
       row:Show()
     else
@@ -469,7 +666,7 @@ function BT.RefreshNearby()
       row:Hide()
     end
   end
-  nearby:SetHeight(22 + math.min(NEAR_ROWS, #list) * 14)
+  LayoutNearby(math.min(want, #list))
   nearby:Show()
 end
 

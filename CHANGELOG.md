@@ -7,14 +7,27 @@ parts that are not.
 
 **Honour**
 
-- On the bar tooltip, the minimap tooltip and `/chain pvp`: what rank you end
-  up at after the next weekly reset, and how much more honour you need tonight
-  to not go backwards. It only appears once there is honour to talk about.
-- The arithmetic is the honour system's own - honour into contribution points
-  at three exchange rates, contribution points into a rank, then a fraction of
-  the way from where you stand to where the honour says you belong, with the
-  fraction shrinking as the rank goes up. It says on the tooltip that it is a
-  model rather than the server.
+- A **Rank tab**. Put in the rank you want and it lays out the weeks: the
+  honour to hit each week, what that ends the week at, and what the whole
+  climb comes to.
+- It is built on the system the game runs **now**, not the one from 2005, and
+  they work nothing alike. Since 1.14 each week gives you up to four honour
+  milestones fixed by the rank you are on. Meet one and you advance a set
+  amount. Honour below the first does nothing, honour between two does
+  nothing, and honour past the last does nothing - there is no partial credit
+  anywhere in it. You also need 15 honourable kills, and you cannot go down.
+- So the tab's job is to tell you **which number to stop on**, and it says how
+  far off you are and when the rest of the week is wasted. The tooltip on each
+  week lists every milestone open to you that week, so you can take a slower
+  one deliberately.
+- The first version of this shipped the old model - honour converted to a
+  standing, the rank dragged a fraction of the way towards it - and it was
+  wrong in a way that showed: every pace came out at 500,000 a week and rank
+  14 read as impossible. The arithmetic here is checked against the published
+  worked example, and reproduces all four of its milestones exactly.
+- On the bar tooltip and the minimap tooltip: the milestone you have met, the
+  next one, and what is still missing - including how many kills short you
+  are, since nothing counts without fifteen.
 - Honour per hour, measured in minute buckets the same way experience per hour
   is, so a break does not quietly halve the rate.
 
@@ -32,6 +45,13 @@ parts that are not.
   because a line at the top of the screen tells you somebody is here but not
   which of the four in front of you it is.
 - An Enemies tab for all of it, with a one-click mark on every row.
+- Somebody found only through the combat log used to sit in the list as a grey
+  name with a question mark, because the combat log carries no class. The GUID
+  is enough to ask the client, so they now arrive class-coloured with the
+  class written out, and the level stays an honest question mark.
+- The on-screen list grows up or down from wherever you parked it, can be
+  locked, and how many rows it shows is yours to set. Right-click the list for
+  all three.
 
 **Trade**
 
@@ -56,12 +76,19 @@ parts that are not.
   about the pixels is worth less than being the shape the rest of the
   ecosystem expects. The tooltip and the three clicks are still ours, and the
   tooltip gained the honour line and the count of players nearby.
-- `/chain` prints `/chain` in its own help, and `/chain trade`, `/chain
+- `/chain` prints `/chain` in its own help, and `/chain pvp`, `/chain trade`, `/chain
   enemies`, `/chain kos NAME`, `/chain nearby`, `/chain groups` and
   `/chain minimap` are in the list.
 - The push program's install instructions are rewritten as three numbered
   steps, and the shell version now carries settings over from either of the
   older names rather than one.
+- The settings panel is in named sections. Twenty-odd controls in one
+  undifferentiated block is a wall you read every time rather than a list you
+  learn the shape of, and things that belonged together were nowhere near each
+  other.
+- "share with" is a label and a short value on its own button instead of a
+  sentence that ran straight through the button beside it, and the value is
+  gold when sharing is on and grey when it is off.
 
 ## 1.0.0
 

@@ -219,6 +219,16 @@ function UnitFactionGroup() return "Alliance" end
 
 YES, NO = "Yes", "No"
 StaticPopupDialogs = {}
+-- The client knows the class and race of any player it has seen, from the
+-- GUID alone - which is how somebody found only in the combat log gets a
+-- colour instead of a grey question mark.
+S.guids = {}
+function GetPlayerInfoByGUID(guid)
+  local g = S.guids[guid]
+  if not g then return nil end
+  return g.class, g.class, g.race, g.race, g.sex, g.name, g.realm
+end
+
 SlashCmdList = {}
 function StaticPopup_Show() end
 S.whispered = {}

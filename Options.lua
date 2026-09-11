@@ -203,6 +203,23 @@ local function BuildOptions()
     return box
   end
 
+  -- A heading and a hairline across the panel. Twenty-odd controls in one
+  -- undifferentiated block is a wall you read every time instead of a list you
+  -- learn the shape of - and the things that belong together were nowhere near
+  -- each other.
+  local function Section(title)
+    row = row + 0.35
+    local x, ly = At(1)
+    local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("TOPLEFT", x, ly)
+    fs:SetText(C.gold .. title .. C.off)
+    local line = Tex(opt, "ARTWORK", 0.35, 0.35, 0.42, 0.8)
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", x, ly - 13)
+    line:SetPoint("TOPRIGHT", opt, "TOPLEFT", WIDTH - 12, ly - 13)
+    row = row + 0.75
+  end
+
   local function Toggle(c, label, set)
     local chk = Check(opt, set)
     local x, ly = At(c)
@@ -217,6 +234,7 @@ local function BuildOptions()
   end
 
   y = y - 26
+  Section("Runs and prices")
   opt.pack = Field(1, "Runs per price", 40, function() return ChainDB.pack end,
     -- the fallback only: the 'runs' column above beats it per instance, and a
     -- pack typed against a booster beats them both while he is boosting you
@@ -227,6 +245,7 @@ local function BuildOptions()
     function(v) ChainDB.limit = math.max(1, math.floor(v or 5)) end)
   NextRow()
 
+  Section("Resets and alerts")
   opt.sound = Toggle(1, "Sound on reset", function(v) ChainDB.sound = v end)
   do
     local x, ly = At(1)
@@ -270,6 +289,7 @@ local function BuildOptions()
   end
   NextRow()
 
+  Section("What to read out of chat")
   -- Its history is taken into our own log on every login whether this is on
   -- or off. This only decides whether its live count is trusted over ours.
   opt.nit = Toggle(1, "Read NIT's count",
@@ -291,10 +311,20 @@ local function BuildOptions()
     ChainDB.readGroups = v
   end)
   NextRow()
-  -- Two lines and no more: "locked 5/5 - free in 12m" and "free again".
-  -- A countdown in party chat is the fastest way to be asked to turn an
-  -- addon off.
-  -- their own row: the labels are long and the column beside them is close
+  do
+    -- its own row: the explanation is longer than any column
+    local x, ly = At(1)
+    local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    fs:SetPoint("TOPLEFT", x, ly + 4)
+    fs:SetWidth(WIDTH - 30)
+    fs:SetJustifyH("LEFT")
+    fs:SetText("The chat log is written in 48 KB blocks and can lag ten minutes. "
+      .. "A screenshot reaches the disk at once, so that is what the phone "
+      .. "program watches for.")
+  end
+  NextRow()
+
+  Section("Who is out there")
   opt.watch = Toggle(1, "Watch for enemies", function(v)
     ChainDB.watchEnemies = v
   end)
@@ -309,25 +339,34 @@ local function BuildOptions()
     ChainDB.nearbyList = v
     if BT.RefreshNearby then BT.RefreshNearby() end
   end)
+  -- How many of them the list shows at once. Everyone within range is still
+  -- counted in the heading; this is only how many rows you want in the way.
+  opt.nearbyRows = Field(2, "Rows to show", 32,
+    function() return ChainDB.nearbyRows or 8 end,
+    function(v)
+      if BT.SetNearbyRows then BT.SetNearbyRows(v or 8) end
+    end)
+  -- which way it grows from where you parked it, so a list at the bottom of
+  -- the screen does not grow off it. Also on right-click, on the list itself.
+  opt.nearbyGrow = Button(opt, "", 140, 18, function()
+    if BT.SetNearbyGrow then
+      BT.SetNearbyGrow((ChainDB.nearbyGrow == "up") and "down" or "up")
+    end
+    BT.RenderOptions()
+  end)
+  do
+    local x3, ly3 = At(3)
+    opt.nearbyGrow:SetPoint("TOPLEFT", x3, ly3 - 1)
+  end
   NextRow()
+
+  Section("Sharing and the bar")
   opt.announceLock = Toggle(1, "Tell the group your lockout",
     function(v) ChainDB.announceLock = v end)
   opt.minimap = Toggle(3, "Button on the minimap", function(v)
     ChainDB.minimap = v
     if BT.RefreshMinimap then BT.RefreshMinimap() end
   end)
-  NextRow()
-  do
-    -- its own row: the explanation is longer than any column
-    local x, ly = At(1)
-    local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    fs:SetPoint("TOPLEFT", x, ly + 6)
-    fs:SetWidth(WIDTH - 30)
-    fs:SetJustifyH("LEFT")
-    fs:SetText("The chat log is written in 48 KB blocks and can lag ten minutes. "
-      .. "A screenshot reaches the disk at once, so that is what the phone "
-      .. "program watches for.")
-  end
   NextRow()
 
   opt.share = Toggle(1, "Share what you measure", function(v)
@@ -336,11 +375,22 @@ local function BuildOptions()
   end)
   do
     local x, ly = At(2)
-    opt.scope = Button(opt, "", 150, 18, function()
+    -- "share with" is a fixed label and the button holds only the value, so
+    -- the button can be sized to the longest value rather than to a sentence.
+    -- It carried the whole phrase before and ran clean through the button
+    -- beside it.
+    opt.scopeLabel = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    opt.scopeLabel:SetPoint("TOPLEFT", x, ly)
+    opt.scopeLabel:SetText("share with")
+    opt.scope = Button(opt, "", 90, 18, function()
       BT.CycleShareScope()
       BT.RenderOptions()
     end)
-    opt.scope:SetPoint("TOPLEFT", x, ly - 1)
+    opt.scope:SetPoint("TOPLEFT", x + 66, ly - 1)
+    -- bounded, so a longer name in some future locale truncates instead of
+    -- climbing over the next control
+    opt.scope.fs:SetWidth(84)
+    opt.scope.fs:SetJustifyH("CENTER")
     -- which chat sources adverts are read from. A booster shouts in whichever
     -- channel he likes, so the addon listens to all of them and this is where
     -- you take one away. It sits in the column that was empty, not on top of
@@ -489,7 +539,18 @@ function BT.RenderOptions()
   opt.nit.label:SetText(_G.NIT and "Read NIT's count"
     or (C.dim .. "NIT not installed" .. C.off))
 
-  opt.scope.fs:SetText("share with: " .. BT.ShareScopeName())
+  -- The chosen value in gold when sharing is actually on, and the whole row
+  -- greyed when it is off: a setting you cannot see the state of is a setting
+  -- you click twice to find out.
+  local sharing = db.share and true or false
+  opt.scope.fs:SetText((sharing and C.gold or C.dim) .. BT.ShareScopeName() .. C.off)
+  opt.nearbyGrow.fs:SetText((db.nearbyList ~= false)
+    and ("list grows " .. C.gold
+         .. ((db.nearbyGrow == "up") and "up" or "down") .. C.off)
+    or (C.dim .. "list grows "
+        .. ((db.nearbyGrow == "up") and "up" or "down") .. C.off))
+  opt.scopeLabel:SetText(sharing and "share with"
+    or (C.dim .. "share with" .. C.off))
   local friends = table.concat(db.shareFriends or {}, ", ")
   if not opt.friends:HasFocus() then opt.friends:SetText(friends) end
   -- the names field stays where it is whatever the scope says: hiding it left
@@ -857,24 +918,13 @@ SlashCmdList["CHAIN"] = function(input)
   elseif cmd == "enemies" or cmd == "spy" then
     BT.ShowTab("enemies")
   elseif cmd == "pvp" or cmd == "honor" or cmd == "honour" or cmd == "rank" then
-    local s = BT.PvPState()
-    if (s.honor or 0) <= 0 and (s.rank or 0) <= 0 then
-      Say("no honor this week yet")
-      return
+    if rest and rest ~= "" then
+      local v = tonumber(rest)
+      if v then
+        ChainCharDB.pvpTarget = math.max(1, math.min(BT.PVP.MAX_RANK, math.floor(v)))
+      end
     end
-    Say(string.format("%s, %.0f%% through - %s honor this week over %d kills",
-      s.rankName, (s.progress or 0) * 100, BT.N(s.honor), s.kills or 0))
-    Say(string.format("  after the reset: %s, %.0f%% through",
-      s.newRankName, (s.newProgress or 0) * 100))
-    if (s.short or 0) > 0 then
-      Say("  " .. BT.N(s.short) .. " more honor to hold this rank")
-    end
-    if s.nextRank and s.nextRank > s.honor then
-      Say("  " .. BT.N(s.nextRank - s.honor) .. " more to climb one")
-    end
-    if s.rate and s.rate > 0 then
-      Say("  " .. BT.N(s.rate) .. " honor per hour")
-    end
+    BT.ShowTab("pvp")
   elseif cmd == "nearby" then
     Say("the list on screen is " .. (BT.ToggleNearby() and "on" or "off"))
   elseif cmd == "minimap" then
@@ -949,7 +999,7 @@ SlashCmdList["CHAIN"] = function(input)
     print("  /chain flush      force the chat log out to disk")
     print("  /chain announce   tell the group when the instance resets")
     print("  /chain trade      what you have paid, and to whom")
-    print("  /chain pvp        your rank, and the one the next reset gives you")
+    print("  /chain pvp        the rank planner - add a number to set a target")
     print("  /chain enemies    everyone seen out there, and the KOS list")
     print("  /chain kos NAME   mark somebody kill on sight")
     print("  /chain nearby     the list of players on screen, on or off")

@@ -1805,7 +1805,7 @@ eq(ChainDB.boosters["Y"], nil, "ukjend instans blir ignorert")
 S.Fire(rf, "CHAT_MSG_ADDON", "LVLTRK1", "v1|Gammal|45|5|1", "CHANNEL", "Venn-Testrealm")
 eq(ChainDB.boosters["Gammal"], nil, "v1 blir ignorert")
 -- delingsomfang: kven som høyrer deg
-eq(BT.ShareScopeName(), "everyone with the addon", "standard er alle")
+eq(BT.ShareScopeName(), "everyone", "standard er alle")
 S.sent, S.timers = {}, {}
 BT.CycleShareScope()
 eq(ChainDB.shareWith, "guild", "neste er gildet")
@@ -1932,6 +1932,19 @@ do
   -- og rada med overskrifter må vere under søket igjen
   local hp = firstPoint(w.headerRow)
   ok(hp and sp and hp.y < sp.y, "kolonneoverskriftene er under søket")
+
+  -- Rank-fana har ein målboks på same linje som legg-til-rada, og berre éi av
+  -- dei skal vere framme om gongen. To sett kontrollar i same rute er den
+  -- feilen som har kome att flest gonger her.
+  S.pvpRank, S.pvpProgress = 5, 0
+  S.weekHonor, S.weekKills = 60000, 200
+  BT.ShowTab("pvp")
+  ok(w.targetBox and w.targetBox:IsShown(), "målboksen er framme på Rank")
+  ok(not w.addName:IsShown(), "og legg-til-boksen er det ikkje")
+  BT.ShowTab("boosters")
+  ok(w.addName:IsShown(), "på Boosters er det omvendt")
+  ok(not w.targetBox:IsShown(), "og målboksen er borte")
+  BT.ShowTab("runs")
 end
 
 --------------------------------------------------------------------------
@@ -1975,83 +1988,133 @@ end
 
 --------------------------------------------------------------------------
 print("== ærens-systemet ==")
--- Kjeda er tre steg, og ingen av dei gjer klienten for deg: honor -> CP i tre
--- vekslingsband, CP -> rank og posisjon, og så ein brøkdel av spranget som
--- krympar med ranken. Tala er systemet sine eigne, men rekninga er vår, så
--- den blir testa frå begge endar.
+-- Dette er IKKJE 2005-systemet. Sidan 1.14 er det ei trapp: kvar veke har du
+-- opp til fire honor-milepælar, og ingenting mellom dei tel. Heile fila står
+-- og fell på at trappa er rett, så ho blir testa mot det publiserte dømet.
 do
-  -- vekslinga, og at han går rett veg tilbake
-  near(BT.HonorToCP(0), 0, "null honor er null CP")
-  near(BT.HonorToCP(45000), 20000, "45k honor er 20k CP", 1)
-  near(BT.HonorToCP(22500), 10000, "halvvegs i fyrste bandet", 1)
-  near(BT.HonorToCP(175000), 40000, "175k honor er 40k CP", 1)
-  near(BT.HonorToCP(500000), 60000, "500k honor er 60k CP", 1)
-  -- og at bandet faktisk blir verre: same honor kjøper mindre høgare oppe
-  local first = BT.HonorToCP(45000) - BT.HonorToCP(0)
-  local third = BT.HonorToCP(500000) - BT.HonorToCP(455000)
-  ok(third < first, "same honor kjøper mindre CP høgare oppe (" ..
-     string.format("%.0f mot %.0f", third, first) .. ")")
-  for _, h in ipairs({ 0, 10000, 45000, 90000, 175000, 300000, 500000 }) do
-    near(BT.CPToHonor(BT.HonorToCP(h)), h, "fram og tilbake på " .. h, 2)
+  local P = BT.PVP
+
+  -- honorFor[n] er honoren som ei veke må nå for å ende på rank n, og dei
+  -- skal svare nøyaktig til botnen av kvar rank
+  eq(P.honorFor[1], 0, "rank 1 krev berre drapa")
+  eq(P.honorFor[6], 45000, "og ladderen er spelet sin eigen")
+  eq(P.honorFor[14], 500000, "toppen er 500k")
+  eq(#P.honorFor, 14, "ein for kvar rank")
+
+  -- Å klatre éin rank spør berre om honoren til ranken du alt står på. Alle
+  -- større sprang spør om honoren til der du hoppar til - det er difor fire
+  -- ranker på ei veke kostar så mykje meir enn éin.
+  eq(BT.MilestoneHonor(4, 5), P.honorFor[4], "eitt steg opp kostar din eigen rank")
+  eq(BT.MilestoneHonor(4, 6), P.honorFor[6], "to steg kostar målet sin")
+  eq(BT.MilestoneHonor(4, 8), P.honorFor[8], "og fire steg likeeins")
+  eq(BT.MilestoneHonor(4, 9), nil, "fem ranker på ei veke finst ikkje")
+  eq(BT.MilestoneHonor(4, 4), nil, "og du kan ikkje sikte på der du er")
+  eq(BT.MilestoneHonor(13, 15), nil, "eller forbi toppen")
+
+  -- Det publiserte dømet: rank 4 og 60,0% skal gje nøyaktig desse fire.
+  -- Går dette i stykker, er rekninga vår feil og ikkje testen.
+  do
+    local ms = BT.Milestones(4, 0.6)
+    eq(#ms, 4, "fire milepælar på rank 4")
+    eq(ms[1].honor, 22500, "fyrste er 22 500")
+    eq(ms[2].honor, 45000, "andre er 45 000")
+    eq(ms[3].honor, 77500, "tredje er 77 500")
+    eq(ms[4].honor, 110000, "fjerde er 110 000")
+    near(ms[1].cp, 15000, "22 500 endar på 15 000 CP", 1)
+    near(ms[2].cp, 19000, "45 000 endar på 19 000 CP", 1)
+    near(ms[3].cp, 22500, "77 500 endar på 22 500 CP", 1)
+    near(ms[4].cp, 26000, "110 000 endar på 26 000 CP", 1)
+    -- og det same sagt som rank og prosent, slik spelaren ser det
+    eq(ms[1].rank, 5, "som er rank 5")
+    near(ms[1].progress, 0, "på 0%", 0.001)
+    eq(ms[2].rank, 5, "rank 5")
+    near(ms[2].progress, 0.8, "på 80%", 0.001)
+    eq(ms[3].rank, 6, "rank 6")
+    near(ms[3].progress, 0.5, "på 50%", 0.001)
+    eq(ms[4].rank, 7, "rank 7")
+    near(ms[4].progress, 0.2, "på 20%", 0.001)
   end
 
-  -- CP til rank
-  local r, p = BT.CPToRank(0)
-  eq(r, 1, "null CP er rank 1")
-  r, p = BT.CPToRank(2000)
-  eq(r, 2, "2000 CP er rank 2")
-  r, p = BT.CPToRank(3500)
-  eq(r, 2, "3500 CP er framleis rank 2")
-  near(p, 0.5, "og halvvegs gjennom han", 0.01)
-  r = BT.CPToRank(65000)
-  eq(r, 14, "taket er rank 14")
-  near(BT.RankCP(2, 0.5), 3500, "og vegen tilbake stemmer", 1)
-
-  -- sjølve spådommen: du reiser ein brøkdel av vegen, og brøken krympar
+  -- Taket på fyrste steget: du kan ikkje få betalt to gonger for veg du alt
+  -- har gått. Same rank, lenger framme, skal gje mindre.
   do
-    local nr, np, change = BT.PredictReset(1, 0, 45000)
-    ok(change > 0, "ei veke med honor flyttar deg framover")
-    ok(nr > 1, "og opp i rank (" .. nr .. ")")
-    -- same honor, høg rank: mindre framgang, fordi faktoren er mindre
-    local _, _, lowChange = BT.PredictReset(2, 0, 60000)
-    local _, _, highChange = BT.PredictReset(13, 0, 60000)
-    ok(highChange < lowChange,
-       "same veke flyttar deg mindre på høg rank")
+    local low = BT.Milestones(4, 0.0)[1]
+    local high = BT.Milestones(4, 0.9)[1]
+    ok(low.cp - BT.RankCP(4, 0) > high.cp - BT.RankCP(4, 0.9),
+       "jo lenger ut i ranken du er, jo mindre gjev fyrste steget")
+    -- men begge endar på minst botnen av neste rank
+    -- og taket er hardt: fyrste steget tek deg aldri forbi botnen av neste
+    -- rank, uansett kvar i ranken du står. Frå 0% endar du på 80% av vegen,
+    -- frå 90% endar du akkurat på botnen av rank 5 - aldri over.
+    near(low.cp, BT.RankCP(4, 0.8), "frå 0% kjem du 80% av vegen", 1)
+    near(high.cp, BT.RankCP(5, 0), "frå 90% kjem du akkurat til rank 5", 1)
+    ok(low.cp <= BT.RankCP(5, 0) + 1 and high.cp <= BT.RankCP(5, 0) + 1,
+       "og ingen av dei går forbi botnen av neste rank")
   end
 
-  -- og bakover: null honor er eit fall
+  -- Toppen av stigen har færre milepælar, fordi det er mindre stige att
+  eq(#BT.Milestones(11, 0), 3, "rank 11 har tre")
+  eq(#BT.Milestones(12, 0), 2, "rank 12 har to")
+  eq(#BT.Milestones(13, 0), 1, "og rank 13 har éin einaste veg vidare")
+  eq(BT.Milestones(13, 0)[1].honor, 418750, "og han kostar 418 750")
+
+  -- Ingenting mellom milepælane tel. Det er heile poenget.
   do
-    local nr, _, change = BT.PredictReset(8, 0.5, 0)
-    ok(change < 0, "ei veke utan honor kostar deg CP")
-    ok(nr <= 8, "og kan koste deg ranken (" .. nr .. ")")
+    local met = BT.MetMilestone(4, 0.6, 44999, 50)
+    eq(met.honor, 22500, "44 999 er verdt akkurat det same som 22 500")
+    local met2 = BT.MetMilestone(4, 0.6, 45000, 50)
+    eq(met2.honor, 45000, "eitt einaste honor meir, og du er på neste")
+    eq(BT.MetMilestone(4, 0.6, 22499, 50), nil, "under den fyrste er null")
+    -- og over den siste er like verdilaust som mellom to
+    local over = BT.MetMilestone(4, 0.6, 999999, 50)
+    eq(over.honor, 110000, "over den siste får du ikkje meir enn den siste")
   end
 
-  -- talet folk faktisk vil ha: kor mykje som skal til for å ikkje falle
+  -- 15 drap, elles tel ingenting
+  eq(BT.MetMilestone(4, 0.6, 500000, 14), nil, "14 drap er ikkje nok")
+  ok(BT.MetMilestone(4, 0.6, 500000, 15) ~= nil, "15 er")
+
+  -- neste milepæl og kor langt unna han er - talet som skal på skjermen
   do
-    local hold = BT.HonorToHold(8, 0.5)
-    ok(hold > 0, "det finst eit tal som held deg i ro")
-    local _, _, change = BT.PredictReset(8, 0.5, hold)
-    near(change, 0, "og med akkurat det står du stille", 1)
-    local _, _, under = BT.PredictReset(8, 0.5, hold * 0.5)
-    ok(under < 0, "under det fell du")
-    local _, _, over = BT.PredictReset(8, 0.5, hold * 1.5)
-    ok(over > 0, "over det stig du")
+    local m, short = BT.NextMilestone(4, 0.6, 30000)
+    eq(m.honor, 45000, "neste er 45 000")
+    eq(short, 15000, "og du manglar 15 000")
+    eq(BT.NextMilestone(4, 0.6, 200000), nil, "over toppen finst det ingen neste")
   end
 
-  -- og kor mykje til neste rank
+  -- Planen: veke for veke til ranken du vil ha
   do
-    local need = BT.HonorForRank(5, 0, 6, 0)
-    ok(need and need > 0, "det finst eit tal for neste rank")
-    local nr = BT.PredictReset(5, 0, need)
-    ok(nr >= 6, "og med det talet kjem du dit (" .. tostring(nr) .. ")")
-    -- På rank 1 er faktoren 1,0, så du reiser heile vegen: rank 14 på ei veke
-    -- er faktisk mogleg i systemet, berre ikkje i eit liv. Funksjonen svarar
-    -- på "kor mykje honor", ikkje "er dette realistisk".
-    local wild = BT.HonorForRank(1, 0, 14, 0)
-    ok(wild and wild >= 400000, "rank 14 frå rank 1 er eit enormt, men ekte tal")
-    -- høgt oppe er faktoren 0,4, og då finst det ranksprang som ikkje går
-    eq(BT.HonorForRank(13, 0, 14, 0), nil,
-       "rank 13 til 14 på ei veke: ikkje mogleg, og det blir sagt")
+    local plan = BT.PlanToRank(10, 4, 0)
+    ok(#plan.weeks > 0, "det blir ein plan")
+    ok(plan.endRank >= 10, "som kjem fram (" .. tostring(plan.endRank) .. ")")
+    -- fire ranker er det meste ei veke kan gje, så seks ranker tek minst to
+    ok(#plan.weeks >= 2, "seks ranker tek meir enn ei veke")
+    -- veketala skal auke, og totalen skal stemme med summen
+    local sum = 0
+    for i, w in ipairs(plan.weeks) do
+      eq(w.week, i, "veke " .. i .. " er nummerert rett")
+      sum = sum + w.honor
+      near(w.total, sum, "totalen fylgjer med", 1)
+      ok(w.honor > 0 or w.from <= 1, "kvar veke har eit tal å stoppe på")
+    end
+    near(plan.total, sum, "og heile planen er summen av vekene", 1)
+    -- siste veka skal ikkje betale for meir enn du bad om
+    local last = plan.weeks[#plan.weeks]
+    ok(last.rank >= 10, "siste veka kjem i mål")
+
+    -- er du der alt, er det ingen plan å lage
+    local none = BT.PlanToRank(3, 5, 0)
+    ok(none.done, "er du over målet, er det ikkje noko å planleggje")
+  end
+
+  -- rank 14 frå ingenting: det skal gå, og det skal ta fleire veker enn folk
+  -- håpar. Den gamle modellen vår sa 500 000 i veka for alltid, som var feil.
+  do
+    local plan = BT.PlanToRank(14, 1, 0)
+    ok(not plan.unreachable, "rank 14 er naaeleg")
+    ok(#plan.weeks >= 4, "men ikkje på under fire veker (" ..
+       #plan.weeks .. ")")
+    ok(plan.total > 1000000, "og det kostar millionar til saman")
   end
 
   -- honor per time, same maskineri som xp per time
@@ -2068,60 +2131,49 @@ do
     BT.PollHonor()
     eq(ChainCharDB.honorSession, 600, "og summert vidare")
     local rate = BT.HonorRate()
-    ok(rate and rate > 0, "det blir ein rate av det (" ..
-       string.format("%.0f/t", rate or 0) .. ")")
-    -- eit reset tek teljinga til null, og det er ikkje eit tap
+    ok(rate and rate > 0, "det blir ein rate av det")
     S.weekHonor = 0
     BT.PollHonor()
     eq(ChainCharDB.honorSession, 0, "resetet nullstiller i staden for å telje ned")
   end
 
-  -- og heile tilstanden på ein gong
+  -- honor per drap, målt og ikkje gjetta
   do
-    S.pvpRank, S.pvpProgress = 6, 0.25
-    S.weekHonor, S.weekKills = 30000, 42
+    S.weekHonor, S.weekKills = 10000, 100
+    near(BT.HonorPerKill(), 100, "honor per drap er målt", 0.01)
+    S.weekKills = 2
+    eq(BT.HonorPerKill(), nil, "to drap er ikkje nok til å seie noko")
+  end
+
+  -- og heile tilstanden, slik baren og fana ser han
+  do
+    S.pvpRank, S.pvpProgress = 4, 0.6
+    S.weekHonor, S.weekKills = 30000, 60
     local st = BT.PvPState()
-    eq(st.rank, 6, "ranken din")
-    eq(st.kills, 42, "og drapa")
-    ok(st.newRankName ~= nil, "det er eit namn på der du hamnar")
-    ok(st.hold > 0, "og eit tal som held deg i ro")
-    ok(BT.PvPChunk() ~= nil, "og ei linje å setje på skjermen")
+    eq(st.rank, 4, "ranken din")
+    ok(st.enoughKills, "nok drap")
+    eq(st.met.honor, 22500, "du har nådd den fyrste")
+    eq(st.newRank, 5, "så veka endar på rank 5")
+    eq(st.short, 15000, "og du manglar 15 000 til neste")
+    ok(BT.PvPChunk() ~= nil, "og det blir ei linje for baren")
+    -- for få drap skal seiast rett ut, ikkje gøymast
+    S.weekKills = 3
+    local st2 = BT.PvPState()
+    ok(not st2.enoughKills, "for få drap blir merka")
+    eq(st2.killsShort, 12, "og det blir sagt kor mange som manglar")
+    ok((BT.PvPChunk() or ""):find("kills"), "også på baren")
   end
 
-  -- Rekninga er verdlaus om ho ikkje kjem nokon stad. Ho skal vere på
-  -- tooltippen til baren når det finst honor, og ikkje vere der når det ikkje
-  -- gjer det: fire linjer rank på ein som aldri har drepe nokon er fire
-  -- linjer ingenting.
+  -- kommandoen, som er den andre vegen inn
   do
     S.pvpRank, S.pvpProgress = 6, 0.25
     S.weekHonor, S.weekKills = 30000, 42
-    BT.BarTooltip(BT.bar)
-    local text = S.TipText()
-    ok(text:find("honor this week"), "honor står på tooltippen til baren")
-    ok(text:find("after the reset"), "og kva resetet gjer med ranken")
-    ok(text:find("not the server"),
-       "og det blir sagt at det er ein modell, ikkje serveren")
-
-    S.pvpRank, S.pvpProgress = 0, 0
-    S.weekHonor, S.weekKills = 0, 0
-    BT.BarTooltip(BT.bar)
-    local none = S.TipText()
-    ok(not none:find("after the reset"),
-       "utan honor står det ingenting om rank")
-  end
-
-  -- og kommandoen, som er den andre vegen inn
-  do
-    S.pvpRank, S.pvpProgress = 6, 0.25
-    S.weekHonor, S.weekKills = 30000, 42
-    ok(pcall(SlashCmdList["CHAIN"], "pvp"), "/chain pvp går utan å falle")
-    S.weekHonor, S.weekKills = 0, 0
-    S.pvpRank = 0
-    ok(pcall(SlashCmdList["CHAIN"], "pvp"), "og utan honor òg")
+    ok(pcall(SlashCmdList["CHAIN"], "pvp"), "/chain pvp gaar utan aa falle")
+    ok(pcall(SlashCmdList["CHAIN"], "pvp 12"), "og med eit maal")
+    eq(ChainCharDB.pvpTarget, 12, "som blir hugsa")
   end
 end
 
---------------------------------------------------------------------------
 print("== kven som er der ute ==")
 -- To ting som berre gjev meining saman: ei liste over kven du vil vite om,
 -- og sjølve vaktinga. Deteksjonen er ikkje smart og treng ikkje vere det -
@@ -2158,6 +2210,22 @@ do
   BT.NoteCombatLogUnit("Creature-0-1-1-1-99", "Ulv", 0x440)
   eq(ChainDB.enemies["Ulv"], nil, "mobs er ikkje spelarar")
   BT.NoteCombatLogUnit("Player-4-0003", "Snill-Testrealm", 0x400)   -- ikkje fiendtleg
+
+  -- Kamploggen ber ingen klasse, og difor sat alle som blei funne der som eit
+  -- grått namn med spørsmålsteikn. GUID-en er nok til å spørje klienten,
+  -- som veit klasse og rase for alle han har sett. Level veit han ikkje, og
+  -- det skal stå som ukjent i staden for å bli gjetta.
+  S.guids["Player-4-0009"] = { class = "ROGUE", race = "Orc", name = "Gankar2" }
+  BT.NoteCombatLogUnit("Player-4-0009", "Gankar2-Testrealm", 0x440)
+  do
+    local found = ChainDB.enemies["Gankar2"]
+    ok(found ~= nil, "han blei notert")
+    eq(found and found.class, "ROGUE", "og klassa kom frå GUID-en")
+    eq(found and found.race, "Orc", "rasa likeeins")
+    eq(found and found.level, nil, "men level blir ikkje gjetta")
+    eq(BT.ClassLabel("ROGUE"), "Rogue", "og klassa har eit namn for rada")
+    eq(BT.ClassLabel(nil), "?", "ukjent klasse seier det")
+  end
   eq(ChainDB.enemies["Snill"], nil, "og ikkje-fiendtlege blir ikkje talt")
 
   -- KOS: ved namn og ved heile guilden, som er slik det oftast går

@@ -1,22 +1,30 @@
--- Chain: the honour system.
+-- Chain: the honour system, as Classic Era actually runs it today.
 --
--- What a week of honour is actually worth. The game shows you a number of
--- honour points and a rank bar and leaves you to work out the rest, and the
--- rest is the only part anybody cares about: what rank am I on Tuesday, and
--- how much more do I need tonight to not go backwards.
+-- This is not the 2005 system, and the difference is the whole point of the
+-- file. The old one took your week's honour, turned it into a standing, and
+-- dragged your rank a fraction of the way towards it - so every extra kill
+-- moved the needle a little, and a bad week dragged you back down.
 --
--- The arithmetic is the honour system's own, and it is a chain of three
--- steps, none of which the client does for you:
+-- Since patch 1.14 it is a staircase instead:
 --
---   honour  ->  contribution points, at one of three exchange rates
---   CP      ->  a rank and a position inside it
---   that    ->  a fraction of the way from where you are to where the CP says
---               you should be, and the fraction shrinks as the rank goes up
+--   * Each week you have up to FOUR honour milestones, set by the rank you
+--     are on. Meet one and you advance; the rank you land on is fixed by
+--     which milestone you met.
+--   * Honour below the first milestone does nothing at all. Honour between
+--     two milestones does nothing. Honour past the last one does nothing.
+--     There is no partial credit anywhere in it.
+--   * You need at least 15 honourable kills in the week for any of it to
+--     count.
+--   * You cannot go down. A quiet week drops you to the bottom of the rank
+--     you are on and no further.
 --
--- The numbers below are that system's constants. They are not a guess and
--- they are not ours - they are how the weekly reset has worked since 2005 -
--- but the prediction they feed is still a model, and it says so on the
--- tooltip rather than pretending to be the server.
+-- Which means the only question worth asking is "which milestone am I going
+-- for this week", and the only wrong answer is stopping between two of them.
+--
+-- The numbers below are the game's, and the award arithmetic is checked
+-- against the worked example the ranking addons publish: a player at rank 4
+-- and 60% lands on exactly 15,000 / 19,000 / 22,500 / 26,000 contribution
+-- points for the four milestones, and this file reproduces all four.
 
 local ADDON, BT = ...
 local C = BT.COL
@@ -24,66 +32,34 @@ local C = BT.COL
 BT.PVP = {
   MAX_RANK = 14,
 
-  -- How much of the gap between where you are and where your honour says you
-  -- belong you actually travel in one reset. High rank moves slowly, which is
-  -- the whole reason rank 14 took people months.
+  -- How much of a rank's worth of contribution points each step up awards.
+  -- High rank moves slowly, which is why the top of the ladder takes months
+  -- even now that the weekly grind is capped.
   factor = { 1, 1, 1, 0.8, 0.8, 0.8, 0.7, 0.7, 0.6, 0.5, 0.5, 0.4, 0.4, 0.34 },
 
-  -- Contribution points that mark the bottom and top of each rank
+  -- Contribution points at the bottom and top of each rank
   floor   = { 0, 2000, 5000, 10000, 15000, 20000, 25000, 30000,
               35000, 40000, 45000, 50000, 55000, 60000 },
   ceiling = { 2000, 5000, 10000, 15000, 20000, 25000, 30000, 35000,
               40000, 45000, 50000, 55000, 60000, 65000 },
 
-  -- Honour buys contribution points at three rates, and each one is worse
-  -- than the last. This is why the top ranks cost so much more than the
-  -- brackets alone suggest.
-  --   up to 45,000 honour   20,000 CP
-  --   up to 175,000 honour  another 20,000 CP
-  --   up to 500,000 honour  another 20,000 CP
-  bands = {
-    { honor = 45000,  cp = 20000, fromHonor = 0,      fromCP = 0 },
-    { honor = 175000, cp = 40000, fromHonor = 45000,  fromCP = 20000 },
-    { honor = 500000, cp = 60000, fromHonor = 175000, fromCP = 40000 },
-  }
+  -- The honour ladder. honorFor[n] is the honour a week has to reach for the
+  -- week to end with you at rank n - and these are the only honour figures in
+  -- the system that mean anything. Anything between two of them is the same
+  -- as the lower one.
+  honorFor = { 0, 4500, 11250, 22500, 33750, 45000, 77500, 110000,
+               142500, 175000, 256250, 337500, 418750, 500000 },
+
+  -- Nothing counts without these, however much honour you pile up
+  MIN_HK = 15,
+
+  -- five years of Tuesdays: long enough that anything past it is "no"
+  MAX_WEEKS = 260
 }
 
 --------------------------------------------------------------------------
--- The arithmetic
+-- Ranks and contribution points
 --------------------------------------------------------------------------
--- Honour earned this week into contribution points
-function BT.HonorToCP(honor)
-  honor = math.max(0, tonumber(honor) or 0)
-  local P = BT.PVP
-  for _, b in ipairs(P.bands) do
-    if honor <= b.honor then
-      local span = b.honor - b.fromHonor
-      local gain = b.cp - b.fromCP
-      if span <= 0 then return b.fromCP end
-      return b.fromCP + (honor - b.fromHonor) / span * gain
-    end
-  end
-  -- past the last band the rate does not improve; 60,000 CP is the ceiling
-  local last = P.bands[#P.bands]
-  return last.cp
-end
-
--- And back again: the honour a number of contribution points costs
-function BT.CPToHonor(cp)
-  cp = math.max(0, tonumber(cp) or 0)
-  local P = BT.PVP
-  for _, b in ipairs(P.bands) do
-    if cp <= b.cp then
-      local span = b.cp - b.fromCP
-      local cost = b.honor - b.fromHonor
-      if span <= 0 then return b.fromHonor end
-      return b.fromHonor + (cp - b.fromCP) / span * cost
-    end
-  end
-  return P.bands[#P.bands].honor
-end
-
--- Contribution points into a rank and how far through it you are
 function BT.CPToRank(cp)
   cp = math.max(0, tonumber(cp) or 0)
   local P = BT.PVP
@@ -98,7 +74,6 @@ function BT.CPToRank(cp)
   return 1, 0
 end
 
--- Where a rank and a progress sit, in contribution points
 function BT.RankCP(rank, progress)
   local P = BT.PVP
   rank = math.max(1, math.min(P.MAX_RANK, math.floor(tonumber(rank) or 1)))
@@ -106,46 +81,157 @@ function BT.RankCP(rank, progress)
   return P.floor[rank] + (P.ceiling[rank] - P.floor[rank]) * progress
 end
 
--- The whole question, in one call: given where you stand and what you have
--- earned this week, where do you stand after the reset?
+--------------------------------------------------------------------------
+-- One week, one milestone
+--------------------------------------------------------------------------
+-- The honour a week has to reach for it to end with you on `target`.
 --
--- Returns the new rank, the new progress, and the change in contribution
--- points - negative when you are going backwards, which is the number most
--- people actually want to see.
-function BT.PredictReset(rank, progress, weekHonor)
+-- Climbing a single rank is the cheap one: it asks only for the honour of
+-- the rank you are already on. Every jump beyond that asks for the honour of
+-- the rank you are jumping to, which is why four ranks in a week costs so
+-- much more than one.
+function BT.MilestoneHonor(rank, target)
   local P = BT.PVP
-  rank = math.max(1, math.min(P.MAX_RANK, math.floor(tonumber(rank) or 1)))
-  local nowCP = BT.RankCP(rank, progress)
-  local earnedCP = BT.HonorToCP(weekHonor)
-  -- you travel a fraction of the way towards what the week earned you, and
-  -- the fraction is set by the rank you are on now
-  local f = P.factor[rank] or P.factor[#P.factor]
-  local newCP = nowCP + (earnedCP - nowCP) * f
-  if newCP < 0 then newCP = 0 end
-  local newRank, newProgress = BT.CPToRank(newCP)
-  return newRank, newProgress, newCP - nowCP, newCP
+  rank = math.max(1, math.floor(tonumber(rank) or 1))
+  target = math.floor(tonumber(target) or 0)
+  if target <= rank or target > P.MAX_RANK then return nil end
+  if target > rank + 4 then return nil end          -- four ranks is the most
+  if target == rank + 1 then return P.honorFor[rank] end
+  return P.honorFor[target]
 end
 
--- How much honour this week to end up exactly where you are now. Below this
--- you fall; above it you climb. It is the one number worth putting on screen.
-function BT.HonorToHold(rank, progress)
-  local nowCP = BT.RankCP(rank, progress)
-  return BT.CPToHonor(nowCP)
+-- What meeting that milestone awards, in contribution points.
+--
+-- Each rank you climb hands over a fraction of that rank's span. The first
+-- one is capped by how far through your current rank you already are - you
+-- cannot be paid twice for ground you have already covered - and there is a
+-- small bonus in the middle of the ladder. The two flat figures at ranks 9
+-- and 11 are the game's own, put there to stop the whole thing being gamed
+-- with dishonourable kills.
+function BT.CPGain(rank, currentCP, target)
+  local P = BT.PVP
+  if rank == 0 then rank = 1 end
+  target = math.floor(tonumber(target) or 0)
+  if target <= rank then return 0, 0 end
+
+  local total, bonus = 0, 0
+  local buckets = target - rank
+  for key = rank + 1, math.min(target, P.MAX_RANK) do
+    local span = P.floor[key] - P.floor[key - 1]
+    local gain = span * (P.factor[key] or P.factor[#P.factor])
+
+    if key == rank + 1 then
+      if rank == 9 then gain = 3000
+      elseif rank == 11 then gain = 2500 end
+      -- the cap: what is left of the rank you are standing in
+      if span > 0 then
+        local left = span * (1 - ((currentCP - P.floor[key - 1]) / span))
+        if left < gain then gain = left end
+      end
+      if (rank == 6 and buckets == 4)
+        or (rank == 7 and buckets >= 3)
+        or (rank == 8 and (buckets == 2 or buckets == 3))
+        or (rank == 9 and buckets >= 3)
+        or (rank == 10 and buckets >= 2) then
+        bonus = 500
+      elseif rank == 8 and buckets == 4 then
+        bonus = 1000
+      end
+    end
+    total = total + gain
+  end
+  return total, bonus
 end
 
--- And how much to reach a given rank at the next reset. Solved rather than
--- searched: the factor is linear, so the CP needed comes straight back out.
-function BT.HonorForRank(rank, progress, targetRank, targetProgress)
+-- Every milestone open to you this week, cheapest first. Up to four, fewer
+-- near the top of the ladder because there is less ladder left.
+function BT.Milestones(rank, progress)
+  local P = BT.PVP
+  rank = math.floor(tonumber(rank) or 0)
+  if rank < 1 then rank = 1 end
+  local cp = BT.RankCP(rank, progress)
+  local out = {}
+  for k = 1, 4 do
+    local target = rank + k
+    local honor = BT.MilestoneHonor(rank, target)
+    if honor then
+      local gain, bonus = BT.CPGain(rank, cp, target)
+      local newCP = cp + gain + bonus
+      local newRank, newProgress = BT.CPToRank(newCP)
+      out[#out + 1] = {
+        step = k, honor = honor, target = target,
+        rank = newRank, progress = newProgress, cp = newCP
+      }
+    end
+  end
+  return out
+end
+
+-- Where this week's honour has already put you: the best milestone you have
+-- actually met. Nothing until the first one, and no credit for anything past
+-- the last.
+function BT.MetMilestone(rank, progress, honor, kills)
+  honor = tonumber(honor) or 0
+  local P = BT.PVP
+  local enough = (tonumber(kills) or 0) >= P.MIN_HK
+  local best
+  for _, m in ipairs(BT.Milestones(rank, progress)) do
+    if honor >= m.honor and enough then best = m end
+  end
+  return best
+end
+
+-- The next one you have not met, and how much more it wants. This is the
+-- number to put on screen: everything between here and there is wasted.
+function BT.NextMilestone(rank, progress, honor)
+  honor = tonumber(honor) or 0
+  for _, m in ipairs(BT.Milestones(rank, progress)) do
+    if honor < m.honor then return m, m.honor - honor end
+  end
+  return nil
+end
+
+--------------------------------------------------------------------------
+-- Several weeks: the plan
+--------------------------------------------------------------------------
+-- Week by week to the rank you want, taking the biggest useful step each
+-- time. Overshooting is never worth paying for, so the last week takes the
+-- smallest milestone that still arrives.
+function BT.PlanToRank(targetRank, fromRank, fromProgress)
   local P = BT.PVP
   targetRank = math.max(1, math.min(P.MAX_RANK, math.floor(tonumber(targetRank) or 1)))
-  local nowCP = BT.RankCP(rank, progress)
-  local wantCP = BT.RankCP(targetRank, targetProgress or 0)
-  local f = P.factor[rank] or P.factor[#P.factor]
-  if f <= 0 then return nil end
-  local needCP = nowCP + (wantCP - nowCP) / f
-  if needCP <= nowCP then return 0 end
-  if needCP > P.ceiling[P.MAX_RANK] then return nil end   -- not in one week
-  return BT.CPToHonor(needCP)
+  local rank = math.max(1, math.floor(tonumber(fromRank) or 1))
+  local progress = tonumber(fromProgress) or 0
+
+  local weeks, total = {}, 0
+  if rank >= targetRank then
+    return { done = true, weeks = weeks, total = 0, target = targetRank }
+  end
+
+  for _ = 1, P.MAX_WEEKS do
+    local options = BT.Milestones(rank, progress)
+    if #options == 0 then break end
+    -- the cheapest option that reaches the target, or the biggest one there is
+    local pick = options[#options]
+    for _, m in ipairs(options) do
+      if m.rank >= targetRank then pick = m break end
+    end
+    total = total + pick.honor
+    weeks[#weeks + 1] = {
+      week = #weeks + 1, honor = pick.honor, total = total,
+      from = rank, fromProgress = progress,
+      rank = pick.rank, progress = pick.progress,
+      options = options, picked = pick.step
+    }
+    if pick.rank <= rank and pick.progress <= progress then break end  -- stuck
+    rank, progress = pick.rank, pick.progress
+    if rank >= targetRank then
+      return { weeks = weeks, total = total, target = targetRank,
+               endRank = rank, endProgress = progress }
+    end
+  end
+  return { weeks = weeks, total = total, target = targetRank,
+           endRank = rank, endProgress = progress, unreachable = true }
 end
 
 --------------------------------------------------------------------------
@@ -177,7 +263,6 @@ function BT.MyProgress()
   return 0
 end
 
--- Honour and kills, this week and last
 function BT.WeekHonor()
   if not GetPVPThisWeekStats then return 0, 0 end
   local kills, honor = GetPVPThisWeekStats()
@@ -188,6 +273,15 @@ function BT.LastWeekHonor()
   if not GetPVPLastWeekStats then return 0, 0, nil end
   local kills, honor, standing = GetPVPLastWeekStats()
   return tonumber(honor) or 0, tonumber(kills) or 0, tonumber(standing)
+end
+
+-- Honour per kill, measured rather than assumed - it depends who you are
+-- killing and how many of you are sharing it, so nobody else's figure is any
+-- use. nil until there is enough of your own to mean anything.
+function BT.HonorPerKill()
+  local honor, kills = BT.WeekHonor()
+  if not kills or kills < 5 or not honor or honor <= 0 then return nil end
+  return honor / kills
 end
 
 --------------------------------------------------------------------------
@@ -256,18 +350,27 @@ function BT.PvPState()
   local rank = BT.MyRank() or 0
   local progress = BT.MyProgress()
   local honor, kills = BT.WeekHonor()
-  local newRank, newProgress, change = BT.PredictReset(rank, progress, honor)
-  local hold = BT.HonorToHold(rank, progress)
+  local met = BT.MetMilestone(rank, progress, honor, kills)
+  local nextOne, short = BT.NextMilestone(rank, progress, honor)
+  local all = BT.Milestones(rank, progress)
+
   return {
     rank = rank, rankName = BT.RankName(rank), progress = progress,
     honor = honor, kills = kills,
-    newRank = newRank, newRankName = BT.RankName(newRank),
-    newProgress = newProgress, change = change,
-    hold = hold, short = math.max(0, hold - honor),
+    enoughKills = kills >= BT.PVP.MIN_HK,
+    killsShort = math.max(0, BT.PVP.MIN_HK - kills),
+    milestones = all,
+    met = met,
+    -- where the week ends if you stop right now
+    newRank = met and met.rank or rank,
+    newRankName = BT.RankName(met and met.rank or rank),
+    newProgress = met and met.progress or progress,
+    nextMilestone = nextOne,
+    short = short,
+    -- the most this week could possibly be worth
+    best = all[#all],
     rate = BT.HonorRate(),
-    session = ChainCharDB.honorSession or 0,
-    nextRank = (rank < BT.PVP.MAX_RANK)
-      and BT.HonorForRank(rank, progress, rank + 1, 0) or nil
+    session = ChainCharDB.honorSession or 0
   }
 end
 
@@ -275,9 +378,15 @@ end
 function BT.PvPChunk()
   local s = BT.PvPState()
   if (s.honor or 0) <= 0 and (s.rank or 0) <= 0 then return nil end
-  local arrow, col
-  if s.newRank > s.rank then arrow, col = "up to", C.good
-  elseif s.newRank < s.rank then arrow, col = "down to", C.bad
-  else arrow, col = "holds at", C.dim end
-  return col .. BT.N(s.honor) .. " honor  " .. arrow .. " " .. s.newRankName .. C.off
+  if not s.enoughKills then
+    return C.warn .. BT.N(s.honor) .. " honor  -  " .. s.killsShort
+      .. " more kills before any of it counts" .. C.off
+  end
+  if s.nextMilestone then
+    return C.dim .. BT.N(s.honor) .. " honor" .. C.off .. "  "
+      .. C.warn .. BT.N(s.short) .. " more" .. C.off
+      .. C.dim .. " -> " .. BT.RankName(s.nextMilestone.rank) .. C.off
+  end
+  return C.good .. BT.N(s.honor) .. " honor  ->  " .. s.newRankName
+    .. "  (the most this week can give)" .. C.off
 end

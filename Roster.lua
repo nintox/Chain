@@ -531,10 +531,12 @@ end
 -- names you listed and nobody else. Receiving is unchanged - you hear whatever
 -- reaches you - but this decides how far your own numbers travel.
 local SCOPES = { "all", "guild", "friends" }
+-- Short on purpose: this goes on a button 150 pixels wide, next to another
+-- button, and "everyone with the addon" ran straight through both of them.
 local SCOPE_NAMES = {
-  all = "everyone with the addon",
+  all = "everyone",
   guild = "my guild",
-  friends = "only these names",
+  friends = "these names",
 }
 
 function BT.ShareScopeName()

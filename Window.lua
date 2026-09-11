@@ -173,6 +173,19 @@ local LAYOUTS = {
       { "source",   70, nil }
     }
   },
+  pvp = {
+    title = "The rank you want, week by week. Honor below a milestone is "
+      .. "worth nothing and honor past one is wasted - so stop on the number.",
+    cols = {
+      { "week",          56, "week" },
+      { "honor to hit", 100, "honor" },
+      { "a day",         80, "perDay" },
+      { "kills",         66, "kills" },
+      { "ends you at",  150, nil },
+      { "honor so far", 100, "total" },
+      { "",             268, nil }
+    }
+  },
   route = {
     title = "The plan from here. 'g/lvl now' and 'at the end' are what a "
       .. "level costs there today, and by the time you leave it.",
@@ -522,6 +535,89 @@ local function EnemyRows()
   return out
 end
 
+-- The rank planner.
+--
+-- Since 1.14 this is a staircase, not a slope: each week has up to four
+-- honour milestones and nothing in between them counts for anything. So the
+-- useful table is not "how much a week" - it is which number to stop on, this
+-- week and every week after, until you are where you wanted to be.
+local function PvPRows()
+  local s = BT.PvPState()
+  local target = ChainCharDB.pvpTarget
+  if not target or target <= (s.rank or 0) then
+    target = math.min(BT.PVP.MAX_RANK, math.max(1, (s.rank or 0) + 1))
+  end
+  ChainCharDB.pvpTarget = target
+
+  local plan = BT.PlanToRank(target, s.rank, s.progress)
+  local perKill = BT.HonorPerKill()
+  local out = {}
+
+  local function Kills(honor)
+    if not honor or honor <= 0 then return C.dim .. "15" .. C.off end
+    if not perKill or perKill <= 0 then return C.dim .. "?" .. C.off end
+    return BT.N(math.max(BT.PVP.MIN_HK, honor / perKill))
+  end
+
+  for i, w in ipairs(plan.weeks) do
+    local first = (i == 1)
+    -- how far off you are this week, and only this week: the weeks after it
+    -- have not started, so there is nothing to be short of
+    local note = ""
+    if first then
+      if not s.enoughKills then
+        note = C.bad .. s.killsShort .. " more kills before any of it counts" .. C.off
+      elseif (s.honor or 0) >= w.honor then
+        note = C.good .. "done - stop, the rest of the week is wasted" .. C.off
+      else
+        note = C.warn .. BT.N(w.honor - (s.honor or 0)) .. " more to go" .. C.off
+          .. C.dim .. "  (you have " .. BT.N(s.honor or 0) .. ")" .. C.off
+      end
+    elseif w.picked and w.picked > 1 then
+      note = C.dim .. "a " .. w.picked .. "-rank week" .. C.off
+    end
+
+    table.insert(out, {
+      week = w.week, honor = w.honor, total = w.total,
+      perDay = w.honor / 7, kills = perKill and w.honor / perKill or nil,
+      cells = {
+        (first and C.gold or "") .. "week " .. w.week .. (first and C.off or ""),
+        (first and C.gold or "") .. BT.N(w.honor) .. (first and C.off or ""),
+        BT.N(w.honor / 7),
+        Kills(w.honor),
+        BT.RankName(w.rank) .. C.dim .. "  " .. BT.Pct(w.progress) .. C.off,
+        C.dim .. BT.N(w.total) .. C.off,
+        note
+      },
+      tip = (function()
+        local t = { "Week " .. w.week .. ": " .. BT.N(w.honor) .. " honor",
+          "Ends the week at " .. BT.RankName(w.rank) .. ", "
+            .. BT.Pct(w.progress) .. " through.",
+          " ",
+          "Every milestone open to you that week:" }
+        for _, m in ipairs(w.options) do
+          t[#t + 1] = "   " .. BT.N(m.honor) .. "  ->  " .. BT.RankName(m.rank)
+            .. "  " .. BT.Pct(m.progress)
+            .. (m.step == w.picked and "   <- this one" or "")
+        end
+        t[#t + 1] = " "
+        t[#t + 1] = "Anything between two of those is worth the same as the "
+          .. "lower one, and anything past the last is worth nothing at all."
+        return t
+      end)()
+    })
+  end
+
+  if #out == 0 then
+    table.insert(out, { week = 0, cells = {
+      "", "", "", "",
+      C.good .. BT.RankName(s.rank) .. C.off, "",
+      "you are already at " .. BT.RankName(target)
+    } })
+  end
+  return out
+end
+
 local function LockRows()
   local out = {}
   for _, e in ipairs(BT.InstanceLog()) do
@@ -684,6 +780,7 @@ local function Data()
   if mode == "ads" then return AdRows() end
   if mode == "groups" then return GroupRows() end
   if mode == "enemies" then return EnemyRows() end
+  if mode == "pvp" then return PvPRows() end
   if mode == "route" then return RouteRows() end
   if mode == "gold" then return GoldRows() end
   if mode == "locks" then return LockRows() end
@@ -693,6 +790,28 @@ end
 
 -- One line under the table saying what the tab adds up to
 local function Summary()
+  if mode == "pvp" then
+    local s2 = BT.PvPState()
+    local target = ChainCharDB.pvpTarget or ((s2.rank or 0) + 1)
+    local plan = BT.PlanToRank(target, s2.rank, s2.progress)
+    local txt = "you are " .. C.gold .. s2.rankName .. C.off
+      .. C.dim .. "  " .. BT.Pct(s2.progress or 0) .. " through" .. C.off
+      .. "  ->  " .. C.gold .. BT.RankName(target) .. C.off
+    if plan.done or #plan.weeks == 0 then
+      return txt .. "  -  " .. C.good .. "already there" .. C.off
+    end
+    txt = txt .. "  -  " .. C.gold .. #plan.weeks .. " week"
+      .. (#plan.weeks == 1 and "" or "s") .. C.off
+      .. ", " .. C.gold .. BT.N(plan.total) .. C.off .. " honor in all"
+    if plan.unreachable then
+      txt = txt .. "  -  " .. C.bad .. "and it stalls before it gets there" .. C.off
+    end
+    if not s2.enoughKills then
+      txt = txt .. C.dim .. "  -  every week needs " .. BT.PVP.MIN_HK
+        .. " honorable kills too" .. C.off
+    end
+    return txt
+  end
   if mode == "gold" then
     local perLevel, spent, levels = BT.SpentPerLevel()
     if not spent or spent == 0 then return "nothing paid yet" end
@@ -869,6 +988,18 @@ local function Render()
     local step = BT.FocusStep()
     win.addNote2:SetText(step and (C.dim .. "listed under " .. step.label .. C.off)
       or (C.dim .. "listed everywhere" .. C.off))
+  end
+
+  -- and the rank box belongs to the Rank tab, on the same line
+  local planning = (mode == "pvp")
+  for _, w in ipairs({ win.targetLabel, win.targetBox, win.targetUp,
+                       win.targetDown, win.targetName }) do
+    if w then w:SetShown(planning) end
+  end
+  if planning and win.targetBox then
+    local t = ChainCharDB.pvpTarget or 1
+    if not win.targetBox:HasFocus() then win.targetBox:SetText(tostring(t)) end
+    win.targetName:SetText(C.gold .. BT.RankName(t) .. C.off)
   end
 
   local pages = math.max(1, math.ceil(#data / ROWS))
@@ -1075,9 +1206,10 @@ local function Build()
                          { "ads", "Adverts" }, { "groups", "Groups" },
                          { "reported", "Reported" },
                          { "gold", "Trade" }, { "enemies", "Enemies" },
+                         { "pvp", "Rank" },
                          { "locks", "Instances" },
                          { "route", "Route" } }) do
-    -- eight of them now, so they are measured rather than spaced by hand:
+    -- ten of them now, so they are measured rather than spaced by hand:
     -- one more tab used to push the last one off the right-hand edge
     local b = Button(win, def[2], 74, 20, function() SetMode(def[1]) end)
     b:SetPoint("TOPLEFT", tx, -28)
@@ -1339,6 +1471,51 @@ local function Build()
   win.addButton:SetPoint("TOPLEFT", 526, addY + 3)
   win.addNote2 = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   win.addNote2:SetPoint("TOPLEFT", 596, addY)
+
+  -- The rank you are aiming at, on the same line and in the same place as the
+  -- add-someone row, because only one of the two is ever on screen.
+  win.targetLabel = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  win.targetLabel:SetPoint("TOPLEFT", 12, addY)
+  win.targetLabel:SetText("rank you want")
+
+  win.targetBox = CreateFrame("EditBox", nil, win)
+  win.targetBox:SetSize(40, 18)
+  win.targetBox:SetPoint("TOPLEFT", 100, addY + 3)
+  win.targetBox:SetAutoFocus(false)
+  win.targetBox:SetFontObject("GameFontHighlightSmall")
+  win.targetBox:SetJustifyH("CENTER")
+  win.targetBox:SetMaxLetters(2)
+  win.targetBox:SetNumeric(true)
+  win.targetBox.bg = Tex(win.targetBox, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
+  win.targetBox.bg:SetAllPoints()
+
+  local function SetTarget()
+    local v = tonumber(win.targetBox:GetText())
+    if v then
+      ChainCharDB.pvpTarget = math.max(1, math.min(BT.PVP.MAX_RANK, math.floor(v)))
+    end
+    win.targetBox:ClearFocus()
+    Render()
+  end
+  win.targetBox:SetScript("OnEnterPressed", SetTarget)
+  win.targetBox:SetScript("OnEditFocusLost", SetTarget)
+  win.targetBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+  local function Step(by)
+    return function()
+      local now = ChainCharDB.pvpTarget or ((BT.MyRank() or 0) + 1)
+      ChainCharDB.pvpTarget = math.max(1, math.min(BT.PVP.MAX_RANK, now + by))
+      Render()
+    end
+  end
+  win.targetDown = Button(win, "-", 20, 18, Step(-1))
+  win.targetDown:SetPoint("TOPLEFT", 76, addY + 3)
+  win.targetUp = Button(win, "+", 20, 18, Step(1))
+  win.targetUp:SetPoint("TOPLEFT", 144, addY + 3)
+
+  win.targetName = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  win.targetName:SetPoint("TOPLEFT", 174, addY)
+  win.targetName:SetJustifyH("LEFT")
 
   win.summary = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   win.summary:SetPoint("BOTTOMLEFT", 12, 26)

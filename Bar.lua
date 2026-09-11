@@ -812,31 +812,38 @@ function BT.BarTooltip(owner)
       .. (complete and "" or (C.dim .. "  partly estimated" .. C.off)))
   end
 
-  -- Honour, but only once there is any. A rank line on a character who has
-  -- never killed anybody is four lines of nothing.
+  -- Honour, but only once there is any. A rank block on a character who has
+  -- never killed anybody is six lines of nothing.
   if BT.PvPState then
-    local s = BT.PvPState()
-    if (s.honor or 0) > 0 or (s.rank or 0) > 0 then
+    local p = BT.PvPState()
+    if (p.honor or 0) > 0 or (p.rank or 0) > 0 then
       GameTooltip:AddLine(" ")
-      Pair("rank", s.rankName .. C.dim .. "  " .. BT.Pct(s.progress or 0) .. C.off)
-      Pair("honor this week", BT.N(s.honor)
-        .. (s.kills and s.kills > 0 and (C.dim .. "  " .. s.kills .. " kills" .. C.off) or ""))
-      local col = (s.newRank > s.rank) and C.good
-               or (s.newRank < s.rank) and C.bad or C.dim
-      Pair("after the reset", col .. s.newRankName .. C.off
-        .. C.dim .. "  " .. BT.Pct(s.newProgress or 0) .. C.off)
-      if (s.short or 0) > 0 then
-        Pair("to hold this rank", C.bad .. BT.N(s.short) .. " more" .. C.off)
+      Pair("rank", p.rankName .. C.dim .. "  " .. BT.Pct(p.progress or 0) .. C.off)
+      Pair("honor this week", BT.N(p.honor)
+        .. C.dim .. "  " .. (p.kills or 0) .. " kills" .. C.off)
+      if not p.enoughKills then
+        Pair("before any of it counts", C.bad .. p.killsShort .. " more kills" .. C.off)
       end
-      if s.nextRank and s.nextRank > s.honor then
-        Pair("to climb one rank", BT.N(s.nextRank - s.honor) .. " more")
+      -- where the week ends if you stopped now, and what the next number is.
+      -- Both, because the gap between them is the whole game: honour in
+      -- between is worth exactly nothing.
+      Pair("stopping now", (p.met and C.good or C.dim)
+        .. (p.met and (p.newRankName .. "  " .. BT.Pct(p.newProgress))
+            or "no progress") .. C.off)
+      if p.nextMilestone then
+        Pair("next milestone", C.warn .. BT.N(p.nextMilestone.honor) .. C.off
+          .. C.dim .. "  " .. BT.N(p.short) .. " to go  ->  "
+          .. BT.RankName(p.nextMilestone.rank) .. C.off)
+      else
+        Pair("next milestone", C.dim .. "none - this week is spent" .. C.off)
       end
-      if s.rate and s.rate > 0 then
-        Pair("honor per hour", BT.N(s.rate))
+      if p.rate and p.rate > 0 then
+        Pair("honor per hour", BT.N(p.rate)
+          .. (p.short and p.rate > 0
+              and (C.dim .. "  " .. BT.T(p.short / p.rate * 3600) .. " to the next"
+                   .. C.off) or ""))
       end
-      -- said plainly, because it is arithmetic on this week's numbers and not
-      -- something the server has promised
-      GameTooltip:AddLine("a model of the weekly reset, not the server",
+      GameTooltip:AddLine("honor between two milestones is worth nothing",
                           0.5, 0.5, 0.5)
     end
   end
