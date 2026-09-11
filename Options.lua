@@ -1,4 +1,4 @@
--- Level Tracker: settings, the route editor, and slash commands.
+-- Chain: settings, the route editor, and slash commands.
 
 local ADDON, BT = ...
 local C = BT.COL
@@ -294,6 +294,22 @@ local function BuildOptions()
   -- Two lines and no more: "locked 5/5 - free in 12m" and "free again".
   -- A countdown in party chat is the fastest way to be asked to turn an
   -- addon off.
+  -- their own row: the labels are long and the column beside them is close
+  opt.watch = Toggle(1, "Watch for enemies", function(v)
+    ChainDB.watchEnemies = v
+  end)
+  opt.alertAll = Toggle(2, "Alert on everyone", function(v)
+    ChainDB.alertEveryone = v
+  end)
+  opt.enemySound = Toggle(3, "Sound on a marked one", function(v)
+    ChainDB.enemySound = v
+  end)
+  NextRow()
+  opt.nearbyList = Toggle(1, "List on screen", function(v)
+    ChainDB.nearbyList = v
+    if BT.RefreshNearby then BT.RefreshNearby() end
+  end)
+  NextRow()
   opt.announceLock = Toggle(1, "Tell the group your lockout",
     function(v) ChainDB.announceLock = v end)
   opt.minimap = Toggle(3, "Button on the minimap", function(v)
@@ -461,6 +477,10 @@ function BT.RenderOptions()
   opt.groups:SetChecked(db.readGroups and true or false)
   opt.announceLock:SetChecked(db.announceLock and true or false)
   opt.minimap:SetChecked(db.minimap ~= false)
+  opt.watch:SetChecked(db.watchEnemies and true or false)
+  opt.alertAll:SetChecked(db.alertEveryone and true or false)
+  opt.enemySound:SetChecked(db.enemySound and true or false)
+  opt.nearbyList:SetChecked(db.nearbyList ~= false)
   opt.share:SetChecked(db.share and true or false)
   opt.nit:SetChecked(db.useNIT and true or false)
   opt.lock:SetChecked(db.locked and true or false)
@@ -727,11 +747,11 @@ SlashCmdList["CHAIN"] = function(input)
   local cmd, rest = (input or ""):lower():match("^(%S*)%s*(.*)$")
   if cmd == "" or cmd == "window" then
     BT.ToggleWindow()
-  elseif cmd == "boosters" or cmd == "gold" or cmd == "route"
+  elseif cmd == "boosters" or cmd == "gold" or cmd == "trade" or cmd == "route"
       or cmd == "history" or cmd == "instances" or cmd == "adverts"
       or cmd == "groups" or cmd == "lfg" or cmd == "lfm" then
     BT.ShowTab(cmd == "history" and "runs" or cmd == "instances" and "locks"
-      or cmd == "adverts" and "ads"
+      or cmd == "adverts" and "ads" or cmd == "trade" and "gold"
       or (cmd == "lfg" or cmd == "lfm") and "groups" or cmd)
   elseif cmd == "config" or cmd == "options" or cmd == "opt" then
     BT.ToggleOptions()
@@ -749,7 +769,7 @@ SlashCmdList["CHAIN"] = function(input)
       if BT.bar then BT.bar:SetScale(v) end
       Say("scale " .. v)
     else
-      Say("usage: /levelbar scale 0.5 - 3")
+      Say("usage: /chain scale 0.5 - 3")
     end
   elseif cmd == "signal" then
     ChainDB.logSignal = not ChainDB.logSignal
@@ -811,9 +831,9 @@ SlashCmdList["CHAIN"] = function(input)
     ChainDB.logSignal = true
     ChainDB.snapSignal = true
     BT.EnableSignal()
-    BT.Signal("readycheck", "test from /levelbar testpush")
+    BT.Signal("readycheck", "test from /chain testpush")
     BT.lastSnap = nil                 -- the test wants both, back to back
-    BT.Signal("reset", "test from /levelbar testpush")
+    BT.Signal("reset", "test from /chain testpush")
     -- flush straight away rather than waiting for the timer: this command
     -- exists to be watched
     BT.lastFlush = nil
@@ -827,6 +847,36 @@ SlashCmdList["CHAIN"] = function(input)
       .. "should reach your phone in seconds."
       .. " They should be in Logs/WoWChatLog.txt now, and LevelPush should "
       .. "have buzzed your phone twice.")
+  elseif cmd == "kos" then
+    if rest and rest ~= "" then
+      BT.AddKOS(rest)
+      Say("marked " .. rest .. " - kill on sight")
+    else
+      BT.ShowTab("enemies")
+    end
+  elseif cmd == "enemies" or cmd == "spy" then
+    BT.ShowTab("enemies")
+  elseif cmd == "pvp" or cmd == "honor" or cmd == "honour" or cmd == "rank" then
+    local s = BT.PvPState()
+    if (s.honor or 0) <= 0 and (s.rank or 0) <= 0 then
+      Say("no honor this week yet")
+      return
+    end
+    Say(string.format("%s, %.0f%% through - %s honor this week over %d kills",
+      s.rankName, (s.progress or 0) * 100, BT.N(s.honor), s.kills or 0))
+    Say(string.format("  after the reset: %s, %.0f%% through",
+      s.newRankName, (s.newProgress or 0) * 100))
+    if (s.short or 0) > 0 then
+      Say("  " .. BT.N(s.short) .. " more honor to hold this rank")
+    end
+    if s.nextRank and s.nextRank > s.honor then
+      Say("  " .. BT.N(s.nextRank - s.honor) .. " more to climb one")
+    end
+    if s.rate and s.rate > 0 then
+      Say("  " .. BT.N(s.rate) .. " honor per hour")
+    end
+  elseif cmd == "nearby" then
+    Say("the list on screen is " .. (BT.ToggleNearby() and "on" or "off"))
   elseif cmd == "minimap" then
     Say("minimap button " .. (BT.ToggleMinimap() and "shown" or "hidden"))
   elseif cmd == "importnit" then
@@ -856,7 +906,8 @@ SlashCmdList["CHAIN"] = function(input)
     Say("reset announcements to the group are "
       .. (ChainDB.announce and "on" or "off"))
   elseif cmd == "export" then
-    BT.ShowExport(rest == "gold" and "trades" or "runs")
+    BT.ShowExport((rest == "gold" or rest == "trade" or rest == "trades")
+                  and "trades" or "runs")
   elseif cmd == "gold" or cmd == "spent" then
     local perLevel, spent, levels = BT.SpentPerLevel()
     if not spent or spent == 0 then Say("no trades recorded yet") return end
@@ -871,7 +922,7 @@ SlashCmdList["CHAIN"] = function(input)
     StaticPopup_Show("CHAIN_WIPE")
   elseif cmd == "stats" then
     local _, step = BT.Stage()
-    if not step then Say("no route set - /levelbar config") return end
+    if not step then Say("no route set - /chain config") return end
     local st, borrowed, by = BT.StepStats(step)
     if not st then Say(step.label .. ": nothing recorded yet") return end
     Say(string.format("%s: %s xp/run, %s per run, %.0f mobs, over %d runs%s",
@@ -882,26 +933,32 @@ SlashCmdList["CHAIN"] = function(input)
     end
   else
     Say("commands:")
-    print("  /levelbar            history, boosters and route")
-    print("  /levelbar boosters   straight to the booster list and prices")
-    print("  /levelbar config     pick instances, levels and prices")
-    print("  /levelbar stats      print the current step to chat")
-    print("  /levelbar rs         reset your instances")
-    print("  /levelbar testalert  preview the reset alert")
-    print("  /levelbar signal     write markers for the phone-notification script")
-    print("  /levelbar share      swap prices and thumbs with other addon users")
-    print("  /levelbar ads        read boost adverts out of chat")
-    print("  /levelbar adverts    everyone who has advertised, with whisper")
-    print("  /levelbar heard      the last adverts the addon picked up")
-    print("  /levelbar testpush   write test markers for the phone program")
-    print("  /levelbar flush      force the chat log out to disk")
-    print("  /levelbar announce   tell the group when the instance resets")
-    print("  /levelbar gold       what you have paid, and to whom")
-    print("  /levelbar export     every run as CSV (add 'gold' for trades)")
-    print("  /levelbar show       show or hide the bar")
-    print("  /levelbar lock       stop the bar being dragged")
-    print("  /levelbar scale 1.2  resize the bar")
-    print("  /levelbar reset      delete all recorded history")
-    print("  /levelbar debug      what the addon thinks is going on right now")
+    print("  /chain            history, boosters and route")
+    print("  /chain boosters   straight to the booster list and prices")
+    print("  /chain config     pick instances, levels and prices")
+    print("  /chain stats      print the current step to chat")
+    print("  /chain rs         reset your instances")
+    print("  /chain testalert  preview the reset alert")
+    print("  /chain signal     write markers for the phone-notification script")
+    print("  /chain share      swap prices and thumbs with other addon users")
+    print("  /chain ads        read boost adverts out of chat")
+    print("  /chain adverts    everyone who has advertised, with whisper")
+    print("  /chain groups     everyone looking rather than selling")
+    print("  /chain heard      the last adverts the addon picked up")
+    print("  /chain testpush   write test markers for the phone program")
+    print("  /chain flush      force the chat log out to disk")
+    print("  /chain announce   tell the group when the instance resets")
+    print("  /chain trade      what you have paid, and to whom")
+    print("  /chain pvp        your rank, and the one the next reset gives you")
+    print("  /chain enemies    everyone seen out there, and the KOS list")
+    print("  /chain kos NAME   mark somebody kill on sight")
+    print("  /chain nearby     the list of players on screen, on or off")
+    print("  /chain minimap    show or hide the minimap button")
+    print("  /chain export     every run as CSV (add 'trade' for trades)")
+    print("  /chain show       show or hide the bar")
+    print("  /chain lock       stop the bar being dragged")
+    print("  /chain scale 1.2  resize the bar")
+    print("  /chain reset      delete all recorded history")
+    print("  /chain debug      what the addon thinks is going on right now")
   end
 end

@@ -1,4 +1,4 @@
--- Level Tracker: the live half. Watches the game, decides when a run starts
+-- Chain: the live half. Watches the game, decides when a run starts
 -- and ends, and writes one record per finished run into the log.
 
 local ADDON, BT = ...
@@ -865,7 +865,7 @@ function BT.FrameHasSignal(frame)
   return false
 end
 
--- Where the marker ended up, for /levelbar testpush and the settings line
+-- Where the marker ended up, for /chain testpush and the settings line
 function BT.SignalWhere()
   if not ChainDB.logSignal then return nil end
   local i = BT.signalFrameIndex
@@ -1254,11 +1254,21 @@ function BT.OnEvent(_, event, ...)
     -- it - the instance id out of a nearby unit's GUID - and once we have it
     -- there is nothing left to do, so return before any redraw.
     local r = ChainCharDB.run
-    if not r or r.instId then return end
+    local watching = ChainDB.watchEnemies and BT.NoteCombatLogUnit
+    if (not r or r.instId) and not watching then return end
     if CombatLogGetCurrentEventInfo then
-      local _, _, _, src, _, _, _, dst = CombatLogGetCurrentEventInfo()
-      BT.NoteInstance(src)
-      if not r.instId then BT.NoteInstance(dst) end
+      local _, _, _, src, srcName, srcFlags, _, dst, dstName, dstFlags =
+        CombatLogGetCurrentEventInfo()
+      if r and not r.instId then
+        BT.NoteInstance(src)
+        if not r.instId then BT.NoteInstance(dst) end
+      end
+      -- the combat log reaches further than any nameplate: somebody casting
+      -- two rooms away is in it
+      if watching then
+        BT.NoteCombatLogUnit(src, srcName, srcFlags)
+        BT.NoteCombatLogUnit(dst, dstName, dstFlags)
+      end
     end
     return
   elseif event == "CHAT_MSG_COMBAT_XP_GAIN" then

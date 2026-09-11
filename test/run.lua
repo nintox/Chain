@@ -29,7 +29,7 @@ end
 
 -- the .toc order
 for _, f in ipairs({ "Data.lua", "Stats.lua", "Decay.lua", "Core.lua", "Trade.lua",
-                     "PvP.lua", "Roster.lua", "Bar.lua", "Minimap.lua", "Window.lua",
+                     "PvP.lua", "Enemy.lua", "Roster.lua", "Bar.lua", "Minimap.lua", "Window.lua",
                      "Options.lua" }) do
   loadFile(f)
 end
@@ -87,11 +87,11 @@ eq(#BT.Plan(), 1, "ruta har eitt steg")
 --------------------------------------------------------------------------
 print("== ein boost-run ==")
 S.level, S.xp, S.xpMax = 20, 0, 23200
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 S.zone, S.map, S.inInstance = "The Stockade", 34, true
 S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
 ok(ChainCharDB.run ~= nil, "run starta")
-eq(ChainCharDB.run.by, "Misscall", "booster identifisert utan realm")
+eq(ChainCharDB.run.by, "Boostar", "booster identifisert utan realm")
 eq(ChainCharDB.run.id, "stock", "run knytt til steget")
 
 -- ti drap og litt xp
@@ -109,7 +109,7 @@ S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
 eq(#ChainDB.runs, 1, "runden lagra")
 eq(ChainDB.runs[1].xp, 9000, "lagra xp")
 eq(ChainDB.runs[1].t, 420, "lagra tid")
-eq(ChainDB.runs[1].by, "Misscall", "lagra booster")
+eq(ChainDB.runs[1].by, "Boostar", "lagra booster")
 
 --------------------------------------------------------------------------
 print("== level-opp midt i ein run ==")
@@ -138,7 +138,7 @@ print("== ekte inn- og utsoning (lasteskjerm begge vegar) ==")
 ChainDB.runs = {}
 ChainCharDB.run = nil
 S.level, S.xp, S.xpMax = 20, 0, 23200
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 
 -- inn: PLAYER_ENTERING_WORLD med begge flagg false, så zone-endringa
 S.zone, S.map, S.inInstance = "The Stockade", 34, true
@@ -161,7 +161,7 @@ S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
 eq(#ChainDB.runs, 1, "runden hamna i historikken")
 eq(ChainDB.runs[1].xp, 8000, "med rett xp")
 eq(ChainDB.runs[1].k, 8, "og rett mobs")
-eq(ChainDB.runs[1].by, "Misscall", "og boosteren")
+eq(ChainDB.runs[1].by, "Boostar", "og boosteren")
 
 -- innlogging midt inne i ein instans er framleis partial og blir ikkje lagra
 S.zone, S.map, S.inInstance = "The Stockade", 34, true
@@ -189,27 +189,27 @@ local function record(by, xp, secs, kills)
     id = "stock", by = by, xp = xp, k = kills, lvl = 20, grp = 2, grpAvg = 40 })
   S.now = S.now + secs + 60
 end
-for i = 1, 4 do record("Misscall", 9000, 420, 90) end
-for i = 1, 4 do record("Torkel", 5000, 720, 55) end
+for i = 1, 4 do record("Boostar", 9000, 420, 90) end
+for i = 1, 4 do record("Snoegg", 5000, 720, 55) end
 
 S.level, S.xp = 20, 0
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 local _, step = BT.Stage()
 local st, borrowed, who = BT.StepStats(step)
-eq(who, "Misscall", "brukar Misscall sine tal")
-near(st.xp, 9000, "Misscall xp/run")
+eq(who, "Boostar", "brukar Boostar sine tal")
+near(st.xp, 9000, "Boostar xp/run")
 local fastRuns = BT.Forecast()
 
-S.party = { { name = "Torkel-Firemaw", lvl = 60 } }
+S.party = { { name = "Snoegg-Testrealm", lvl = 60 } }
 st, borrowed, who = BT.StepStats(step)
-eq(who, "Torkel", "brukar Torkel sine tal")
-near(st.xp, 5000, "Torkel xp/run")
+eq(who, "Snoegg", "brukar Snoegg sine tal")
+near(st.xp, 5000, "Snoegg xp/run")
 local slowRuns = BT.Forecast()
 ok(slowRuns > fastRuns * 1.5, "treg booster gjev mange fleire runs")
-print(string.format("   Misscall %.1f runs, Torkel %.1f runs", fastRuns, slowRuns))
+print(string.format("   Boostar %.1f runs, Snoegg %.1f runs", fastRuns, slowRuns))
 
 -- ny booster utan nok data
-S.party = { { name = "Ny-Firemaw", lvl = 60 } }
+S.party = { { name = "Ny-Testrealm", lvl = 60 } }
 st, borrowed, who = BT.StepStats(step)
 eq(who, nil, "under 3 runs gjev ikkje eigne tal")
 record("Ny", 7000, 600, 70); record("Ny", 7000, 600, 70); record("Ny", 7000, 600, 70)
@@ -235,7 +235,7 @@ ChainDB.runs = {}
 BT.Touch()
 ChainCharDB.run = nil
 S.level, S.xp, S.xpMax = 20, 0, 23200
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 S.zone, S.map, S.inInstance = "Stormwind Stockade", 34, true
 S.Fire(frame, "PLAYER_ENTERING_WORLD", false, false)
 eq(ChainCharDB.run.id, "stock", "runden knytt til steget trass nytt namn")
@@ -252,7 +252,7 @@ eq(borrowedx, false, "Route brukar eigne tal, ikkje eit anslag")
 
 -- gamle runs utan id skal få det ved innlasting
 table.insert(ChainDB.runs, { at = S.now, t = 300, zone = "Stormwind Stockade",
-  by = "Algorismus", xp = 8565, k = 93, lvl = 26 })
+  by = "Sjekkar", xp = 8565, k = 93, lvl = 26 })
 BT.Touch()
 eq(#BT.Runs({ id = "stock" }), 1, "gammal run manglar steg")
 S.Fire(frame, "ADDON_LOADED", "Chain")
@@ -266,7 +266,7 @@ print("== boost eller ikkje ==")
 S.party = { { name = "Kompis", lvl = 21 }, { name = "Annan", lvl = 19 } }
 eq(BT.Booster(), nil, "jamn gruppe har ingen booster")
 eq(BT.CurrentBoost(), false, "jamn gruppe er ikkje boost")
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 eq(BT.CurrentBoost(), true, "60 i gruppa er boost")
 S.party = {}
 eq(BT.CurrentBoost(), true, "aleine = planlegging som boost")
@@ -284,7 +284,7 @@ S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
 S.party = { { name = "Kompis", lvl = 21 } }
 local ownStats = BT.StepStats(step)
 near(ownStats.xp, 2000, "eigne runs blandar seg ikkje med boost")
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 local boostStats = BT.StepStats(step)
 near(boostStats.xp, 9000, "boost-tala er urørte")
 
@@ -440,9 +440,9 @@ ChainCharDB.resetZone = "The Stockade"
 ChainDB.soundRepeat = 1
 S.sounds = 1
 -- NIT si party-melding rett etter skal ikkje gje lyd nummer to
-S.Fire(frame, "CHAT_MSG_PARTY", "Instances reset!", "Misscall-Firemaw")
+S.Fire(frame, "CHAT_MSG_PARTY", "Instances reset!", "Boostar-Testrealm")
 eq(S.sounds, 1, "ingen dobbel lyd")
-eq(select(3, BT.ResetReady()), "Misscall", "kven som resetta")
+eq(select(3, BT.ResetReady()), "Boostar", "kven som resetta")
 
 -- to ulike lydar: inne tyder "ut", ute tyder "inn", og du skal høyre skilnaden
 do
@@ -495,7 +495,7 @@ ChainCharDB.resetAt = S.now
 ChainCharDB.resetZone = "The Stockade"
 local full = table.concat(BT.AllLines(), "\n")
 ok(full:find("you are at 5/5"), "seier at du er låst ute i staden for 'go in'")
-ok(not full:find("reset by Misscall %- go in"), "ingen 'go in' på 5/5")
+ok(not full:find("reset by Boostar %- go in"), "ingen 'go in' på 5/5")
 -- med plass att skal den seie go in
 ChainDB.entries = {}
 full = table.concat(BT.AllLines(), "\n")
@@ -731,8 +731,8 @@ end
 -- ready check skal varsle
 S.said = {}
 S.sounds = 0
-S.Fire(frame, "READY_CHECK", "Algorismus-Firemaw")
-eq(BT.readyCheckBy, "Algorismus", "kven som starta ready check")
+S.Fire(frame, "READY_CHECK", "Sjekkar-Testrealm")
+eq(BT.readyCheckBy, "Sjekkar", "kven som starta ready check")
 ok(S.said[1] and S.said[1]:find("LTPUSH readycheck"), "markør for ready check")
 -- Blizzard sin eigen popup held i rommet; vi legg ikkje noko oppå
 eq(S.sounds, 0, "ingen ekstra lyd frå oss")
@@ -753,7 +753,7 @@ eq(BT.IdleMin(), 40, "40 minutt stille")
 
 --------------------------------------------------------------------------
 print("== tekstbreidde ==")
-S.party = { { name = "Misscall-Firemaw", lvl = 60 }, { name = "A", lvl = 33 },
+S.party = { { name = "Boostar-Testrealm", lvl = 60 }, { name = "A", lvl = 33 },
             { name = "B", lvl = 26 }, { name = "C", lvl = 24 } }
 S.level, S.xp, S.xpMax = 23, 12000, 31700
 S.rested = 4000
@@ -763,7 +763,7 @@ ChainCharDB.run.xp, ChainCharDB.run.k = 8472, 93
 ChainCharDB.run.reentry = true
 ChainCharDB.resetAt = S.now
 ChainCharDB.resetZone = "The Stockade"
-ChainCharDB.resetBy = "Misscall"
+ChainCharDB.resetBy = "Boostar"
 S.now = S.now + 8 * 60
 local slots = BT.BuildText()
 local body = table.concat(BT.AllLines(slots), "\n")
@@ -939,12 +939,12 @@ print("== gull og trade-logg ==")
 local tf = BT.tradeFrame
 ChainDB.trades = {}
 S.level = 22
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
-S.tradeTarget = "Misscall-Firemaw"
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
+S.tradeTarget = "Boostar-Testrealm"
 S.playerMoney, S.targetMoney = 0, 0
 
 local function doTrade(gave, got, who)
-  S.tradeTarget = who or "Misscall-Firemaw"
+  S.tradeTarget = who or "Boostar-Testrealm"
   S.playerMoney, S.targetMoney = gave, got
   S.Fire(tf, "TRADE_SHOW")
   S.Fire(tf, "TRADE_MONEY_CHANGED")
@@ -955,9 +955,9 @@ end
 
 doTrade(50 * 10000, 0)                 -- 50g til boosteren
 eq(#ChainDB.trades, 1, "trade lagra")
-eq(ChainDB.trades[1].with, "Misscall", "namn utan realm")
+eq(ChainDB.trades[1].with, "Boostar", "namn utan realm")
 eq(ChainDB.trades[1].gave, 500000, "kopar lagra")
-eq(ChainDB.trades[1].by, "Misscall", "knytt til boosteren")
+eq(ChainDB.trades[1].by, "Boostar", "knytt til boosteren")
 eq(ChainDB.trades[1].id, "stock", "knytt til steget")
 
 doTrade(50 * 10000, 0)
@@ -997,7 +997,7 @@ eq(#ChainDB.trades, 3, "avbroten trade blir ikkje lagra")
 -- ein handel med nokon som ikkje er booster
 S.party = {}
 ChainCharDB.lastBy = nil
-doTrade(0, 25 * 10000, "Bankalt-Firemaw")
+doTrade(0, 25 * 10000, "Bankar-Testrealm")
 eq(#ChainDB.trades, 4, "fjerde trade")
 eq(ChainDB.trades[4].by, nil, "ikkje booster")
 eq(BT.Spent({}), 1070000 - 250000, "pengar inn trekk frå")
@@ -1010,7 +1010,7 @@ near(BT.Gold(spent), 82, "totalt brukt")
 near(BT.Gold(perLevel), 20.5, "per level")
 
 local byB = BT.SpentByBooster()
-eq(byB[1].with, "Misscall", "mest til boosteren")
+eq(byB[1].with, "Boostar", "mest til boosteren")
 near(BT.Gold(byB[1].net), 107, "netto til boosteren")
 
 local tcsv = BT.BuildTradeCSV()
@@ -1019,7 +1019,7 @@ eq(select(2, tcsv:gsub("\n", "\n")) + 1, #ChainDB.trades + 1, "ei linje per trad
 SlashCmdList["CHAIN"]("gold")
 
 -- og det skal synast på baren, i begge modus
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 S.level, S.xp, S.xpMax = 23, 12000, 31700
 S.zone, S.map, S.inInstance = "The Stockade", 34, true
 S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
@@ -1053,45 +1053,45 @@ BT.ToggleWindow(); BT.ToggleWindow()
 --------------------------------------------------------------------------
 print("== booster-pris og tommel ==")
 ChainDB.boosters = {}
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 S.level, S.xp, S.xpMax = 22, 0, 27300
 local _, st2 = BT.Stage()
 
 -- utan eigen pris fell den tilbake på steg-prisen (50g per 5 runs = 10g/run)
-local per, own = BT.PricePerRun(st2, "Misscall")
+local per, own = BT.PricePerRun(st2, "Boostar")
 near(per, 10, "steg-pris per run")
 eq(own, false, "ikkje boosteren sin eigen pris")
 
 -- boosteren seier 12g per run
-BT.SetPrice("Misscall", 12, 1)
-per, own = BT.PricePerRun(st2, "Misscall")
+BT.SetPrice("Boostar", 12, 1)
+per, own = BT.PricePerRun(st2, "Boostar")
 near(per, 12, "boosteren sin eigen pris")
 eq(own, true, "merka som hans pris")
-eq(BT.Cost(st2, 10, "Misscall"), 120, "ti runs hos Misscall")
-eq(BT.Cost(st2, 10, "Torkel"), 100, "Torkel fell tilbake på steg-prisen")
+eq(BT.Cost(st2, 10, "Boostar"), 120, "ti runs hos Boostar")
+eq(BT.Cost(st2, 10, "Snoegg"), 100, "Snoegg fell tilbake på steg-prisen")
 
 -- pakkepris: 5 runs for 45g
-BT.SetPrice("Torkel", 45, 5)
-near(BT.PricePerRun(st2, "Torkel"), 9, "pakkepris per run")
-eq(BT.Cost(st2, 6, "Torkel"), 90, "seks runs blir to pakkar")
+BT.SetPrice("Snoegg", 45, 5)
+near(BT.PricePerRun(st2, "Snoegg"), 9, "pakkepris per run")
+eq(BT.Cost(st2, 6, "Snoegg"), 90, "seks runs blir to pakkar")
 
 -- prisen du blir oppgjeven gjeld ein pakke, aldri ein enkelt run
 local stepNow = select(2, BT.Stage())
 ChainDB.pack = 5
-BT.SetPrice("Misscall", 60)                 -- 60g for 5 runs
-eq(ChainDB.boosters["Misscall"].pack, 5, "pakkestorleiken blir lagra med prisen")
-near(BT.PricePerRun(stepNow, "Misscall"), 12, "60g / 5 runs = 12g per run")
-eq(BT.Cost(stepNow, 5, "Misscall"), 60, "fem runs er ein pakke")
-eq(BT.Cost(stepNow, 6, "Misscall"), 120, "seks runs er to pakkar")
+BT.SetPrice("Boostar", 60)                 -- 60g for 5 runs
+eq(ChainDB.boosters["Boostar"].pack, 5, "pakkestorleiken blir lagra med prisen")
+near(BT.PricePerRun(stepNow, "Boostar"), 12, "60g / 5 runs = 12g per run")
+eq(BT.Cost(stepNow, 5, "Boostar"), 60, "fem runs er ein pakke")
+eq(BT.Cost(stepNow, 6, "Boostar"), 120, "seks runs er to pakkar")
 
 -- dommen blir rekna ut, ikkje klikka: xp per gull
-local v = BT.XPPerGold(stepNow, "Misscall", 9000)
+local v = BT.XPPerGold(stepNow, "Boostar", 9000)
 near(v, 750, "9 000 xp for 12g per run = 750 xp per gull")
 -- billegare booster med same xp er betre
 BT.SetPrice("Billeg", 30)
 near(BT.XPPerGold(stepNow, "Billeg", 9000), 1500, "halv pris = dobbel verdi")
 -- fleire mobs for same pris er betre
-near(BT.XPPerGold(stepNow, "Misscall", 18000), 1500, "dobbel xp = dobbel verdi")
+near(BT.XPPerGold(stepNow, "Boostar", 18000), 1500, "dobbel xp = dobbel verdi")
 eq(select(2, BT.Grade(1500, 1500)), "good", "beste er god")
 eq(select(2, BT.Grade(1200, 1500)), "ok", "80 % er ok")
 eq(select(2, BT.Grade(800, 1500)), "poor", "53 % er dårleg")
@@ -1101,13 +1101,13 @@ BT.SetPrice("Billeg", 0)
 -- boosteren du faktisk spelar med slår prisen du sette på instansen
 do
   local route = ChainDB.route.stock
-  local oldGold, oldPrice = route.gold, ChainDB.boosters["Misscall"].price
+  local oldGold, oldPrice = route.gold, ChainDB.boosters["Boostar"].price
   route.gold = 75                              -- 75g per pakke i configen
-  BT.SetPrice("Misscall", 50)                  -- men han tek 50
+  BT.SetPrice("Boostar", 50)                  -- men han tek 50
   BT.Touch()
-  near(BT.PricePerRun(stepNow, "Misscall"), 10, "hans 50g/5 slår 75g/5 i configen")
+  near(BT.PricePerRun(stepNow, "Boostar"), 10, "hans 50g/5 slår 75g/5 i configen")
   near(BT.PricePerRun(stepNow, nil), 15, "utan booster gjeld configen")
-  eq(BT.Cost(stepNow, 5, "Misscall"), 50, "og kostnaden fylgjer han")
+  eq(BT.Cost(stepNow, 5, "Boostar"), 50, "og kostnaden fylgjer han")
   -- ruta i vindauget skal rekne med det same
   BT.ShowTab("route")
   local w2 = _G.ChainWindow
@@ -1120,8 +1120,8 @@ do
   end
   ok(goldCell and goldCell:find("50g"), "rutefana brukar hans pris (" ..
      tostring(goldCell) .. ")")
-  ok(basis and basis:find("Misscall's price"), "og seier kven prisen er frå")
-  route.gold, ChainDB.boosters["Misscall"].price = oldGold, oldPrice
+  ok(basis and basis:find("Boostar's price"), "og seier kven prisen er frå")
+  route.gold, ChainDB.boosters["Boostar"].price = oldGold, oldPrice
   BT.Touch()
 end
 
@@ -1129,9 +1129,9 @@ end
 do
   local route = ChainDB.route.stock
   local oldGold, oldPack = route.gold, route.pack
-  local oldPrice = ChainDB.boosters["Misscall"].price
+  local oldPrice = ChainDB.boosters["Boostar"].price
   route.gold, route.pack = 100, 10            -- 100g for ti runs her
-  BT.SetPrice("Misscall", 0)
+  BT.SetPrice("Boostar", 0)
   BT.Touch()
   eq(BT.StepPack(stepNow), 10, "instansen sin eigen pakke slår innstillinga")
   near(BT.PricePerRun(stepNow, nil), 10, "100g / 10 runs = 10g per run")
@@ -1142,24 +1142,24 @@ do
   if other then eq(BT.StepPack(other), 5, "andre instansar rører seg ikkje") end
 
   -- ein pris skriven no gjeld den pakken, ikkje den globale
-  BT.SetPrice("Misscall", 300)
-  eq(ChainDB.boosters["Misscall"].pack, 10, "prisen blir lagra mot 10 runs")
-  near(BT.PricePerRun(stepNow, "Misscall"), 30, "300g / 10 runs = 30g per run")
+  BT.SetPrice("Boostar", 300)
+  eq(ChainDB.boosters["Boostar"].pack, 10, "prisen blir lagra mot 10 runs")
+  near(BT.PricePerRun(stepNow, "Boostar"), 30, "300g / 10 runs = 30g per run")
 
   -- og boosteren sin eigen avtale slår instansen sin
-  BT.SetPack("Misscall", 20)
-  near(BT.PricePerRun(stepNow, "Misscall"), 15, "300g / 20 runs hos han")
-  eq(BT.Cost(stepNow, 20, "Misscall"), 300, "tjue runs er ein pakke hos han")
+  BT.SetPack("Boostar", 20)
+  near(BT.PricePerRun(stepNow, "Boostar"), 15, "300g / 20 runs hos han")
+  eq(BT.Cost(stepNow, 20, "Boostar"), 300, "tjue runs er ein pakke hos han")
   -- og den held seg når du skriv prisen på nytt
-  BT.SetPrice("Misscall", 400)
-  eq(ChainDB.boosters["Misscall"].pack, 20, "pakken hans står seg")
+  BT.SetPrice("Boostar", 400)
+  eq(ChainDB.boosters["Boostar"].pack, 20, "pakken hans står seg")
   -- blankt felt: tilbake til det instansen går for
-  BT.SetPack("Misscall", nil)
-  eq(BT.PackFor(stepNow, "Misscall"), 10, "blankt felt fell til instansen")
+  BT.SetPack("Boostar", nil)
+  eq(BT.PackFor(stepNow, "Boostar"), 10, "blankt felt fell til instansen")
 
   route.gold, route.pack = oldGold, oldPack
-  ChainDB.boosters["Misscall"].price = oldPrice
-  ChainDB.boosters["Misscall"].pack = 5
+  ChainDB.boosters["Boostar"].price = oldPrice
+  ChainDB.boosters["Boostar"].pack = 5
   BT.Touch()
 end
 
@@ -1231,9 +1231,9 @@ do
   ChainDB.boosters = {}
   ChainDB.readAds = true
   local rf2 = BT.rosterFrame
-  S.Fire(rf2, "CHAT_MSG_CHANNEL", "WTS Stockades boost 200g / 5 runs", "Seljar-Firemaw")
+  S.Fire(rf2, "CHAT_MSG_CHANNEL", "WTS Stockades boost 200g / 5 runs", "Seljar-Testrealm")
   S.now = S.now + 60
-  S.Fire(rf2, "CHAT_MSG_WHISPER", "SM 5 runs 300g", "Kviskar-Firemaw")
+  S.Fire(rf2, "CHAT_MSG_WHISPER", "SM 5 runs 300g", "Kviskar-Testrealm")
   BT.ShowTab("ads")
   local w3 = _G.ChainWindow
   local rows3, whisperRow = 0, nil
@@ -1312,7 +1312,7 @@ end
 print("== eiga booster-liste ==")
 do
   local step = BT.FocusStep()
-  local name = BT.AddBooster("  kjeltring-Firemaw ", "berre morgonar", step.id)
+  local name = BT.AddBooster("  kjeltring-Testrealm ", "berre morgonar", step.id)
   eq(name, "Kjeltring", "namnet blir reinska og stor forbokstav")
   eq(ChainDB.boosters["Kjeltring"].note, "berre morgonar", "notatet lagra")
   ok(ChainDB.boosters["Kjeltring"].mine, "merka som din eigen")
@@ -1418,10 +1418,10 @@ ChainDB.readAds = true
 local rf = BT.rosterFrame
 
 local function ad(text, who)
-  S.Fire(rf, "CHAT_MSG_CHANNEL", text, who or "Selgar-Firemaw")
+  S.Fire(rf, "CHAT_MSG_CHANNEL", text, who or "Selgar-Testrealm")
 end
 
-ad("WTS Stockades boost 40g per run, whisper me", "Selgar-Firemaw")
+ad("WTS Stockades boost 40g per run, whisper me", "Selgar-Testrealm")
 local b = ChainDB.boosters["Selgar"]
 ok(b ~= nil, "boosteren hamna i lista")
 eq(b and b.adPrice, 40, "pris frå annonsen")
@@ -1429,66 +1429,66 @@ eq(b and b.adZone, "stock", "instansen frå annonsen")
 near(BT.QuotedPrice("Selgar", "stock"), 40, "pris per run")
 eq(select(2, BT.QuotedPrice("Selgar", "stock")), "advert", "merka som annonse")
 
-ad("Selling 5 runs Scarlet Monastery boost 200g total", "Rask-Firemaw")
+ad("Selling 5 runs Scarlet Monastery boost 200g total", "Rask-Testrealm")
 eq(ChainDB.boosters["Rask"].adPack, 5, "pakkestorleik frå annonsen")
 near(BT.QuotedPrice("Rask", "sm"), 40, "200g for 5 runs = 40g per run")
 
 -- ting som ikkje er annonsar skal ikkje fange
-ad("anyone got 40g to spare", "Tiggar-Firemaw")
+ad("anyone got 40g to spare", "Tiggar-Testrealm")
 eq(ChainDB.boosters["Tiggar"], nil, "tigging er ikkje ein annonse")
 -- annonsar utan pris tel også: dei aller fleste har ingen pris i seg
-ad("WTS Stockades boost, FFA loot, sum ready", "Utanpris-Firemaw")
+ad("WTS Stockades boost, FFA loot, sum ready", "Utanpris-Testrealm")
 ok(ChainDB.boosters["Utanpris"] ~= nil, "annonse utan pris blir lagra")
 eq(ChainDB.boosters["Utanpris"].adPrice, 0, "med pris null")
 ok((ChainDB.boosters["Utanpris"].adText or ""):find("FFA"),
    "og teksten blir teken vare på")
 -- men den som leitar etter folk sel ingenting
-ad("LFM Stockades boost, need 2 more", "Leitar-Firemaw")
+ad("LFM Stockades boost, need 2 more", "Leitar-Testrealm")
 eq(ChainDB.boosters["Leitar"], nil, "LFM er ikkje eit sal")
-ad("WTB SM boost, paying well", "Kjopar-Firemaw")
+ad("WTB SM boost, paying well", "Kjopar-Testrealm")
 eq(ChainDB.boosters["Kjopar"], nil, "WTB er ikkje eit sal")
 -- og aliasa folk faktisk skriv
-ad("WTS Mara boost 340-360 real mobs, 12min/run", "Mara-Firemaw")
+ad("WTS Mara boost 340-360 real mobs, 12min/run", "Mara-Testrealm")
 eq(ChainDB.boosters["Mara"] and ChainDB.boosters["Mara"].adZone,
    "mara", "'Mara boost' blir kjend att")
-ad("Wts SM Boost Cath & Arm, Wlc Lvl 20-42, FFA Loot", "Cath-Firemaw")
+ad("Wts SM Boost Cath & Arm, Wlc Lvl 20-42, FFA Loot", "Cath-Testrealm")
 eq(ChainDB.boosters["Cath"] and ChainDB.boosters["Cath"].adZone,
    "sm", "'Cath & Arm' er SM")
-ad("LF small group for questing", "Quest-Firemaw")
+ad("LF small group for questing", "Quest-Testrealm")
 eq(ChainDB.boosters["Quest"], nil, "'small' skal ikkje matche SM")
 
 -- annonsar skal lesast frå kva kanal som helst, og frå kvisk
 do
   ChainDB.boosters = {}
-  S.Fire(rf, "CHAT_MSG_WHISPER", "stockades 5 runs 250g mate", "Kviskrar-Firemaw")
+  S.Fire(rf, "CHAT_MSG_WHISPER", "stockades 5 runs 250g mate", "Kviskrar-Testrealm")
   eq(ChainDB.boosters["Kviskrar"] and ChainDB.boosters["Kviskrar"].adPrice,
      250, "kvisk blir lest")
   eq(ChainDB.boosters["Kviskrar"].adFrom, "whisper", "og merka som kvisk")
 
-  S.Fire(rf, "CHAT_MSG_YELL", "WTS SM boost 300g / 5 runs", "Ropar-Firemaw")
+  S.Fire(rf, "CHAT_MSG_YELL", "WTS SM boost 300g / 5 runs", "Ropar-Testrealm")
   ok(ChainDB.boosters["Ropar"] ~= nil, "yell blir lest")
 
-  S.Fire(rf, "CHAT_MSG_PARTY", "sell stockades runs 60g each", "Gruppe-Firemaw")
+  S.Fire(rf, "CHAT_MSG_PARTY", "sell stockades runs 60g each", "Gruppe-Testrealm")
   ok(ChainDB.boosters["Gruppe"] ~= nil, "party blir lest")
   eq(ChainDB.boosters["Gruppe"].adFrom, "party", "merka som party")
 
   -- ein namngjeven kanal, slik klienten sender han
-  S.Fire(rf, "CHAT_MSG_CHANNEL", "Stockades 5 runs 200g", "Kanal-Firemaw",
+  S.Fire(rf, "CHAT_MSG_CHANNEL", "Stockades 5 runs 200g", "Kanal-Testrealm",
          nil, "5. Boosting", nil, nil, nil, 5, "Boosting")
   eq(ChainDB.boosters["Kanal"] and ChainDB.boosters["Kanal"].adFrom,
      "channel:boosting", "kanalnamnet blir hugsa")
 
   -- vår eigen datakanal er aldri ein annonse
-  S.Fire(rf, "CHAT_MSG_CHANNEL", "Stockades 5 runs 200g", "Falsk-Firemaw",
+  S.Fire(rf, "CHAT_MSG_CHANNEL", "Stockades 5 runs 200g", "Falsk-Testrealm",
          nil, "5. ChainData", nil, nil, nil, 5, "ChainData")
   eq(ChainDB.boosters["Falsk"], nil, "vår eigen kanal blir ikkje lest")
 
   -- og du kan slå av ein kjelde
   BT.SetAdSource("whisper", false)
-  S.Fire(rf, "CHAT_MSG_WHISPER", "stockades 5 runs 100g", "Stille-Firemaw")
+  S.Fire(rf, "CHAT_MSG_WHISPER", "stockades 5 runs 100g", "Stille-Testrealm")
   eq(ChainDB.boosters["Stille"], nil, "avslått kjelde blir ikkje lest")
   BT.SetAdSource("whisper", true)
-  S.Fire(rf, "CHAT_MSG_WHISPER", "stockades 5 runs 100g", "Stille-Firemaw")
+  S.Fire(rf, "CHAT_MSG_WHISPER", "stockades 5 runs 100g", "Stille-Testrealm")
   ok(ChainDB.boosters["Stille"] ~= nil, "og lest igjen når du slår han på")
 
   -- lista over kjelder: dei faste, pluss kanalane du er i, utan våre eigne
@@ -1501,12 +1501,12 @@ do
   ok(byKey["channel:general"].label:find("1%."), "med nummeret chat-vindauget brukar")
   -- General heiter "General - Stormwind City" i byen og noko anna utanfor:
   -- same kanal, same innstilling
-  S.Fire(rf, "CHAT_MSG_CHANNEL", "Stockades 5 runs 200g", "Bymann-Firemaw",
+  S.Fire(rf, "CHAT_MSG_CHANNEL", "Stockades 5 runs 200g", "Bymann-Testrealm",
          nil, "1. General - Stormwind City", nil, nil, nil, 1, "General - Stormwind City")
   eq(ChainDB.boosters["Bymann"].adFrom, "channel:general",
      "General i byen er General")
   BT.SetAdSource("channel:general", false)
-  S.Fire(rf, "CHAT_MSG_CHANNEL", "Stockades 5 runs 200g", "Utabygds-Firemaw",
+  S.Fire(rf, "CHAT_MSG_CHANNEL", "Stockades 5 runs 200g", "Utabygds-Testrealm",
          nil, "1. General - Westfall", nil, nil, nil, 1, "General - Westfall")
   eq(ChainDB.boosters["Utabygds"], nil, "og General utanfor byen er same kanal")
   BT.SetAdSource("channel:general", true)
@@ -1534,7 +1534,7 @@ do
 end
 
 -- eigen pris slår annonsen
-ad("WTS Stockades boost 40g per run, whisper me", "Selgar-Firemaw")
+ad("WTS Stockades boost 40g per run, whisper me", "Selgar-Testrealm")
 BT.SetPrice("Selgar", 30, 1)
 near(BT.QuotedPrice("Selgar", "stock"), 30, "din eigen pris vinn")
 eq(select(2, BT.QuotedPrice("Selgar", "stock")), "yours", "merka som din")
@@ -1546,7 +1546,7 @@ for _, r in ipairs(roster) do names[r.by] = r end
 ok(names["Selgar"], "Selgar er i lista utan ein einaste run")
 eq(names["Selgar"].n, 0, "null runs")
 ChainDB.readAds = false
-ad("WTS Maraudon boost 90g per run", "Seint-Firemaw")
+ad("WTS Maraudon boost 90g per run", "Seint-Testrealm")
 eq(ChainDB.boosters["Seint"], nil, "kan slåast av")
 ChainDB.readAds = true
 
@@ -1560,10 +1560,10 @@ ChainDB.readGroups = true
 
 local function grp(text, who, ...)
   S.now = S.now + 1                 -- chat does not arrive all in one second
-  S.Fire(rf, "CHAT_MSG_CHANNEL", text, who or "Nokon-Firemaw", ...)
+  S.Fire(rf, "CHAT_MSG_CHANNEL", text, who or "Nokon-Testrealm", ...)
 end
 
-grp("LFM SM cath, need healer and 2 dps, lvl 30-38", "Leiar-Firemaw")
+grp("LFM SM cath, need healer and 2 dps, lvl 30-38", "Leiar-Testrealm")
 local g = BT.GroupLog()[1]
 ok(g ~= nil, "LFM blir plukka opp")
 eq(g and g.by, "Leiar", "kven som skreiv det")
@@ -1574,20 +1574,20 @@ ok(g and (g.needs or ""):find("healer"), "og kva dei manglar (" ..
    tostring(g and g.needs) .. ")")
 ok(g and (g.text or ""):find("cath"), "teksten blir teken vare på heil")
 
-grp("LFG Stockades, rogue 24", "Leitar-Firemaw")
+grp("LFG Stockades, rogue 24", "Leitar-Testrealm")
 eq(BT.GroupLog()[1].kind, "lfg", "LFG er nokon som vil vere med")
 eq(BT.GroupLog()[1].id, "stock", "og instansen blir kjend att")
 
-grp("WTB SM boost, paying well", "Kjopar-Firemaw")
+grp("WTB SM boost, paying well", "Kjopar-Testrealm")
 eq(BT.GroupLog()[1].kind, "wtb", "WTB er nokon som vil kjøpe")
 
 -- LF2M med tal
-grp("LF2M ZF, need tank", "Tal-Firemaw")
+grp("LF2M ZF, need tank", "Tal-Testrealm")
 eq(BT.GroupLog()[1].kind, "lfm", "LF2M er òg ei gruppe som blir fylt")
 ok((BT.GroupLog()[1].needs or ""):find("2 more"), "og talet blir lese")
 
 -- ein quest utan instans: teksten er heile poenget
-grp("LF3M for Uldaman quest chain, lvl 40+", "Questar-Firemaw")
+grp("LF3M for Uldaman quest chain, lvl 40+", "Questar-Testrealm")
 local q = BT.GroupLog()[1]
 eq(q.kind, "lfm", "quest-innlegg er berre eit innlegg til")
 ok((q.text or ""):find("quest"), "og teksten står der du kan søkje i han")
@@ -1595,7 +1595,7 @@ eq(q.levels, "40+", "'40+' blir lese")
 
 -- eit sal er ikkje ei gruppe, og ei gruppe er ikkje eit sal
 ChainDB.boosters = {}
-grp("WTS Stockades boost 40g per run", "Selgar2-Firemaw")
+grp("WTS Stockades boost 40g per run", "Selgar2-Testrealm")
 ok(ChainDB.boosters["Selgar2"] ~= nil, "salet hamnar hos boosterane")
 local none = true
 for _, e in ipairs(BT.GroupLog()) do
@@ -1605,13 +1605,13 @@ ok(none, "og ikkje i gruppelista")
 
 -- vanleg prat blir ikkje plukka opp
 local before = #BT.GroupLog()
-grp("anyone know where the blacksmith is", "Prat-Firemaw")
+grp("anyone know where the blacksmith is", "Prat-Testrealm")
 eq(#BT.GroupLog(), before, "vanleg prat blir ignorert")
 
 -- same mann som skrik det same kvart halvminutt skal ikkje fylle lista
 local n0 = #BT.GroupLog()
-grp("LFM SM cath, need healer and 2 dps, lvl 30-38", "Leiar-Firemaw")
-grp("LFM SM cath, need healer and 2 dps, lvl 30-38", "Leiar-Firemaw")
+grp("LFM SM cath, need healer and 2 dps, lvl 30-38", "Leiar-Testrealm")
+grp("LFM SM cath, need healer and 2 dps, lvl 30-38", "Leiar-Testrealm")
 eq(#BT.GroupLog(), n0, "ei gjentaking lagar inga ny rad")
 local rep
 for _, e in ipairs(BT.GroupLog()) do
@@ -1621,16 +1621,16 @@ eq(rep and rep.n, 3, "men ho blir talt")
 eq(BT.GroupLog()[1].by, "Leiar", "og flyttar seg øvst")
 
 -- kjelder og av-brytar verkar som for annonsane
-S.Fire(rf, "CHAT_MSG_YELL", "LFG RFD anyone", "Ropar2-Firemaw")
+S.Fire(rf, "CHAT_MSG_YELL", "LFG RFD anyone", "Ropar2-Testrealm")
 eq(BT.GroupLog()[1].from, "yell", "yell blir lese og merka")
 ChainDB.readGroups = false
 local n1 = #BT.GroupLog()
-grp("LFM BRD, need 3", "Seint2-Firemaw")
+grp("LFM BRD, need 3", "Seint2-Testrealm")
 eq(#BT.GroupLog(), n1, "kan slåast av")
 ChainDB.readGroups = true
 
 -- og lista har eit tak, så ho ikkje veks i det uendelege
-for i = 1, 40 do grp("LFM Stockades run " .. i, "Spam" .. i .. "-Firemaw") end
+for i = 1, 40 do grp("LFM Stockades run " .. i, "Spam" .. i .. "-Testrealm") end
 ok(#BT.GroupLog() <= 150, "lista har eit tak (" .. #BT.GroupLog() .. ")")
 
 -- fana teiknar dei
@@ -1651,67 +1651,51 @@ end
 
 --------------------------------------------------------------------------
 print("== knappen på minimapet ==")
--- Handrulla i staden for LibDBIcon: ingenting å sende med, ingenting å halde
--- oppdatert, og ingenting som sluttar å virke når eit anna addon oppdaterer.
+-- Gjennom LibDBIcon i staden for ei ramme av vårt eige. Den handrulla verka
+-- fint, men kvar einaste knappe-samlar på skjermen leitar etter LibDBIcon og
+-- klagar på alt anna. Her testar vi vår side av avtalen: objektet vi leverer,
+-- og kva våre eigne klikk og tooltip gjer.
 ChainDB.minimap = true
 BT.RefreshMinimap()
-local mb = _G.ChainMinimapButton
-ok(mb ~= nil, "knappen blir bygd")
-ok(mb and mb:IsShown(), "og er synleg")
 do
-  local pts = mb:GetPoints()
-  ok(#pts > 0, "han er plassert på minimapet")
-  local p = pts[#pts]
-  ok(p.rel == _G.Minimap, "festa til minimapet")
-  -- 205 grader: nede til venstre, som er der knappar plar hamne
-  local r = math.sqrt(p.x * p.x + p.y * p.y)
-  ok(math.abs(r - 80) < 1, "på kanten, ikkje midt oppi kartet (r=" ..
-     string.format("%.1f", r) .. ")")
-end
+  local obj = S.ldbObjects["Chain"]
+  ok(obj ~= nil, "datamengda blir levert til LibDataBroker")
+  eq(obj and obj.type, "launcher", "som ein launcher")
+  ok(obj and (obj.icon or ""):find("minimap"), "med ikonet vårt (" ..
+     tostring(obj and obj.icon) .. ")")
+  ok(S.iconRegistered["Chain"] ~= nil, "og registrert hos LibDBIcon")
+  ok(S.iconRegistered["Chain"].db == ChainDB.minimapIcon,
+     "med vår eiga tabell, så posisjonen blir hugsa")
 
--- dra han rundt kanten
-do
-  local before = ChainDB.minimapAngle
-  mb.__scripts.OnDragStart(mb)
-  S.cursor = { 600 + 100, 400 }            -- rett til høgre for midten
-  mb.__scripts.OnUpdate(mb, 0)
-  mb.__scripts.OnDragStop(mb)
-  ok(ChainDB.minimapAngle ~= before, "å dra flyttar han")
-  ok(math.abs(ChainDB.minimapAngle) < 1, "og vinkelen fylgjer peikaren")
-  local p = mb:GetPoints()[#mb:GetPoints()]
-  ok(math.abs(p.x - 80) < 1 and math.abs(p.y) < 1, "så han hamnar der du slepp")
-end
-
--- klikka gjer tre ulike ting
-do
+  -- klikka er våre
   local w = _G.ChainWindow
   if w and w:IsShown() then BT.ToggleWindow() end
-  mb.__scripts.OnClick(mb, "LeftButton")
+  obj.OnClick(nil, "LeftButton")
   ok(_G.ChainWindow and _G.ChainWindow:IsShown(), "venstreklikk opnar vindauget")
-  mb.__scripts.OnClick(mb, "LeftButton")
+  obj.OnClick(nil, "LeftButton")
   if _G.ChainOptions and _G.ChainOptions:IsShown() then BT.ToggleOptions() end
-  mb.__scripts.OnClick(mb, "RightButton")
+  obj.OnClick(nil, "RightButton")
   ok(_G.ChainOptions and _G.ChainOptions:IsShown(), "høgreklikk opnar innstillingane")
   BT.ToggleOptions()
-  local shownBefore = ChainDB.shown
-  mb.__scripts.OnClick(mb, "MiddleButton")
-  ok(ChainDB.shown ~= shownBefore, "midtklikk skjuler baren")
-  mb.__scripts.OnClick(mb, "MiddleButton")
-end
+  local shown = ChainDB.shown
+  obj.OnClick(nil, "MiddleButton")
+  ok(ChainDB.shown ~= shown, "midtklikk skjuler baren")
+  obj.OnClick(nil, "MiddleButton")
 
--- tooltipen seier det du ville opna vindauget for
-do
-  mb.__scripts.OnEnter(mb)
+  -- og tooltipen er vår
+  S.tip = {}
+  obj.OnTooltipShow(GameTooltip)
   local tip = S.TipText()
-  ok(tip:find("instances this hour"), "tooltipen seier lockouten")
+  ok(tip:find("Chain"), "tooltipen har namnet")
+  ok(tip:find("instances this hour"), "og lockouten")
   ok(tip:find("Left%-click"), "og kva knappane gjer")
-end
 
--- og han kan skruast av
-ok(BT.ToggleMinimap() == false, "kan slåast av")
-ok(not mb:IsShown(), "og då er han borte")
-BT.ToggleMinimap()
-ok(mb:IsShown(), "og på igjen")
+  -- av og på
+  eq(BT.ToggleMinimap(), false, "kan slåast av")
+  eq(S.iconHidden["Chain"], true, "og då blir han gøymd")
+  BT.ToggleMinimap()
+  eq(S.iconHidden["Chain"], false, "og synleg igjen")
+end
 
 -- ikonfilene må finnast, og vere TGA-ar spelet kan lese
 do
@@ -1739,6 +1723,16 @@ do
     local w = head:byte(13) + head:byte(14) * 256
     eq(w, 64, "64 pikslar brei - ein toarpotens, som klienten krev")
   end
+end
+
+-- og biblioteka må faktisk liggje i mappa, elles er knappen borte hos folk
+for _, lib in ipairs({ "LibStub/LibStub.lua",
+                       "CallbackHandler-1.0/CallbackHandler-1.0.lua",
+                       "LibDataBroker-1.1/LibDataBroker-1.1.lua",
+                       "LibDBIcon-1.0/LibDBIcon-1.0.lua" }) do
+  local fh = io.open(DIR .. "Libs/" .. lib, "r")
+  ok(fh ~= nil, "Libs/" .. lib .. " ligg i mappa")
+  if fh then fh:close() end
 end
 
 --------------------------------------------------------------------------
@@ -1779,36 +1773,36 @@ local function report(from, name, id, price, pack, xp, t, mobs, n)
     table.concat({ "v2", name, id, price, pack, xp, t, mobs, n }, "|"),
     "CHANNEL", from)
 end
-report("Venn-Firemaw", "Torkel", "stock", 45, 5, 8000, 480, 80, 10)
-local sh = BT.SharedStats("Torkel", "stock")
+report("Venn-Testrealm", "Snoegg", "stock", 45, 5, 8000, 480, 80, 10)
+local sh = BT.SharedStats("Snoegg", "stock")
 ok(sh ~= nil, "rapport motteken")
 eq(sh.people, 1, "ein rapportør")
 near(sh.mobs, 80, "mobs frå rapporten")
-near(BT.QuotedPrice("Torkel", "stock"), 9, "45g for 5 runs = 9g per run")
-eq(select(2, BT.QuotedPrice("Torkel", "stock")), "reported", "merka som rapportert")
+near(BT.QuotedPrice("Snoegg", "stock"), 9, "45g for 5 runs = 9g per run")
+eq(select(2, BT.QuotedPrice("Snoegg", "stock")), "reported", "merka som rapportert")
 
 -- same person sender på nytt: skal erstatte, ikkje leggast til
-report("Venn-Firemaw", "Torkel", "stock", 45, 5, 9000, 480, 90, 10)
-sh = BT.SharedStats("Torkel", "stock")
+report("Venn-Testrealm", "Snoegg", "stock", 45, 5, 9000, 480, 90, 10)
+sh = BT.SharedStats("Snoegg", "stock")
 eq(sh.people, 1, "framleis ein rapportør")
 near(sh.mobs, 90, "nyaste tal gjeld")
 
 -- to personar, vekta etter kor mange runs dei har bak seg
-report("Annan-Firemaw", "Torkel", "stock", 45, 5, 3000, 480, 30, 90)
-sh = BT.SharedStats("Torkel", "stock")
+report("Annan-Testrealm", "Snoegg", "stock", 45, 5, 3000, 480, 30, 90)
+sh = BT.SharedStats("Snoegg", "stock")
 eq(sh.people, 2, "to rapportørar")
 ok(sh.mobs < 45, "den med 90 runs veg tyngst (" .. string.format("%.0f", sh.mobs) .. ")")
 
 -- ekko av oss sjølve, feil prefiks og søppel
-report("Tester", "Torkel", "stock", 45, 5, 9000, 480, 90, 10)
-eq(BT.SharedStats("Torkel", "stock").people, 2, "vårt eige ekko tel ikkje")
-S.Fire(rf, "CHAT_MSG_ADDON", "LVLTRK1", "tull", "CHANNEL", "Venn-Firemaw")
-S.Fire(rf, "CHAT_MSG_ADDON", "ANNAPREFIX", "v2|X|stock|1|1|1|1|1|1", "CHANNEL", "Venn-Firemaw")
+report("Tester", "Snoegg", "stock", 45, 5, 9000, 480, 90, 10)
+eq(BT.SharedStats("Snoegg", "stock").people, 2, "vårt eige ekko tel ikkje")
+S.Fire(rf, "CHAT_MSG_ADDON", "LVLTRK1", "tull", "CHANNEL", "Venn-Testrealm")
+S.Fire(rf, "CHAT_MSG_ADDON", "ANNAPREFIX", "v2|X|stock|1|1|1|1|1|1", "CHANNEL", "Venn-Testrealm")
 eq(ChainDB.boosters["X"], nil, "feil prefiks blir ignorert")
-report("Venn-Firemaw", "Y", "ikkje-ein-instans", 1, 1, 1, 1, 1, 1)
+report("Venn-Testrealm", "Y", "ikkje-ein-instans", 1, 1, 1, 1, 1, 1)
 eq(ChainDB.boosters["Y"], nil, "ukjend instans blir ignorert")
 -- gammal protokoll blir ignorert
-S.Fire(rf, "CHAT_MSG_ADDON", "LVLTRK1", "v1|Gammal|45|5|1", "CHANNEL", "Venn-Firemaw")
+S.Fire(rf, "CHAT_MSG_ADDON", "LVLTRK1", "v1|Gammal|45|5|1", "CHANNEL", "Venn-Testrealm")
 eq(ChainDB.boosters["Gammal"], nil, "v1 blir ignorert")
 -- delingsomfang: kven som høyrer deg
 eq(BT.ShareScopeName(), "everyone with the addon", "standard er alle")
@@ -1822,7 +1816,7 @@ eq(S.sent[1] and S.sent[1].ch, "GUILD", "går til gildet")
 S.sent, S.timers = {}, {}
 BT.CycleShareScope()
 eq(ChainDB.shareWith, "friends", "så namneliste")
-BT.SetShareFriends("Kompis-Firemaw, Annan , ")
+BT.SetShareFriends("Kompis-Testrealm, Annan , ")
 eq(#ChainDB.shareFriends, 2, "to namn, tomme hoppa over")
 eq(ChainDB.shareFriends[1], "Kompis", "realm stripa bort")
 BT.ShareOne("Selgar", "stock")
@@ -1856,10 +1850,10 @@ print(string.format("   Stockades: lvl 22 = %.0f, lvl 27 = %.0f, lvl 33 = %.0f, 
 ChainDB.runs = {}
 for i = 1, 3 do
   table.insert(ChainDB.runs, { at = S.now, t = 300, zone = "The Stockade",
-    map = 34, id = "stock", by = "Misscall", xp = 9000, k = 90, lvl = 22 })
+    map = 34, id = "stock", by = "Boostar", xp = 9000, k = 90, lvl = 22 })
 end
 BT.Touch()
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 S.level = 22
 local xp, how = BT.PredictRun(stock, 22)
 eq(how, "measured", "eige tal på det levelet du har data for")
@@ -1873,10 +1867,10 @@ ChainDB.route.stock = { on = true, from = 18, to = 34, gold = 50 }
 ChainDB.route.sm = { on = true, from = 28, to = 42, gold = 50 }
 for i = 1, 3 do
   table.insert(ChainDB.runs, { at = S.now, t = 300, zone = "Scarlet Monastery",
-    map = 189, id = "sm", by = "Misscall", xp = 9000, k = 90, lvl = 34 })
+    map = 189, id = "sm", by = "Boostar", xp = 9000, k = 90, lvl = 34 })
 end
 BT.Touch()
-local lvlAt, best = BT.SwitchAt(BT.BY_ID["stock"], "Misscall")
+local lvlAt, best = BT.SwitchAt(BT.BY_ID["stock"], "Boostar")
 ok(lvlAt ~= nil, "den finn eit byttepunkt")
 eq(best and best.id, "sm", "og peikar på SM")
 ok(lvlAt >= 28, "men ikkje før levelet du sette for SM")
@@ -1890,19 +1884,19 @@ print("== cache og yting ==")
 -- ein skriving utan Touch skal likevel bli oppdaga
 local before = #BT.Runs({ id = "stock" })
 table.insert(ChainDB.runs, { at = S.now, t = 400, zone = "The Stockade",
-  id = "stock", by = "Misscall", xp = 9999, k = 80, lvl = 22 })
+  id = "stock", by = "Boostar", xp = 9999, k = 80, lvl = 22 })
 eq(#BT.Runs({ id = "stock" }), before + 1, "cachen ser ein skriving utan Touch")
 
 -- 2 000 runs og 200 fulle oppteikningar
 ChainDB.runs = {}
 for i = 1, 2000 do
   table.insert(ChainDB.runs, { at = S.now - i * 600, t = 400 + i % 120,
-    zone = "The Stockade", id = "stock", by = (i % 3 == 0) and "Torkel" or "Misscall",
+    zone = "The Stockade", id = "stock", by = (i % 3 == 0) and "Snoegg" or "Boostar",
     xp = 8000 + i % 2000, k = 85, lvl = 20 + i % 10, grp = 5, grpAvg = 30 })
 end
 BT.Touch()
 S.zone, S.map, S.inInstance = "The Stockade", 34, true
-S.party = { { name = "Misscall-Firemaw", lvl = 60 } }
+S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
 local t0 = os.clock()
 for i = 1, 200 do BT.BuildText() end
@@ -1918,6 +1912,27 @@ ChainCharDB.run.instId = "123"
 for i = 1, 500 do S.Fire(frame, "COMBAT_LOG_EVENT_UNFILTERED") end
 eq(drew, 0, "combat log teiknar ikkje opp att")
 BT.Refresh = realRefresh
+
+--------------------------------------------------------------------------
+print("== vindauget si eiga plass ==")
+-- Ni faner fyller rada, og søkjeboksen låg oppå den siste av dei.
+do
+  BT.ShowTab("runs")
+  local w = _G.ChainWindow
+  local function firstPoint(obj)
+    local pts = obj:GetPoints()
+    return pts and pts[#pts] or nil
+  end
+  -- faneraden ligg på -28; søket må vere tydeleg under han
+  local sp = firstPoint(w.search)
+  ok(sp ~= nil, "søkjeboksen er plassert")
+  ok(sp and sp.y <= -44,
+     "og ligg under faneraden, ikkje oppå henne (y=" ..
+     tostring(sp and sp.y) .. ")")
+  -- og rada med overskrifter må vere under søket igjen
+  local hp = firstPoint(w.headerRow)
+  ok(hp and sp and hp.y < sp.y, "kolonneoverskriftene er under søket")
+end
 
 --------------------------------------------------------------------------
 print("== overskrifta på baren ==")
@@ -2072,6 +2087,282 @@ do
     ok(st.hold > 0, "og eit tal som held deg i ro")
     ok(BT.PvPChunk() ~= nil, "og ei linje å setje på skjermen")
   end
+
+  -- Rekninga er verdlaus om ho ikkje kjem nokon stad. Ho skal vere på
+  -- tooltippen til baren når det finst honor, og ikkje vere der når det ikkje
+  -- gjer det: fire linjer rank på ein som aldri har drepe nokon er fire
+  -- linjer ingenting.
+  do
+    S.pvpRank, S.pvpProgress = 6, 0.25
+    S.weekHonor, S.weekKills = 30000, 42
+    BT.BarTooltip(BT.bar)
+    local text = S.TipText()
+    ok(text:find("honor this week"), "honor står på tooltippen til baren")
+    ok(text:find("after the reset"), "og kva resetet gjer med ranken")
+    ok(text:find("not the server"),
+       "og det blir sagt at det er ein modell, ikkje serveren")
+
+    S.pvpRank, S.pvpProgress = 0, 0
+    S.weekHonor, S.weekKills = 0, 0
+    BT.BarTooltip(BT.bar)
+    local none = S.TipText()
+    ok(not none:find("after the reset"),
+       "utan honor står det ingenting om rank")
+  end
+
+  -- og kommandoen, som er den andre vegen inn
+  do
+    S.pvpRank, S.pvpProgress = 6, 0.25
+    S.weekHonor, S.weekKills = 30000, 42
+    ok(pcall(SlashCmdList["CHAIN"], "pvp"), "/chain pvp går utan å falle")
+    S.weekHonor, S.weekKills = 0, 0
+    S.pvpRank = 0
+    ok(pcall(SlashCmdList["CHAIN"], "pvp"), "og utan honor òg")
+  end
+end
+
+--------------------------------------------------------------------------
+print("== kven som er der ute ==")
+-- To ting som berre gjev meining saman: ei liste over kven du vil vite om,
+-- og sjølve vaktinga. Deteksjonen er ikkje smart og treng ikkje vere det -
+-- klienten fortel deg om ein spelar i det eit nameplate dukkar opp, i det
+-- musa strauk over ein, i det du targetar ein, og kvar gong ein castar noko
+-- innanfor combat-loggen.
+do
+  ChainDB.watchEnemies = true
+  ChainDB.enemies, ChainDB.kos, ChainDB.kosGuilds = {}, {}, {}
+  ChainDB.enemyQuiet = {}
+  local ef = BT.enemyFrame
+
+  -- eit nameplate: alt verdt å vite er lesbart akkurat då og ingen annan stad
+  S.units["nameplate1"] = { name = "Gankar-Testrealm", level = 60, class = "ROGUE",
+                            guild = "Bad Bois", hostile = true }
+  S.Fire(ef, "NAME_PLATE_UNIT_ADDED", "nameplate1")
+  local seen = ChainDB.enemies["Gankar"]
+  ok(seen ~= nil, "spelaren blir sett")
+  eq(seen and seen.level, 60, "med level")
+  eq(seen and seen.class, "ROGUE", "og klasse")
+  eq(seen and seen.guild, "Bad Bois", "og guild")
+
+  -- ein på di eiga side er ikkje interessant
+  S.units["nameplate2"] = { name = "Venn-Testrealm", level = 55, hostile = false }
+  S.Fire(ef, "NAME_PLATE_UNIT_ADDED", "nameplate2")
+  eq(ChainDB.enemies["Venn"], nil, "vennlege blir ikkje plukka opp")
+
+  -- combat-loggen rekk lenger enn noko nameplate, men veit mindre - og skal
+  -- ikkje viske ut det nameplatet fortalde oss
+  BT.NoteCombatLogUnit("Player-4-0001", "Gankar-Testrealm", 0x440)
+  eq(ChainDB.enemies["Gankar"].level, 60, "combat-loggen slettar ikkje levelen")
+  BT.NoteCombatLogUnit("Player-4-0002", "Fjern-Testrealm", 0x440)
+  ok(ChainDB.enemies["Fjern"] ~= nil, "ein som castar langt unna blir sett")
+  BT.NoteCombatLogUnit("Creature-0-1-1-1-99", "Ulv", 0x440)
+  eq(ChainDB.enemies["Ulv"], nil, "mobs er ikkje spelarar")
+  BT.NoteCombatLogUnit("Player-4-0003", "Snill-Testrealm", 0x400)   -- ikkje fiendtleg
+  eq(ChainDB.enemies["Snill"], nil, "og ikkje-fiendtlege blir ikkje talt")
+
+  -- KOS: ved namn og ved heile guilden, som er slik det oftast går
+  BT.AddKOS("Gankar", "tok meg tre gonger i ST")
+  eq(select(1, BT.IsKOS("Gankar")), "named", "namnet er merka")
+  eq(select(2, BT.IsKOS("Gankar")), "tok meg tre gonger i ST", "med notatet ditt")
+  BT.AddKOSGuild("Bad Bois", "heile gjengen")
+  eq(select(1, BT.IsKOS("Ukjend", "Bad Bois")), "guild", "guilden er merka")
+  eq(BT.IsKOS("Tilfeldig", "Anna Guild"), nil, "og resten er det ikkje")
+  eq(#BT.KOSList(), 1, "ein på namnelista")
+  eq(#BT.KOSGuildList(), 1, "og ein guild")
+  ok(BT.RemoveKOS("Gankar"), "namn kan fjernast")
+  eq(BT.IsKOS("Gankar"), nil, "og då er han borte")
+  BT.AddKOS("Gankar", "tok meg tre gonger i ST")
+
+  -- varselet: dei du har merka er verdt ein alarm anten du bad om det eller
+  -- ikkje, og alle andre berre om du bad om det
+  do
+    ChainDB.alertEveryone = false
+    ChainDB.enemyQuiet = {}
+    _G.ChainEnemyBanner = nil
+    BT.EnemyAlert({ name = "Gankar", level = 60, class = "ROGUE", guild = "Bad Bois" })
+    local b = _G.ChainEnemyBanner
+    ok(b ~= nil and b:IsShown(), "ein merka spelar gjev varsel")
+    ok((b.fs:GetText() or ""):find("KOS"), "og det står kvifor")
+
+    -- ein tilfeldig framand gjer det ikkje, med mindre du har bedt om det
+    ChainDB.enemyQuiet = {}
+    b:Hide()
+    BT.EnemyAlert({ name = "Tilfeldig", level = 40 })
+    ok(not b:IsShown(), "ein framand gjev ikkje varsel som standard")
+    ChainDB.alertEveryone = true
+    ChainDB.enemyQuiet = {}
+    BT.EnemyAlert({ name = "Tilfeldig", level = 40 })
+    ok(b:IsShown(), "men gjer det når du har slått det på")
+    ChainDB.alertEveryone = false
+
+    -- og den same personen skal ikkje lage eitt varsel i sekundet
+    ChainDB.enemyQuiet = {}
+    BT.EnemyAlert({ name = "Gankar", guild = "Bad Bois" })
+    b:Hide()
+    BT.EnemyAlert({ name = "Gankar", guild = "Bad Bois" })
+    ok(not b:IsShown(), "same person varslar ikkje om att med ein gong")
+  end
+
+  -- nærleik: den som blei sett for lenge sidan er ikkje i nærleiken lenger
+  do
+    ChainDB.enemies = {}
+    BT.NoteEnemy("Nylig", { level = 60 })
+    ChainDB.enemies["Gammal"] = { name = "Gammal", at = S.now - 600, n = 1 }
+    eq(#BT.Nearby(60), 1, "berre den ferske er i nærleiken")
+    eq(#BT.SeenList(), 2, "men begge står i lista")
+  end
+
+  -- fana teiknar dei, og KOS-knappen verkar
+  do
+    ChainDB.enemies = {}
+    BT.NoteEnemy("Gankar", { level = 60, class = "ROGUE", guild = "Bad Bois" })
+    BT.ShowTab("enemies")
+    local w4 = _G.ChainWindow
+    local row
+    for _, r in ipairs(w4.rows or {}) do
+      if r:IsShown() and (r.cells[2]:GetText() or ""):find("Gankar") then row = r end
+    end
+    ok(row ~= nil, "Enemies-fana har rader")
+    ok(row and row.kos and row.kos:IsShown(), "og ein KOS-knapp på kvar")
+    if row then
+      -- guilden hans er framleis merka frå testen over, og då er det den
+      -- knappen ville fjerna først
+      ChainDB.kos, ChainDB.kosGuilds = {}, {}
+      row.kos.name, row.kos.guild = "Gankar", "Bad Bois"
+      row.kos.__scripts.OnClick(row.kos)
+      eq(select(1, BT.IsKOS("Gankar")), "named", "eitt klikk merkar han")
+      row.kos.__scripts.OnClick(row.kos)
+      eq(BT.IsKOS("Gankar"), nil, "og eitt til fjernar merket")
+    end
+  end
+
+  -- trade-fana tek med gjenstandane, ikkje berre gullet
+  do
+    local keep = ChainDB.trades
+    ChainDB.trades = { { at = S.now, with = "Berreta", gave = 4000000, got = 0,
+                         gaveItems = { { name = "Runecloth", count = 20 } },
+                         gotItems = { { name = "Green Hills of Stranglethorn" } },
+                         zone = "Stormwind City" } }
+    BT.TouchTrades()
+    eq(BT.ItemsText({ { name = "Runecloth", count = 20 } }), "20x Runecloth",
+       "gjenstandar blir til tekst")
+    eq(BT.ItemsText(nil), nil, "og ingenting blir ingenting")
+    BT.ShowTab("gold")
+    local w5 = _G.ChainWindow
+    local found = false
+    for _, r in ipairs(w5.rows or {}) do
+      if r:IsShown() then
+        for _, c in ipairs(r.cells) do
+          if (c:GetText() or ""):find("Runecloth") then found = true end
+        end
+      end
+    end
+    ok(found, "og står i Trade-fana")
+    ChainDB.trades = keep
+    BT.TouchTrades()
+  end
+
+  -- merket på sjølve nameplatet. Ei linje øvst på skjermen seier at nokon er
+  -- her; den seier ikkje kven av dei fire framfor deg det er.
+  do
+    ChainDB.kos, ChainDB.kosGuilds = {}, {}
+    S.plates["nameplate1"] = CreateFrame("Frame", nil, UIParent)
+    S.units["nameplate1"] = { name = "Merka-Testrealm", level = 60,
+                              class = "ROGUE", guild = "Bad Bois", hostile = true }
+    BT.MarkPlate("nameplate1")
+    local plate = S.plates["nameplate1"]
+    local mark
+    for _, ch in ipairs(plate.__children or {}) do mark = ch end
+    ok(mark == nil or not mark:IsShown(), "ingen merke på ein som ikkje er merka")
+
+    BT.AddKOS("Merka")
+    BT.MarkPlate("nameplate1")
+    mark = nil
+    for _, ch in ipairs(plate.__children or {}) do mark = ch end
+    ok(mark ~= nil and mark:IsShown(), "merket kjem på når han er KOS")
+    ok((mark.fs:GetText() or ""):find("KOS"), "og det står KOS på det")
+
+    -- og å merke nokon medan platen alt står oppe skal syne med ein gong
+    BT.RemoveKOS("Merka")
+    ok(not mark:IsShown(), "merket går av når du fjernar merket")
+    BT.AddKOS("Merka")
+    ok(mark:IsShown(), "og på igjen med ein gong, utan å vente på ny plate")
+
+    -- guild-merket gjeld heile guilden
+    BT.RemoveKOS("Merka")
+    BT.AddKOSGuild("Bad Bois")
+    BT.MarkPlate("nameplate1")
+    ok(mark:IsShown(), "guild-merket set merke på plata òg")
+
+    S.Fire(BT.enemyFrame, "NAME_PLATE_UNIT_REMOVED", "nameplate1")
+    ok(not mark:IsShown(), "og det går av når plata forsvinn")
+    S.plates, ChainDB.kos, ChainDB.kosGuilds = {}, {}, {}
+  end
+
+  -- varselet skal oppføre seg ulikt for dei merka
+  do
+    -- ikkje nullstill globalen: ramma er laga ein gong og halden i ein local,
+    -- så ein ny blir aldri bygd og globalen blir ståande tom
+    ChainDB.enemyQuiet = {}
+    BT.AddKOS("Slem")
+    BT.EnemyAlert({ name = "Slem", level = 60 })
+    local b = _G.ChainEnemyBanner
+    ok(b.loud == true, "ein merka gjev eit høgt varsel")
+    ChainDB.enemyQuiet = {}
+    ChainDB.alertEveryone = true
+    BT.EnemyAlert({ name = "Framand", level = 30 })
+    ok(b.loud == false, "ein framand eit stille eitt")
+    ChainDB.alertEveryone = false
+    ChainDB.kos = {}
+  end
+
+  -- lista på skjermen: fana er for å lese etterpå, denne er for akkurat no
+  do
+    ChainDB.enemies = {}
+    ChainDB.nearbyList = true
+    BT.NoteEnemy("Naer", { level = 60, class = "ROGUE", guild = "Bad Bois" })
+    BT.RefreshNearby()
+    local nb = _G.ChainNearby
+    ok(nb ~= nil, "lista blir bygd")
+    ok(nb and nb:IsShown(), "og er synleg når nokon er i nærleiken")
+    ok((nb.rows[1].name:GetText() or ""):find("Naer"), "med namnet i")
+    eq(nb.rows[1].lvl:GetText(), "60", "og levelen")
+    ok((nb.title:GetText() or ""):find("1 nearby"), "og kor mange det er")
+
+    -- eit klikk på rada merkar han, og tooltipen seier alt vi veit
+    ChainDB.kos, ChainDB.kosGuilds = {}, {}
+    nb.rows[1].__scripts.OnClick(nb.rows[1])
+    eq(select(1, BT.IsKOS("Naer")), "named", "klikk på rada merkar han")
+    nb.rows[1].__scripts.OnEnter(nb.rows[1])
+    local tip = S.TipText()
+    ok(tip:find("Naer"), "tooltipen har namnet")
+    ok(tip:find("level 60"), "levelen")
+    ok(tip:find("ROGUE"), "klassen")
+    ok(tip:find("Bad Bois"), "guilden")
+    ok(tip:find("seen"), "og kor mange gonger han er sett")
+    ok(tip:find("marked by name"), "og at han er merka")
+
+    -- den som gjekk sin veg fell ut av seg sjølv
+    ChainDB.enemies["Naer"].at = S.now - 600
+    BT.RefreshNearby()
+    ok(not nb:IsShown(), "lista forsvinn når ingen er i nærleiken")
+
+    -- og kan slåast av
+    BT.NoteEnemy("Naer2", { level = 20 })
+    BT.RefreshNearby()
+    ok(nb:IsShown(), "synleg igjen")
+    eq(BT.ToggleNearby(), false, "kan slåast av")
+    ok(not nb:IsShown(), "og då er ho borte")
+    BT.ToggleNearby()
+  end
+
+  -- og heile vaktinga kan skruast av
+  ChainDB.watchEnemies = false
+  ChainDB.enemies = {}
+  S.Fire(ef, "NAME_PLATE_UNIT_ADDED", "nameplate1")
+  eq(next(ChainDB.enemies), nil, "avslått er avslått")
+  ChainDB.watchEnemies = true
+  S.units = {}
 end
 
 --------------------------------------------------------------------------

@@ -1,4 +1,4 @@
--- Level Tracker: everything derived from the run log.
+-- Chain: everything derived from the run log.
 --
 -- The database stores one record per completed run and nothing else. Every
 -- number on screen - the rolling average, a booster's rating, the forecast,
@@ -52,7 +52,7 @@ function BT.Short(zone, map)
   return zone
 end
 
--- "Verss-Firemaw" -> "Verss": the realm eats a third of a line
+-- "Spelar-Testrealm" -> "Spelar": the realm eats a third of a line
 function BT.ShortName(name)
   if type(name) ~= "string" then return nil end
   if Ambiguate then

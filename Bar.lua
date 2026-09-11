@@ -1,4 +1,4 @@
--- Level Tracker: the bar on screen and the lines under it.
+-- Chain: the bar on screen and the lines under it.
 --
 -- The layout rule that matters: we break the lines ourselves. Letting the
 -- frame wrap means it breaks wherever it runs out of pixels, which lands in
@@ -14,6 +14,8 @@ local C = BT.COL
 -- second one that comes and goes.
 local BUDGET = 74
 local bar
+-- the level markers drawn inside the bar, kept here rather than on the frame
+local ticks = {}
 
 --------------------------------------------------------------------------
 -- The text
@@ -103,6 +105,16 @@ local function BoostText()
   -- changed under you every time you levelled, which is the opposite of what
   -- a heading is for. How far along you are is the bar itself.
   S.topLeft = step.label .. "  " .. (step.from or base or lvl) .. " > " .. step.to
+  -- The bar measures the whole step, so this is the bar's own number. It used
+  -- to say only "Lvl 34 57%", which is the level - and a bar showing 4% next
+  -- to a label saying 57% reads as broken rather than as two different
+  -- things. Both are worth knowing; they just have to say which is which.
+  do
+    local doneSoFar, totalSpan = BT.StageSpan()
+    if totalSpan and totalSpan > 0 then
+      S.topLeft = S.topLeft .. C.dim .. "  " .. BT.Pct(doneSoFar / totalSpan) .. C.off
+    end
+  end
   if i and i > 0 and #plan > 1 then
     S.topLeft = S.topLeft .. C.dim .. "  step " .. i .. "/" .. #plan .. C.off
   end
@@ -590,6 +602,34 @@ function BT.Refresh()
   end
   seg(bar.fill, 0, cur)
 
+  -- One tick per level inside the step. Eight levels of experience is a bar
+  -- that barely moves in a run, and a bar that barely moves looks broken
+  -- however honest it is. The ticks give it something to cross: you can see
+  -- which level you are in and how far the next one is, without the fill
+  -- having to pretend the step is shorter than it is.
+  local step = select(5, BT.StageSpan())
+  local base = select(6, BT.StageSpan())
+  local shown = 0
+  if step and base and BT.Mode() == "boost" then
+    for l = base + 1, (step.to or base) - 1 do
+      local at = BT.Span(base, l)
+      if at and at > 0 and at < max then
+        shown = shown + 1
+        local t = ticks[shown]
+        if not t then
+          t = MakeTexture(bar, "ARTWORK", 4, 0, 0, 0, 0.45)
+          t:SetWidth(1)
+          ticks[shown] = t
+        end
+        t:ClearAllPoints()
+        t:SetPoint("TOP", bar, "TOPLEFT", w * at / max, 0)
+        t:SetPoint("BOTTOM", bar, "BOTTOMLEFT", w * at / max, 0)
+        t:Show()
+      end
+    end
+  end
+  for i = shown + 1, #ticks do ticks[i]:Hide() end
+
   -- the overlays only make sense against your own level bar
   if BT.Mode() ~= "boost" or #BT.Plan() == 0 then
     local rested = GetXPExhaustion and GetXPExhaustion() or 0
@@ -770,6 +810,35 @@ function BT.BarTooltip(owner)
   if routeGold and routeGold > 0 then
     Pair("the rest of the route", C.gold .. "~" .. BT.G(routeGold) .. C.off
       .. (complete and "" or (C.dim .. "  partly estimated" .. C.off)))
+  end
+
+  -- Honour, but only once there is any. A rank line on a character who has
+  -- never killed anybody is four lines of nothing.
+  if BT.PvPState then
+    local s = BT.PvPState()
+    if (s.honor or 0) > 0 or (s.rank or 0) > 0 then
+      GameTooltip:AddLine(" ")
+      Pair("rank", s.rankName .. C.dim .. "  " .. BT.Pct(s.progress or 0) .. C.off)
+      Pair("honor this week", BT.N(s.honor)
+        .. (s.kills and s.kills > 0 and (C.dim .. "  " .. s.kills .. " kills" .. C.off) or ""))
+      local col = (s.newRank > s.rank) and C.good
+               or (s.newRank < s.rank) and C.bad or C.dim
+      Pair("after the reset", col .. s.newRankName .. C.off
+        .. C.dim .. "  " .. BT.Pct(s.newProgress or 0) .. C.off)
+      if (s.short or 0) > 0 then
+        Pair("to hold this rank", C.bad .. BT.N(s.short) .. " more" .. C.off)
+      end
+      if s.nextRank and s.nextRank > s.honor then
+        Pair("to climb one rank", BT.N(s.nextRank - s.honor) .. " more")
+      end
+      if s.rate and s.rate > 0 then
+        Pair("honor per hour", BT.N(s.rate))
+      end
+      -- said plainly, because it is arithmetic on this week's numbers and not
+      -- something the server has promised
+      GameTooltip:AddLine("a model of the weekly reset, not the server",
+                          0.5, 0.5, 0.5)
+    end
   end
 
   GameTooltip:AddLine(" ")

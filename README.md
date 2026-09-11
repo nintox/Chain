@@ -1,518 +1,286 @@
-# Chain
+<p align="center">
+  <img src="push/icon.png" width="128" alt="Chain">
+</p>
 
-A levelling tracker for World of Warcraft Classic Era, written for the person
-*buying* the boost rather than the one selling it.
+<h1 align="center">Chain</h1>
 
-It answers one question continuously — **how many more runs, how long, and what
-will it cost** — and it answers it from your own runs rather than from a guess.
-When you are not being boosted it turns into an ordinary levelling bar.
+<p align="center">
+  <b>What a run is actually worth.</b><br>
+  A World of Warcraft Classic Era addon for the runs you do over and over.
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#what-it-does">What it does</a> ·
+  <a href="#the-window">The window</a> ·
+  <a href="#phone-notifications">Phone notifications</a> ·
+  <a href="#is-this-allowed">Is this allowed</a>
+</p>
+
+---
+
+Boosting, levelling, chaining resets, farming honour. Chain measures what you
+actually do and tells you what it is worth: how many runs are left, how long
+they take, what they cost, which booster to pay, and when the next instance
+becomes the cheaper buy.
+
+Nothing is guessed. Every figure comes from your own runs.
 
 ```
-Stockades 22-30  27 > 28  step 1/2    inst 5/5 +1 in 57m (all 1h 0m)
-[Lvl 27  55.5%           17,310 to 28                     2.0 runs]
-8,566 xp/run (Algorismus 5)              5m/run  ~10m left  ~60g
-    grp 34.4 (5) -2% xp   ding ~10m
-    4,200 xp  45 mobs (avg 93)  3m  -17% pace
-    Algorismus  102k xp/h  ~54g/lvl  714 xp/g
+SM  28 > 42   4%                          inst 4/5  +1 in 13m
+┌──────────────────────────────────────────────────────────┐
+│ Lvl 34  57.0%        594,813 to 42               75.1 runs│
+└──────────────────────────────────────────────────────────┘
+ 7,919 xp/run (Snoeggboost 9)   5m/run   ~6h 46m left   ~3,200g
+ lvl 35 in ~7m
 ```
-
-`22-30` is what the place is worth doing at, not what you set in your route —
-it turns red once you have outgrown it. Everything else the addon knows is one
-hover away, on the tooltip.
 
 ---
 
 ## Install
 
-Download the repository (green **Code** button → *Download ZIP*, or clone it)
-and put the `Chain` folder into:
+**From CurseForge**, with the CurseForge app or WoWUp — search for Chain.
+
+**By hand:** download the latest release, unzip it, and put the `Chain` folder
+into
 
 ```
 World of Warcraft/_classic_era_/Interface/AddOns/
 ```
 
-so that you end up with `.../AddOns/Chain/Chain.toc`. Restart the
-game — WoW only scans the AddOns folder at startup, so `/reload` will not find
-a newly added addon.
+so that `AddOns/Chain/Chain.toc` exists. Restart the game, or type `/reload`
+if it was already running.
 
-Optional: [phone notifications](#phone-notifications).
+`/chain` opens the window. There is also a button on the minimap: left-click
+for the window, right-click for the settings.
 
-If the game says the addon is out of date, tick **Load out of date AddOns** on
-the character-select screen, or run `/dump select(4, GetBuildInfo())` in game
-and put that number after `## Interface:` in `Chain.toc`.
+### Setting up
 
-## Setting up
+`/chain config`, or right-click the minimap button.
 
-`/chain config` — tick the instances you will be boosted through, give each a
-level span, a price and how many runs that price buys. Boosters sell packs,
-usually of five, so **gold** is what a pack costs and **runs** is how big the
-pack is. **Runs per price** at the bottom is the default for anywhere you
-leave the runs column alone.
+Tick the instances you will be going through and give each one a level span, a
+price, and how many runs that price buys. That is the whole setup — everything
+else is learned from the runs you do.
 
-That is the whole setup. Everything else is learned from the runs you do.
+| column | what it is |
+|---|---|
+| **enter** | the level the game lets you in at |
+| **levels** | the span the place is actually worth doing |
+| **from / to** | your plan for this step |
+| **gold** | what a pack costs |
+| **runs** | how many runs that pack is |
 
 ---
 
 ## What it does
 
-### The bar
+### The forecast
 
-Seven fixed slots — two above, three inside, two below — so every figure has
-its own corner and you look at a place rather than reading a line for it.
+Runs, time and gold to the end of your route, learned from your own runs
+rather than guessed.
 
-- **xp/run (Algorismus 5)** — the average the forecast rests on, and whose it
-  is. A name means the booster you are with has enough runs of his own to be
-  judged on them; a bare number is every run recorded for the step; `(est)`
-  means it is borrowed from another instance because this one has no data yet.
-- **grp 34.4 (5) -2% xp** — average group level and what the make-up costs you.
-  Classic splits a mob's experience by level, so every boostie above your own
-  level takes a bite out of your share. Green is as good as that group size can
-  get, red is not.
-- **inst 4/5 +1 in 28m** — instances entered this hour and when the next frees
-  up. Re-entering the same instance does not count; a reset does. Five per hour
-  is the only limit the game enforces.
-- **pace / over** — how the run you are in compares to the usual one.
-- **the booster line** — his experience per hour, what a level costs at his
-  pace, and `xp/gold`, which is the verdict (see below).
-- **move to SM at 28 (34% cheaper)** — when to leave (see below).
+A run only counts as a boost when somebody ten or more levels above you is
+doing the killing; runs you cleared yourself are averaged separately, so the
+two never contaminate each other. The forecast follows the booster you are
+actually with once he has three runs of his own in that step — so swapping a
+fast booster for a slow one moves the numbers instead of blending them.
 
-Levelling on your own uses the same frame:
+Two lines under the bar, and always the same two: the run you are in, then the
+next thing that happens. A block that grows and shrinks as figures come and go
+is a block that moves about while you are reading it. Everything else is on
+the tooltip.
 
-```
-this level 30m                          session 21,411 xp in 26m
-[Lvl 27  55.5%         21,590 / 38,900                ~12m to 28]
-17,310 to go                                         84,000 xp/h
-    quests ready 5.4% (2) -> ~10m
-    Stockades > 28  boost ~2 runs ~50g  solo ~12m
-```
+When no dungeon run is recent it turns into an ordinary levelling bar:
+experience per hour, time to the next level, rested, and quests ready to hand
+in — with the grey ones left out, because handing those in is worth nothing.
 
-Experience per hour disappears rather than going stale when the experience
-stops coming in.
+### Is he worth it?
 
-### The tooltip
+Type the price a booster quotes and how many runs it buys. The verdict —
+experience per gold — is computed, not clicked.
 
-The bar is what you glance at; the tooltip is what you look at. Hovering it
-gives you the same step in full — the level span the instance is meant for and
-whether you have outgrown it, experience, time and mobs per run, what a level
-costs here now and what it will cost by the time you leave, the booster's own
-figures with his price and his verdict, how he compares with the best you have
-recorded, your group, your instance count, what you have paid here and in
-total, and what the rest of the route comes to.
-
-Anything that can live there instead of on the bar does, which is why the bar
-is four short lines and not eight.
-
-### Which instance for which level
-
-Two numbers, and they are not the same thing:
-
-- **enter** — the level the game demands before it will let you through the
-  door. The Stockades will not have you before 15 however cheap the booster
-  is.
-- **levels** — the span the place is actually worth doing at, `22-30` for the
-  Stockades. Above it the mobs go grey and the runs stop paying.
-
-Both are carried for every instance and shown wherever you might need them,
-coloured against where you are: green when you can go in, or when the place
-still suits you, red when you cannot, or when you have outgrown it.
-
-- the span sits next to the instance name on the bar, and the entry level is
-  on the tooltip
-- the settings have both, beside the boxes where you type your own levels, and
-  will tell you when the span you typed starts before the game lets you in
-- the Route tab has **enter** and **good for** next to **your span**
-- the Boosters tab says both under the list
-
-You do not have to know the levels by heart to set up a route.
-
-### Resets
-
-When a reset is announced you get a line on the bar and a sound repeated a few
-times on the Master channel — which plays even with the game muted, the state
-you are most likely in when you have walked away.
-
-**Two sounds, not one.** A reset means the opposite thing depending on which
-side of the portal you are standing on, and the whole point of a sound is that
-you do not have to look: one for **go in**, another for **zone out**, picked
-from a short list in the settings. Clicking one plays it, because an alert you
-have never heard is an alert you end up ignoring. The sound follows the
-situation rather than the moment — walk out while the alert is still live and
-it changes to the other one, so you are never being told to leave a place you
-have already left. A large on-screen message is
-available in the settings, off by default; it hangs under the bar's lines
-rather than above them, because the bar usually ends up at the top of the
-screen where there is nothing above it.
-
-**It is all our own data.** Entries, resets, trades, runs — the addon sees
-them itself and keeps them itself. Nova Instance Tracker is optional in the
-real sense: the one thing it has that we cannot see for ourselves is the
-entries from before this addon was installed, so those are copied into our own
-log once, at login, and after that it can be uninstalled without anything
-breaking. (`/chain importnit` does it by hand. Reading NIT's live count
-instead of ours is a setting, off by default.)
-
-**And the game gets the last word.** Counting zone-ins is an estimate: it
-cannot know about instances you entered on a day the addon was off, or on
-another computer. The game does know, and says so at the portal — *you have
-entered too many instances recently*. When that arrives the count is corrected
-to the limit rather than argued with, and it says in chat that it was behind.
-
-**Telling the group.** Your lockout is invisible to everybody else: they see
-you standing at the portal not going in, and somebody asks, every time. So the
-addon says it instead — `locked 5/5 - free in 12m` when a reset lands and you
-cannot use it, and `free again - 4/5` the moment that changes. Two lines and
-no more: a countdown in party chat is the fastest way to be asked to turn an
-addon off. **Tell the group your lockout** in the settings.
-
-The line knows whether its advice is any good. Inside, it says to zone out.
-Outside with an instance free, it says go in. Outside at five in the hour it
-says so and when one frees up, because "go in" is not advice you can act on.
-
-When a reset is *refused* you get the reason instead — someone still inside,
-someone zoning, someone offline — which is usually what you are standing at the
-portal wondering about.
-
-`/chain rs` resets your instances. `/chain testalert` previews the alert.
-
-### Not a boost
-
-A run only counts as a boost when somebody in the group is at least ten levels
-above you. Below that it is a normal dungeon: no booster is named, no gold is
-charged, and the runs are averaged separately, because clearing a place
-yourself and being dragged through it are not the same number.
-
-### The window
-
-`/level` opens it, and so does the **button on the minimap** — left-click for
-the window, right-click for the settings, middle-click to show or hide the
-bar, and drag it anywhere round the edge. Hovering it gives you the two things
-you would have opened the window for: how many instances you are at this hour,
-and what is left in the step you are on. `/chain minimap` hides it, or the
-settings do.
-
-| tab | what is on it |
-|---|---|
-| **History** | every run, with booster, group, level and rate. Experience, time, mobs and rate are coloured against that instance's own average, so a slow run stands out without reading the numbers. Click a column to sort, click the **x** to throw a run out of the averages. |
-| **Boosters** | everyone selling the instance in focus, plus anyone you added yourself. |
-| **Adverts** | everyone who has advertised anything, newest first, what they said, and a **whisper** button on every row. |
-| **Groups** | the other half of the same channels: everyone *looking* rather than selling — LFM, LFG, WTB — with what they are short of, the levels they ask for, what they said in full, and the same **whisper** button. |
-| **Reported** | everything other people's addons told you, kept apart from your own figures. |
-| **Gold** | every trade you completed, and what a level has actually cost. |
-| **Instances** | one timeline of everything that happened to an instance — every entry with its own countdown, and every reset, in the order they happened. |
-| **Route** | the plan from where you stand, step by step. |
-
-Every tab has a **show only** box that searches what the rows actually say, so
-typing an instance narrows the list to it and typing a name narrows it to that
-booster.
-
-### Groups
-
-Boost adverts are read by looking for a sale; everything that is not one gets
-thrown away, and what gets thrown away is most of what people actually write.
-The Groups tab keeps that half: `LFM SM cath need healer`, `LFG RFD`,
-`LF3M Uldaman quest chain 40+`.
-
-Nothing is matched against your quest log or anything else clever. The post is
-kept whole — who said it, where you heard it, how many they are short and of
-what, the level range if they gave one — and the **show only** box is what
-turns it into a list of one thing. Type `uldaman`, or `healer`, or a name.
-
-Somebody shouting the same line every thirty seconds does not fill the list:
-the repeat moves his row back to the top and counts, so `2m ago x7` is one
-row, not seven. A post about the instance you are standing in is green.
-
-It has its own switch in the settings — **Read LFM and LFG posts** — because a
-busy LookingForGroup produces a great deal more of this than it does boost
-adverts. `/chain groups` opens the tab.
-
-### The verdict
-
-The one thing you type on the Boosters tab is the **price** he quotes. The
-column is headed with the pack this instance is sold in — `price/5 runs` — and
-the number is the whole pack. It is remembered against his name along with the
-pack it covered.
-
-Next to it is **pack**, for the man who does it differently. Deals are not the
-same everywhere or from everybody: ten Stockade runs for 300g from one booster
-and five for 200g from the next is an ordinary evening. So there are three
-places a pack size can live, most specific first — the booster, the instance,
-and the setting — and the most specific one that is filled in wins. Type a
-pack against a booster and it stays his: retyping his price later does not
-quietly put him back on the usual number.
-
-**A price typed against a booster beats the price typed against the instance**,
-for as long as he is the one boosting you. Set the Stockades to 75g in the
-settings and run with somebody charging 50g, and every figure — the estimate on
-the bar, the gold per level, the route total, when to move on — is worked out
-at his 50. The instance price is what the place usually goes for, and it is
-used when you are alone, or with somebody you have not priced yet.
-
-Everything else follows:
-
-```
-xp/gold  =  xp per run  ÷  gold per run
-```
-
-Pulling more mobs raises it, charging less raises it. Each booster is graded
-against the best you have recorded for that instance: **good** within 10% of
-the best, **ok** down to 70%, **poor** below. There is nothing to click and
-nothing to keep up to date.
-
-### Your own list
-
-Boosters arrive in the list on their own — from their adverts, from your runs,
-from other people's addons — but a name you were given in a whisper arrives
-nowhere. The Boosters tab has an **add someone** row at the bottom for that:
-type a name and, if you like, a note in your own words, and he is in the list
-before you have ever run with him. He is filed under the instance in focus, so
-adding him while you are looking at the Stockades does not clutter Scarlet
-Monastery.
-
-The **your note** column is editable on every row, not only the ones you added:
-*only sells mornings*, *does not pull the last room*, *friend of Nintoz*. The
-note is yours. It is never shared, never sent, and never travels between copies
-of the addon — what travels is measurements, and an opinion about a stranger is
-not a measurement.
-
-The **x** on a row removes somebody you added by hand. It does not appear next
-to a booster you have actually run with: those runs are recorded history, and
-throwing one out is done on the History tab, one run at a time.
+A price typed against a booster beats the one typed against the instance for
+as long as he is the one boosting you, everywhere a figure is worked out.
+Pack sizes live in three places, most specific first: the booster, the
+instance, and the setting. A ten-run deal in Stockade is not a ten-run deal
+everywhere, and the same man does not sell every instance the same way.
 
 ### When to move on
 
-Experience from a mob falls as you outlevel it and stops entirely when the mob
-turns grey. An instance that is excellent at 22 is worth nothing at 35, so the
-real question during a chain is not "how many more runs" but "how many more
-runs *here* before somewhere else is cheaper".
+Experience decay is modelled from the grey level and zero-difference tables
+and anchored to your own measured runs. Chain can say what a level costs here
+today, what it will cost by the time you leave, and when another instance
+becomes the cheaper buy.
 
-The bar answers it: **move to SM at 28 (34% cheaper)**, shown once the switch
-is within four levels. The Route tab has the same thing as numbers — what a
-level costs in each step today, and what it will cost by the time you leave it,
-with the increase coloured.
+### Resets and lockouts
 
-Two sources, in this order:
+Reset detection from the game's own messages, with the three failure reasons
+read as well — somebody still inside, somebody zoning, somebody offline.
 
-1. **What you measured.** Runs are stored with the level you were, so once an
-   instance has runs at several levels the fall is simply observed.
-2. **The game's own arithmetic**, anchored to your measurement — the grey
-   level and the zero-difference table. The shape of the curve comes from the
-   formula, the size of it from your data, so an error in the model cannot make
-   the absolute figures wrong, only the slope, and only until you have levelled
-   through enough of it to be measuring instead.
+**Two different sounds**, because a reset means opposite things on the two
+sides of the portal: one for *go in*, another for *zone out*. Walk out while
+the alert is still live and the sound changes with you. Pick them in the
+settings; clicking one plays it, because an alert you have never heard is an
+alert you learn to ignore.
 
-It will not suggest somewhere before the level you set for it in your route.
+The addon keeps its own instance log with a per-entry countdown. When the game
+refuses you at the door — *you have entered too many instances recently* — the
+count is corrected to what the game says rather than argued with, because
+counting zone-ins cannot know about a day the addon was switched off.
 
-### Gold
+It can also tell your party your lockout: `locked 5/5 - free in 12m` when a
+reset lands you cannot use, and `free again` when that changes. Two lines and
+no more. A countdown in party chat is the fastest way to be asked to turn an
+addon off.
 
-The price in the settings is what the booster advertises. What you actually
-paid is read from the trade window: when a trade completes, who it was with and
-how much money moved each way is logged, tagged with the step and marked as a
-booster payment when the name matches the one in your group.
+### Boosters, adverts and groups
 
-That gives you two numbers side by side — `~100g (paid 82g)` — the estimate for
-the runs still to come and what this step has cost so far. Money coming back is
-subtracted. Cancelled trades are not logged. Payments by mail are invisible to
-an addon and will not appear.
+Boost adverts are read from every channel you are in, and from whispers, say,
+yell, guild and party. Any of those sources can be switched off.
 
-Both directions are kept, with the zone you were standing in when it happened,
-the way Nova Instance Tracker words it: *gave 75g to Solari in Stormwind
-Stockade*, *received 1,000g from Dirtyeob in Stormwind City*. Paying at the
-summoning stone is as common as paying inside, so the gold still counts towards
-the step you are working on — the zone is there to tell you which trade was
-which when you read the list back.
+The other half of the same channels is kept too: **LFM, LFG and WTB**, with
+what they are short of, the level range they ask for, and what they said in
+full. Nothing is matched against your quest log or anything else clever — the
+search box is what turns it into a list of one thing. Somebody shouting the
+same line every thirty seconds is one row with a count, not thirty rows.
 
-### Where the booster list comes from
+Your own notes on any booster, written in your own words. Notes are never
+shared.
 
-**Chat adverts.** Boosters advertise their own price several times an hour, in
-whichever channel they feel like, and as often as not in a whisper to you. The
-addon listens to all of it — every numbered channel you are in (Trade, General,
-LookingForGroup, your realm's boosting channel, anything you joined yourself),
-plus say, yell, guild, party and whispers — pulls the instance and the price out
-of anything that reads like a sale, and files it under that player's name.
-`200g for 5 runs` and `40g per run` both work.
+### Honour
 
-**A price is not required.** Most adverts do not carry one — *WTS SM Boost,
-Cath & Arm, Wlc Lvl 20-42, FFA Loot, sum ready* is the usual shape — so the
-advertiser is listed anyway, with **ask** in the price column and the whisper
-button next to it. Type his price into the Boosters tab once he tells you, and
-the verdict follows from there.
+Your weekly honour turned into the only two numbers that matter: what rank you
+end up at after the next reset, and how much more you need tonight to not go
+backwards. On the bar tooltip, on the minimap tooltip, and from `/chain pvp` —
+and only once there is honour to talk about.
 
-It has to name an instance and read like a sale: `WTS`, `selling`, `boost`,
-`carry` or a number of runs. Somebody looking for a group is not selling one,
-so `LFM Stockades boost, need 2 more` and `WTB SM boost` are skipped, and word
-boundaries are used so "small group" is not Scarlet Monastery. The names people
-actually type are understood — `Mara`, `Cath & Arm`, `Scholo`, `ZF`, `stocks` —
-not only the proper ones.
+The arithmetic is the honour system's own — honour into contribution points at
+three exchange rates, contribution points into a rank, then a fraction of the
+way from where you stand to where the honour says you belong. The fraction
+shrinks as the rank goes up, which is why the top ranks took months. It is a
+model of the reset and says so rather than pretending to be the server.
 
-**settings → channels…** lists every source, built from the channels you are
-actually in, with a count of how many adverts each has produced, and each one
-can be switched off. A channel you join tomorrow is read tomorrow: only the
-ones you untick stay off. The addon's own data channels are never read as
-adverts. `/chain ads` turns the whole thing off, and `/chain heard` prints the
-last adverts it picked up and which channel each came from.
+### Who is out there
 
-There is no separate "boosting" channel on most realms: boosters advertise in
-**Trade** and **LookingForGroup**, which is exactly what the bulletin-board
-addons read too. Two things decide whether you see any:
+A kill-on-sight list, by name or by whole guild, and the watching to go with
+it. Nameplates, your mouse, your target and the combat log all feed it — the
+combat log reaches furthest, so somebody casting two rooms away is in it.
 
-- **Trade only works inside a city.** Standing at the Stockades entrance you
-  are in Stormwind, so Trade reaches you; standing in Westfall it does not, and
-  neither the addon nor your chat window will see a word of it.
-- **You have to be in the channel.** `/join LookingForGroup` and `/join
-  General` if you left them, or whatever your realm's boosting channel is
-  called — it is read the moment you join it.
+Marked players raise the alarm whether or not you asked; everyone else only if
+you did. The alert for a marked one pulses and stays twice as long, and their
+**nameplate is marked**, because a line at the top of the screen tells you
+somebody is here but not which of the four in front of you it is.
 
-**Other people's addons.** With sharing on, measurements are swapped with other
-people running Chain. You choose who hears you:
+A small list on screen shows who is close, class-coloured, fading as the
+sighting gets old. Everything known about them is on the tooltip rather than
+in the row: a row you have to parse is a row you look away from.
 
-- **everyone with the addon** — a hidden channel of its own
-- **my guild**
-- **only these names** — whispered to a list you type
+### Gold and goods
 
-Only facts travel: the price you were quoted, and what you clocked. There is no
-opinion to send, because the verdict is computed from those numbers and
-everyone derives it from the same evidence. Nothing you received is ever passed
-on, so a mistake cannot bounce around gathering weight. Messages leave one at a
-time, seconds apart. Sharing is off by default: `/chain share`.
+Every trade you completed — what you paid, to whom, what you got back, and
+what changed hands that was not money. Half of what goes across the table in a
+boost is a stack of cloth or the greens off the run, and a log that only
+counts coin says you paid less than you did.
 
-Each reporter counts once per booster per instance, and a newer report replaces
-their older one. Measurements are pooled weighted by how many runs each rests
-on, so one person with thirty runs counts for more than one with three.
+### Sharing
 
-### Nova Instance Tracker
+Measurements can be swapped addon-to-addon over a hidden channel, your guild,
+or a list of names. **Off by default.** Only facts travel — the price you were
+quoted, experience per run, time, mob count. Nothing you wrote and nothing you
+think. Anything received is kept visibly apart from your own figures, and
+nothing received is passed on.
 
-Not required. With it, the lockout counts come from its data, which means they
-are right from the first minute instead of only counting what this addon has
-seen. Without it, the addon keeps its own log and reaches the same numbers once
-it has watched you for an hour. Reset announcements from other people's NIT are
-picked up from party chat either way.
+---
+
+## The window
+
+`/chain`, or the minimap button.
+
+| tab | what is on it |
+|---|---|
+| **History** | every run, coloured against that instance's own average, so a slow one stands out without reading the numbers |
+| **Boosters** | everyone selling the step you are on, with the verdict |
+| **Adverts** | everyone who has advertised anything, from any channel, with a whisper button |
+| **Groups** | everyone looking rather than selling: LFM, LFG, WTB |
+| **Reported** | what other people's addons told you, kept apart from your own |
+| **Trade** | every trade, gold and goods, both ways |
+| **Enemies** | everyone seen out there, and the kill-on-sight list |
+| **Instances** | one timeline of every entry and every reset, with countdowns |
+| **Route** | the plan from where you stand, step by step |
+
+Every tab sorts by any column, searches with one box, and exports to CSV.
+
+`/chain` on its own prints the whole list of commands. The ones worth knowing
+before you need them:
+
+| | |
+|---|---|
+| `/chain config` | instances, levels and prices |
+| `/chain pvp` | your rank, and the one the next reset gives you |
+| `/chain kos NAME` | mark somebody kill on sight |
+| `/chain nearby` | the list of players on screen, on or off |
+| `/chain rs` | reset your instances |
+| `/chain export` | every run as CSV — add `trade` for trades |
 
 ---
 
 ## Phone notifications
 
-Optional, and a separate program — see [`push/README.md`](push/README.md).
+Optional, and nothing in the addon depends on it.
 
-A WoW addon has **no network access of any kind**: no HTTP, no sockets. That is
-true of every addon, not just this one, so nothing running inside the game can
-reach ntfy, Discord or a phone. What the game *does* do is write its chat to a
-log file, and a small program outside WoW can watch that file.
+A WoW addon has **no network access of any kind** — no HTTP, no sockets, for
+anybody, ever. So nothing inside the game can reach your phone. What the game
+does do is write files, and a small program outside the game can watch them.
 
 ```
-WoW  ──writes──▶  Logs/WoWChatLog.txt  ──watched by──▶  Chain Push  ──▶  ntfy / Discord
+WoW  ──writes──▶  a file  ──watched by──▶  Chain Push  ──▶  ntfy / Discord
 ```
 
-It only reads a file. It never touches WoW, never reads its memory, never sends
-it anything, and does not automate any part of playing.
+The obvious file is the chat log, and it turns out to be far too slow: the
+client writes it in 48 KB blocks, so a line can sit unwritten in memory for
+ten minutes. Screenshots are not buffered — the client puts one on disk the
+moment it is asked. So the addon takes one for a ready check and two for a
+reset, and the companion counts them, sends the push, and deletes the files.
+They were signals, not pictures.
 
-**Chain Push** is that program. On a Mac, `push/ChainPush.app` is ready to
-double-click — drag it to your Applications folder if you like. It needs
-nothing installed: with Python it opens the full window, and without it runs on
-the Mac's own dialogs instead, with a small window that says it is running and
-a Stop button. On Windows, double-click `push/ChainPush.bat` or build
-`ChainPush.exe` with `push/build.py`.
+**Chain Push** is a Dock icon on a Mac and a system tray icon on Windows. It
+sits there the whole time it is working; clicking it gives you the status, a
+test, and the settings. Closing the window does not stop it. Quit does.
 
-Pick ntfy or Discord, paste your topic or webhook, press Start. The icon sits
-in the Dock or on the taskbar while it runs. There is a command-line version
-too, `push/chainpush.py`, with the same engine.
-
-| | needs the addon's marker? |
-|---|---|
-| the instance has been reset | no |
-| a reset failed, and why | no |
-| someone started a ready check | yes |
-
-The chat log is written in 48 KiB blocks, so a line can sit in the game's
-memory for ten minutes before it reaches the disk. For alerts that have to
-arrive now, the addon takes a screenshot instead — one for a ready check, two
-for a reset — because those are written at once, and the companion program
-watches for them and deletes them again. **Instant alert (screenshot)** in the
-settings turns it on.
-
-The first two are the game's own wording, already in the log. A ready check
-produces no chat line at all, so the addon writes one — into a channel only
-your character is in, removed from your chat windows so you never see it.
-`/chain signal` turns that on.
+Full instructions, including how to build the Mac app in one double-click, are
+in [`push/README.md`](push/README.md).
 
 ---
 
-## Commands
+## Is this allowed
 
+Yes, and it is worth saying why rather than asking you to take it on trust.
+
+Chain reads what the client has already put on your screen and does
+arithmetic on it. It does not automate any part of playing, does not click
+anything for you, does not read the game's memory, does not talk to Blizzard's
+servers, and does not do anything you could not do yourself with a notepad and
+more patience.
+
+The companion program never touches WoW at all. It watches a folder.
+
+---
+
+## Building and testing
+
+Everything is plain Lua with no build step. Clone it into your AddOns folder
+and it runs.
+
+```bash
+lua5.4 test/run.lua       # the addon, against a stubbed client
+python3 test/pushtest.py  # the companion, against a stubbed Tk and a fake server
+bash test/shelltest.sh    # the shell version of the companion
 ```
-/chain               history, boosters, gold, instances and route
-/chain boosters      straight to the booster list and prices
-/chain adverts       everyone who has advertised, with whisper
-/chain config        instances, levels and prices
-/chain stats         print the current step to chat
-/chain gold          what you have paid, and to whom
-/chain export        every run as CSV (add `gold` for trades)
-/chain rs            reset your instances
-/chain testalert     preview the reset alert
-/chain signal        write markers for the phone-notification script
-/chain share         swap measurements with other addon users
-/chain ads           read boost adverts out of chat
-/chain heard         the last adverts the addon picked up
-/chain announce      tell the group when the instance resets
-/chain show          show or hide the bar
-/chain lock          stop the bar being dragged
-/chain scale 1.2     resize the bar
-/chain debug         what the addon thinks is going on right now
-/chain reset         delete all recorded history
-```
 
-`/lb` is the short form. The old names — `/level`, `/lt`, `/boost` — all still
-work, so nothing you have in your fingers stops working.
+Over seven hundred assertions, no WoW and no network in any of them. The
+client is faked in `test/wowstub.lua`; if a test needs a new API, that is
+where it goes.
 
----
-
-## How it stores things
-
-Every completed run and every trade is stored individually in
-`WTF/Account/<account>/SavedVariables/Chain.lua`, account-wide, so
-booster records and spending carry across your characters. Averages, ratings
-and forecasts are all computed from those lists on demand, which means a
-settings change re-reads your whole history rather than starting over.
-
-The instance a run belongs to is recorded by its **instance id**, not its name.
-Names are localised and Blizzard renames places — what this addon's table calls
-"The Stockade" the current client calls "Stormwind Stockade" — and a run filed
-under a name nothing matched would never reach its step. Names are matched
-loosely as a fallback.
-
-The experience table is the original pre-2.3 one, and the addon also reads what
-your client says each level costs and prefers that, so it corrects itself on a
-client with a different table.
-
-Instance entries are account-wide (the daily figure counts every character).
-The run in progress and your experience-rate buckets are per character.
-
----
-
-## Is this allowed?
-
-Blizzard's UI Add-On Development Policy asks that add-ons be free, carry no
-advertisements and solicit no donations, keep their code visible and
-unobfuscated, stay within the T rating, and not negatively impact realms or
-other players. This add-on is free, unobfuscated, uses only the documented API,
-and paces its own network traffic for that last point.
-
-Nothing subjective is broadcast. What travels between copies is what a booster
-charges and what he measurably did — the same thing you would tell a friend who
-asked.
-
-The companion program reads a log file the game itself writes. It does not
-interact with the client in any way.
-
----
-
-## The rename
-
-This was called **Level Tracker** until it was called Chain. If you are
-upgrading: your history, gold and boosters are carried over the first time the
-new version loads, because the `.toc` still declares the old saved variables
-and the addon adopts them once. Chain Push keeps the settings the old
-LevelPush had, for the same reason. Nothing to do by hand.
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md).
+`Libs/` is other people's code, carried the way every WoW addon carries it:
+LibStub and LibDataBroker are public domain, CallbackHandler and LibDBIcon are
+from the Ace3 family. Everything else here is MIT — see [LICENSE](LICENSE).

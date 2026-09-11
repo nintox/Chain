@@ -1,30 +1,13 @@
-# This folder is a working WoW addon folder as well as a repository: it is
-# where the addon actually runs, so things land in it that have no business
-# being published. Nothing here needs deleting - git simply does not see it.
-
-# Your own scratch space. Anything you want to keep beside the addon but out
-# of the repository goes in here and stays out of it forever.
-local/
-_to_delete/
-
-# Written while the program runs. The log holds the ntfy topic, which is the
-# one secret there is.
-*.log
-push/__pycache__/
 __pycache__/
 *.pyc
-
-# Built on the machine it runs on, from what is in the repository, so there is
-# nothing to gain by carrying a copy of it about
-push/LevelBarPush.app/
-push/dist/
-push/build/
-
-# WoW writes these itself
-Interface/
-WTF/
-
-# macOS
 .DS_Store
-.AppleDouble
-Icon?
+push/build/
+push/dist/
+push/*.spec
+push/ChainPush.app/
+push/*.log
+
+# the workflows live in .github/workflows/; these are the copies the bridge
+# could drop at the root, and a place for anything that is only yours
+/github-workflow-*.yml
+local/

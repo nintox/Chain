@@ -26,12 +26,15 @@ SHOWFLAG="${LT_SHOW:-$SUPPORT/push.show}"
 QUIET_FOR=20
 
 mkdir -p "$(dirname "$CONF")" 2>/dev/null
-# The program used to be called LevelPush and kept its settings under
-# LevelTracker. A rename should not ask you to type your topic again.
-OLDCONF="$HOME/Library/Application Support/LevelTracker/push.json"
-if [ ! -f "$CONF" ] && [ -f "$OLDCONF" ]; then
-  cp "$OLDCONF" "$CONF" 2>/dev/null && echo "$(date '+%H:%M:%S')  carried your settings over from LevelPush"
-fi
+# Every name this has had, newest first. A rename should never ask somebody to
+# type a topic they set up months ago all over again.
+for OLD in LevelBar LevelTracker; do
+  OLDCONF="$HOME/Library/Application Support/$OLD/push.json"
+  if [ ! -f "$CONF" ] && [ -f "$OLDCONF" ]; then
+    cp "$OLDCONF" "$CONF" 2>/dev/null \
+      && echo "$(date '+%H:%M:%S')  carried your settings over"
+  fi
+done
 
 SERVICE=""; TOPIC=""; SERVER="https://ntfy.sh"; WEBHOOK=""; LOG=""
 

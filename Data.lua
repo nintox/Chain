@@ -1,4 +1,4 @@
--- Level Tracker: static data and the saved-variable schema.
+-- Chain: static data and the saved-variable schema.
 -- Nothing here talks to the game; it is the vocabulary the rest of the addon
 -- uses. Keeping it first in the .toc means every other file can rely on it.
 
@@ -237,6 +237,18 @@ BT.DEFAULTS = {
   logSignal = false,
   snapSignal = false,   -- a screenshot as the instant alert for the phone
   resets = {},         -- every reset we were told about: our own record
+  -- Who is out there. Watching is on, shouting about strangers is not: the
+  -- ones you marked are worth an alarm whether or not you asked, and everyone
+  -- else is worth an alarm only if you did.
+  watchEnemies = true,
+  alertEveryone = false,
+  enemySound = true,
+  kos = {},            -- kill on sight, by name
+  kosGuilds = {},      -- and by whole guild, which is usually how it goes
+  enemies = {},        -- everyone seen, account-wide
+  nearbyList = true,   -- the small list on screen
+  nearbySeconds = 60,  -- how long a sighting counts as "nearby"
+  nearbyPos = nil,     -- where you dragged it
   minimap = true,      -- the button on the minimap
   minimapAngle = 205,  -- where round the edge you left it
   -- Off. NIT's history is imported into our own log once, and after that we

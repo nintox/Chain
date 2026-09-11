@@ -1,4 +1,4 @@
--- Level Tracker: when to move on.
+-- Chain: when to move on.
 --
 -- Experience from a mob falls as you outlevel it and hits zero when it turns
 -- grey. An instance that is excellent at 22 is worthless at 30, so the real

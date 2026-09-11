@@ -11,12 +11,22 @@
 ## X-License: MIT
 ## X-Category: Quests & Leveling
 
+# Other people's code, carried the way every WoW addon carries it. LibStub
+# and LibDataBroker are public domain; CallbackHandler and LibDBIcon are from
+# the Ace3 family and are embedded in several hundred addons for exactly the
+# reason they are embedded here.
+Libs/LibStub/LibStub.lua
+Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua
+Libs/LibDataBroker-1.1/LibDataBroker-1.1.lua
+Libs/LibDBIcon-1.0/LibDBIcon-1.0.lua
+
 Data.lua
 Stats.lua
 Decay.lua
 Core.lua
 Trade.lua
 PvP.lua
+Enemy.lua
 Roster.lua
 Bar.lua
 Minimap.lua

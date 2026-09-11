@@ -1,4 +1,4 @@
--- Level Tracker: where the booster list comes from.
+-- Chain: where the booster list comes from.
 --
 -- Two sources, both optional, neither required for the addon to work:
 --

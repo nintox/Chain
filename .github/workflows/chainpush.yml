@@ -1,0 +1,55 @@
+# Move this to .github/workflows/chainpush.yml in your repo.
+#
+# A program can only be built on the system it is for, so this builds the
+# Windows one and the macOS one side by side. Run it from the Actions tab, or
+# publish a release and it attaches both to it.
+name: Build Chain Push
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: ChainPush-windows
+            path: push/dist/ChainPush.exe
+          - os: macos-latest
+            artifact: ChainPush-macos
+            path: push/dist/ChainPush.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install what the build needs
+        run: python -m pip install --upgrade pip pyinstaller pillow
+
+      - name: Build
+        run: python push/build.py
+
+      # macOS ships an .app folder; zip it so the download stays an app
+      - name: Zip the app
+        if: runner.os == 'macOS'
+        run: |
+          cd push/dist
+          ditto -c -k --sequesterRsrc --keepParent ChainPush.app ChainPush.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+
+      - name: Attach it to the release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.path }}

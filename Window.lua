@@ -1,4 +1,4 @@
--- Level Tracker: the detail window.
+-- Chain: the detail window.
 --
 -- This is the part an aura cannot do. Every run is kept, so the history is
 -- browsable, a bad run can be thrown out, and boosters can be put side by
@@ -83,18 +83,36 @@ local LAYOUTS = {
     }
   },
   gold = {
-    title = "Every trade you completed. Net is what left your bags after "
-      .. "anything traded back.",
+    title = "Every trade you completed - gold and goods, both ways. Net is "
+      .. "what left your bags after anything traded back.",
     cols = {
-      { "when",    78, "at" },
-      { "traded",  90, "with" },
-      { "paid",    64, "gave" },
-      { "got back",64, "got" },
-      { "net",     64, "net" },
-      { "where",  104, "zone" },
-      { "step",    80, "id" },
-      { "lvl",     34, "lvl" },
-      { "booster", 60, nil }
+      { "when",    74, "at" },
+      { "traded",  84, "with" },
+      { "paid",    58, "gave" },
+      { "got back",58, "got" },
+      { "net",     58, "net" },
+      { "you gave",128, nil },
+      { "he gave", 128, nil },
+      { "where",   92, "zone" },
+      { "step",    64, "id" },
+      { "lvl",     30, "lvl" },
+      { "booster", 52, nil }
+    }
+  },
+  enemies = {
+    title = "Everyone seen out there, newest first. Click KOS to mark one, "
+      .. "or mark a whole guild - marked ones always raise the alarm.",
+    cols = {
+      { "when",     70, "at" },
+      { "who",      96, "name" },
+      { "lvl",      38, "level" },
+      { "class",    70, "class" },
+      { "guild",   118, "guild" },
+      { "where",    98, "zone" },
+      { "seen",     44, "n" },
+      { "how",      74, "how" },
+      { "kos",      56, nil },
+      { "your note",130, nil }
     }
   },
   groups = {
@@ -327,10 +345,26 @@ local function GoldRows()
         (t.got or 0) > 0 and BT.G(BT.Gold(t.got)) or "-",
         (net >= 0 and C.gold or C.good) .. BT.G(BT.Gold(math.abs(net)))
           .. (net < 0 and " in" or "") .. C.off,
+        BT.ItemsText(t.gaveItems) and (C.info .. BT.ItemsText(t.gaveItems) .. C.off)
+          or (C.dim .. "-" .. C.off),
+        BT.ItemsText(t.gotItems) and (C.info .. BT.ItemsText(t.gotItems) .. C.off)
+          or (C.dim .. "-" .. C.off),
         t.zone or (C.dim .. "-" .. C.off),
         t.id and (BT.BY_ID[t.id] and BT.BY_ID[t.id].label or t.id) or "-",
         tostring(t.lvl or "-"),
         t.by and (C.good .. "yes" .. C.off) or (C.dim .. "-" .. C.off)
+      },
+      tip = {
+        (t.with or "?") .. "   " .. date("%A %d %B, %H:%M", t.at or time()),
+        ((t.gave or 0) > 0 and ("you paid " .. BT.G(BT.Gold(t.gave))) or "")
+          .. (BT.ItemsText(t.gaveItems)
+              and (((t.gave or 0) > 0 and " and " or "you gave ")
+                   .. BT.ItemsText(t.gaveItems)) or ""),
+        ((t.got or 0) > 0 and ("he gave " .. BT.G(BT.Gold(t.got))) or "")
+          .. (BT.ItemsText(t.gotItems)
+              and (((t.got or 0) > 0 and " and " or "he gave ")
+                   .. BT.ItemsText(t.gotItems)) or ""),
+        t.zone or nil
       }
     })
   end
@@ -437,6 +471,57 @@ end
 -- One timeline rather than two lists. An evening of boosting is entries and
 -- resets alternating, and reading it as one thing is how you see that the
 -- chain stalled for eleven minutes waiting for a lockout.
+-- Everyone seen out there. The KOS column is a button rather than a tick,
+-- because marking somebody is a decision you make once and want to see the
+-- result of immediately.
+local CLASS_COL = {
+  WARRIOR = "|cffc79c6e", PALADIN = "|cfff58cba", HUNTER = "|cffabd473",
+  ROGUE = "|cfffff569", PRIEST = "|cffffffff", SHAMAN = "|cff0070de",
+  MAGE = "|cff69ccf0", WARLOCK = "|cff9482c9", DRUID = "|cffff7d0a"
+}
+
+local function EnemyRows()
+  local out = {}
+  local now = time()
+  for _, e in ipairs(BT.SeenList()) do
+    local why, note = BT.IsKOS(e.name, e.guild)
+    local age = now - (e.at or now)
+    local near = age <= 60
+    local col = why and C.bad or near and C.warn or C.dim
+    local cls = e.class and (CLASS_COL[e.class] or C.dim) or nil
+    out[#out + 1] = {
+      at = e.at, name = e.name, level = e.level, class = e.class,
+      guild = e.guild, zone = e.zone, n = e.n, how = e.how,
+      rec = e, kosWhy = why, note = note,
+      cells = {
+        col .. BT.T(age) .. " ago" .. C.off,
+        col .. e.name .. C.off,
+        (e.level and e.level > 0) and tostring(e.level) or (C.dim .. "?" .. C.off),
+        cls and (cls .. (e.class or "") .. C.off) or (C.dim .. "-" .. C.off),
+        e.guild and ((why == "guild" and C.bad or C.dim) .. e.guild .. C.off)
+          or (C.dim .. "-" .. C.off),
+        C.dim .. (BT.Short(e.zone) or e.zone or "-") .. C.off,
+        C.dim .. tostring(e.n or 1) .. C.off,
+        C.dim .. (e.how or "-") .. C.off,
+        "",           -- the KOS button sits here
+        ""            -- and the note box
+      },
+      tip = {
+        e.name .. ((e.level and e.level > 0) and ("  " .. e.level) or ""),
+        (e.class or "") .. (e.guild and ("   <" .. e.guild .. ">") or ""),
+        "seen " .. (e.n or 1) .. " time" .. ((e.n or 1) == 1 and "" or "s")
+          .. ", last " .. BT.T(age) .. " ago"
+          .. (e.zone and (" in " .. e.zone) or ""),
+        why and (why == "guild"
+          and "marked through his guild - the whole lot raises the alarm"
+          or "marked by name - always raises the alarm") or nil,
+        note
+      }
+    }
+  end
+  return out
+end
+
 local function LockRows()
   local out = {}
   for _, e in ipairs(BT.InstanceLog()) do
@@ -598,6 +683,7 @@ local function Data()
   if mode == "boosters" then return BoosterRows() end
   if mode == "ads" then return AdRows() end
   if mode == "groups" then return GroupRows() end
+  if mode == "enemies" then return EnemyRows() end
   if mode == "route" then return RouteRows() end
   if mode == "gold" then return GoldRows() end
   if mode == "locks" then return LockRows() end
@@ -713,6 +799,24 @@ local function Summary()
       .. C.dim .. "   " .. fresh .. " in the last 15 minutes" .. C.off
       .. ((here > 0 and step)
           and ("   " .. C.good .. here .. " for " .. step.label .. C.off) or "")
+  elseif mode == "enemies" then
+    local all = BT.SeenList()
+    if #all == 0 then
+      if not ChainDB.watchEnemies then
+        return C.dim .. "the watch is off - turn it on in the settings" .. C.off
+      end
+      return "nobody seen yet.  Nameplates, your mouse, your target and the "
+        .. "combat log all feed this; go somewhere contested."
+    end
+    local near, marked = #BT.Nearby(60), 0
+    for _, e in ipairs(all) do
+      if BT.IsKOS(e.name, e.guild) then marked = marked + 1 end
+    end
+    return #all .. " seen"
+      .. (near > 0 and ("   " .. C.warn .. near .. " in the last minute" .. C.off) or "")
+      .. (marked > 0 and ("   " .. C.bad .. marked .. " marked" .. C.off) or "")
+      .. C.dim .. "   " .. #BT.KOSGuildList() .. " guild"
+      .. (#BT.KOSGuildList() == 1 and "" or "s") .. " marked" .. C.off
   elseif mode == "runs" then
     local agg = BT.Aggregate(BT.Runs({}), #BT.Runs({}))
     if not agg then return nil end
@@ -851,6 +955,30 @@ local function Render()
         row.whisper:Hide()
       end
 
+      if mode == "enemies" and d.name then
+        local kx, nx = 0, 0
+        for ci, col in ipairs(layout.cols) do
+          if ci < #layout.cols - 1 then kx = kx + col[2] end
+          if ci < #layout.cols then nx = nx + col[2] end
+        end
+        row.kos.name, row.kos.guild = d.name, d.guild
+        row.kos.fs:SetText(d.kosWhy and "clear" or "KOS")
+        row.kos.bg:SetColorTexture(d.kosWhy and 0.45 or 0.15,
+                                   d.kosWhy and 0.12 or 0.15, 0.15, 0.9)
+        row.kos:ClearAllPoints()
+        row.kos:SetPoint("LEFT", row, "LEFT", kx, 0)
+        row.kos:Show()
+
+        row.note.by = nil
+        row.note.kos = d.name
+        if not row.note:HasFocus() then row.note:SetText(d.note or "") end
+        row.note:ClearAllPoints()
+        row.note:SetPoint("LEFT", row, "LEFT", nx, 0)
+        row.note:Show()
+      else
+        row.kos:Hide()
+      end
+
       if mode == "boosters" and d.by then
         -- column 7 is the price box
         local px = 0
@@ -893,7 +1021,7 @@ local function Render()
       row:Show()
     else
       row.tip = nil
-      row.price:Hide() row.pack:Hide()
+      row.price:Hide() row.pack:Hide() row.kos:Hide()
       row.note:Hide() row.del:Hide() row.whisper:Hide()
       row:Hide()
     end
@@ -914,7 +1042,8 @@ end
 
 local function Build()
   win = CreateFrame("Frame", "ChainWindow", UIParent)
-  win:SetSize(880, 26 + 28 + 20 + ROWS * 18 + 74)
+  -- the extra 6 is the line the search box moved down onto
+  win:SetSize(880, 26 + 28 + 20 + ROWS * 18 + 74 + 6)
   win:SetPoint("CENTER")
   win:SetMovable(true)
   win:EnableMouse(true)
@@ -945,7 +1074,8 @@ local function Build()
   for _, def in ipairs({ { "runs", "History" }, { "boosters", "Boosters" },
                          { "ads", "Adverts" }, { "groups", "Groups" },
                          { "reported", "Reported" },
-                         { "gold", "Gold" }, { "locks", "Instances" },
+                         { "gold", "Trade" }, { "enemies", "Enemies" },
+                         { "locks", "Instances" },
                          { "route", "Route" } }) do
     -- eight of them now, so they are measured rather than spaced by hand:
     -- one more tab used to push the last one off the right-hand edge
@@ -957,19 +1087,21 @@ local function Build()
 
   win.subtitle = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   win.subtitle:SetPoint("TOPLEFT", 10, -54)
-  win.subtitle:SetWidth(700)
+  -- stops short of the search box, which now sits on this line: nine tabs
+  -- fill the row above it, and the last of them was running underneath it
+  win.subtitle:SetWidth(640)
   win.subtitle:SetJustifyH("LEFT")
   -- one line, always: wrapped to two it ran straight into the column headings
   if win.subtitle.SetWordWrap then win.subtitle:SetWordWrap(false) end
   if win.subtitle.SetMaxLines then win.subtitle:SetMaxLines(1) end
 
   win.searchLabel = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  win.searchLabel:SetPoint("TOPRIGHT", -190, -32)
+  win.searchLabel:SetPoint("TOPRIGHT", -190, -54)
   win.searchLabel:SetText("show only")
 
   win.search = CreateFrame("EditBox", nil, win)
   win.search:SetSize(150, 20)
-  win.search:SetPoint("TOPRIGHT", -34, -28)
+  win.search:SetPoint("TOPRIGHT", -34, -50)
   win.search:SetAutoFocus(false)
   win.search:SetFontObject("GameFontHighlightSmall")
   win.search.bg = Tex(win.search, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
@@ -987,10 +1119,10 @@ local function Build()
   local clear = Button(win, "x", 22, 18, function()
     win.search:SetText("")
   end)
-  clear:SetPoint("TOPRIGHT", -8, -29)
+  clear:SetPoint("TOPRIGHT", -8, -51)
 
   win.headerRow = CreateFrame("Frame", nil, win)
-  win.headerRow:SetPoint("TOPLEFT", 12, -70)
+  win.headerRow:SetPoint("TOPLEFT", 12, -76)
   win.headerRow:SetSize(850, 16)
   win.headers = {}
   for i = 1, MAX_COLS do
@@ -1011,7 +1143,7 @@ local function Build()
   for i = 1, ROWS do
     local row = CreateFrame("Frame", nil, win)
     row:SetSize(850, 17)
-    row:SetPoint("TOPLEFT", 12, -88 - (i - 1) * 18)
+    row:SetPoint("TOPLEFT", 12, -94 - (i - 1) * 18)
     if i % 2 == 0 then
       row.stripe = Tex(row, "BACKGROUND", 1, 1, 1, 0.03)
       row.stripe:SetAllPoints()
@@ -1103,6 +1235,8 @@ local function Build()
     row.note:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     row.note:SetScript("OnEditFocusLost", function(self)
       if self.by then BT.SetBoosterNote(self.by, self:GetText()) end
+      -- the same box, on the Enemies tab: a note against a name you marked
+      if self.kos then BT.AddKOS(self.kos, self:GetText()) end
       Render()
     end)
     row.note:Hide()
@@ -1120,6 +1254,18 @@ local function Build()
       end
     end)
     row.whisper:Hide()
+
+    -- Marking somebody is one click, and the button says what it will do
+    -- rather than what the state is: "KOS" to mark, "clear" to unmark.
+    row.kos = Button(row, "KOS", 50, 15, function(self)
+      if not self.name then return end
+      local why = BT.IsKOS(self.name, self.guild)
+      if why == "named" then BT.RemoveKOS(self.name)
+      elseif why == "guild" then BT.RemoveKOSGuild(self.guild)
+      else BT.AddKOS(self.name) end
+      Render()
+    end)
+    row.kos:Hide()
 
     row.del = Button(row, "x", 16, 14, function(self)
       if self.name then
@@ -1145,7 +1291,7 @@ local function Build()
   -- Adding somebody by hand, on the Boosters tab: a name you were given in a
   -- whisper is worth keeping before you have ever run with him, and the note
   -- is where "only sells mornings" or "does not pull the last room" goes.
-  local addY = -88 - ROWS * 18 - 6
+  local addY = -94 - ROWS * 18 - 6
   win.addLabel = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   win.addLabel:SetPoint("TOPLEFT", 12, addY)
   win.addLabel:SetText("add someone")

@@ -1,12 +1,17 @@
--- Level Tracker: what the levelling actually cost.
+-- Chain: what the levelling actually cost.
 --
 -- The price you type into the options is what the booster advertises. This is
 -- what left your bags. They are rarely the same number - tips, a run thrown in
 -- free, a pack you paid for and only half used - so both are worth keeping.
 --
--- Money is read out of the trade window while it is open, because once the
--- trade completes the window is already torn down. The completion message is
--- what tells us it went through; a cancelled trade leaves nothing behind.
+-- Money and items are read out of the trade window while it is open, because
+-- once the trade completes the window is already torn down. The completion
+-- message is what tells us it went through; a cancelled trade leaves nothing
+-- behind.
+--
+-- Items matter as much as the gold. Half of what changes hands in a boost is
+-- not coin - a stack of runecloth, the greens off the run, a bag thrown in -
+-- and a log that only counts money says you paid less than you did.
 
 local ADDON, BT = ...
 
@@ -16,14 +21,44 @@ local function Copper(v) return math.floor(tonumber(v) or 0) end
 
 -- Snapshot the trade as it currently stands. Called on every change, so
 -- whatever was on the table at the moment it completed is what gets logged.
+-- The six tradeable slots. The seventh is the "will not be traded" one, which
+-- is exactly what it says and has no business in a record of what changed
+-- hands.
+local TRADE_SLOTS = 6
+
+local function Items(get)
+  if not get then return nil end
+  local out
+  for i = 1, TRADE_SLOTS do
+    local name, _, count = get(i)
+    if name then
+      out = out or {}
+      table.insert(out, { name = name, count = (count and count > 1) and count or nil })
+    end
+  end
+  return out
+end
+
 function BT.TradeSnapshot()
   if not (GetPlayerTradeMoney and GetTargetTradeMoney) then return end
   local who = UnitName and UnitName("NPC") or nil
   pending = {
     with = who and BT.ShortName(who) or nil,
     gave = Copper(GetPlayerTradeMoney()),
-    got = Copper(GetTargetTradeMoney())
+    got = Copper(GetTargetTradeMoney()),
+    gaveItems = Items(GetTradePlayerItemInfo),
+    gotItems = Items(GetTradeTargetItemInfo)
   }
+end
+
+-- "2x Runecloth, Green Hills of Stranglethorn", for a column and a tooltip
+function BT.ItemsText(list)
+  if not list or #list == 0 then return nil end
+  local bits = {}
+  for _, it in ipairs(list) do
+    table.insert(bits, (it.count and (it.count .. "x ") or "") .. it.name)
+  end
+  return table.concat(bits, ", ")
 end
 
 function BT.TradeClear() pending = nil end
@@ -34,7 +69,10 @@ function BT.TradeComplete()
   local t = pending
   pending = nil
   if not t then return end
-  if t.gave <= 0 and t.got <= 0 then return end
+  -- a trade with nothing in it either way is not a trade
+  local anyItems = (t.gaveItems and #t.gaveItems > 0)
+    or (t.gotItems and #t.gotItems > 0)
+  if t.gave <= 0 and t.got <= 0 and not anyItems then return end
 
   local _, step = BT.Stage()
   local by = BT.CurrentBooster()
@@ -54,6 +92,8 @@ function BT.TradeComplete()
     with = t.with,
     gave = t.gave,
     got = t.got,
+    gaveItems = t.gaveItems,
+    gotItems = t.gotItems,
     zone = zone,
     -- the instance you were standing in wins over the step you are working
     -- on: money handed over in a city belongs to the step, money handed over

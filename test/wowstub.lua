@@ -11,6 +11,7 @@ S.party = {}
 S.zone = "Stormwind City"
 S.inInstance = false
 S.quests = {}
+S.units = {}
 
 function time() return S.now end
 function date(fmt, t) return os.date(fmt, t) end
@@ -27,16 +28,19 @@ function Ambiguate(name) return (name:match("^[^%-]+")) end
 
 function UnitLevel(u)
   if u == "player" then return S.level end
+  if S.units[u] then return S.units[u].level end
   local i = tonumber(tostring(u):match("party(%d)"))
   return (i and S.party[i]) and S.party[i].lvl or 0
 end
 function UnitName(u)
   if u == "player" then return "Tester" end
+  if S.units[u] then return S.units[u].name end
   if u == "NPC" then return S.tradeTarget end
   local i = tonumber(tostring(u):match("party(%d)"))
   return (i and S.party[i]) and S.party[i].name or nil
 end
 function UnitExists(u)
+  if S.units[u] then return true end
   local i = tonumber(tostring(u):match("party(%d)"))
   return (i and S.party[i]) and true or false
 end
@@ -149,6 +153,58 @@ function LoggingChat(v)
   end
   return S.chatlog
 end
+-- other players, for the enemy watch
+S.units = {}          -- [token] = { name, level, class, guild, hostile, faction }
+function UnitIsPlayer(u) return S.units[u] ~= nil end
+function UnitIsUnit(a, b) return a == b end
+function UnitCanAttack(_, u) return (S.units[u] or {}).hostile and true or false end
+function UnitIsFriend(_, u) return not ((S.units[u] or {}).hostile) end
+function UnitClass(u)
+  local x = S.units[u]
+  if not x then return nil end
+  return x.class, x.class
+end
+function GetGuildInfo(u) return (S.units[u] or {}).guild end
+bit = bit or { band = function(a, b) return ((a // b) % 2 == 1) and b or 0 end }
+
+-- LibStub and the two libraries the minimap button goes through. Stubbed
+-- rather than loaded: what is worth testing is our contract with them - the
+-- object we hand over and what our own callbacks do - not somebody else's
+-- library, which has its own tests.
+S.ldbObjects = {}
+S.iconRegistered = {}
+S.iconHidden = {}
+local libs = {
+  ["LibDataBroker-1.1"] = {
+    NewDataObject = function(_, name, obj)
+      S.ldbObjects[name] = obj
+      return obj
+    end
+  },
+  ["LibDBIcon-1.0"] = {
+    Register = function(_, name, obj, db)
+      S.iconRegistered[name] = { obj = obj, db = db }
+    end,
+    Hide = function(_, name) S.iconHidden[name] = true end,
+    Show = function(_, name) S.iconHidden[name] = false end
+  }
+}
+LibStub = { GetLibrary = function(_, name) return libs[name] end }
+
+-- nameplates, so a mark can be hung on one
+S.plates = {}                  -- [unit] = frame
+C_NamePlate = {
+  GetNamePlateForUnit = function(unit) return S.plates[unit] end,
+  GetNamePlates = function()
+    local out = {}
+    for unit, f in pairs(S.plates) do
+      f.namePlateUnitToken = unit
+      table.insert(out, f)
+    end
+    return out
+  end
+}
+
 -- the honour system
 S.pvpRank = 0            -- 0 = unranked; the API offsets by four
 S.pvpProgress = 0

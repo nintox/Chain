@@ -1,5 +1,68 @@
 # Changelog
 
+## 1.1.0
+
+The addon stopped being about levelling only, so this release is mostly the
+parts that are not.
+
+**Honour**
+
+- On the bar tooltip, the minimap tooltip and `/chain pvp`: what rank you end
+  up at after the next weekly reset, and how much more honour you need tonight
+  to not go backwards. It only appears once there is honour to talk about.
+- The arithmetic is the honour system's own - honour into contribution points
+  at three exchange rates, contribution points into a rank, then a fraction of
+  the way from where you stand to where the honour says you belong, with the
+  fraction shrinking as the rank goes up. It says on the tooltip that it is a
+  model rather than the server.
+- Honour per hour, measured in minute buckets the same way experience per hour
+  is, so a break does not quietly halve the rate.
+
+**Who is out there**
+
+- A kill-on-sight list, by name or by whole guild.
+- Enemy players detected from nameplates, your mouse, your target and the
+  combat log. The combat log reaches furthest, so somebody casting two rooms
+  away is in it.
+- A short list on screen of who is close: class-coloured, fading as the
+  sighting gets old, with everything known about them on the tooltip rather
+  than in the row.
+- A marked player raises the alarm whether or not you asked for alerts, the
+  banner pulses and stays twice as long, and **the nameplate is marked**,
+  because a line at the top of the screen tells you somebody is here but not
+  which of the four in front of you it is.
+- An Enemies tab for all of it, with a one-click mark on every row.
+
+**Trade**
+
+- The Gold tab is now Trade, and records the goods as well as the coin: what
+  you gave, what you got back, both ways. Half of what crosses the table in a
+  boost is a stack of cloth or the greens off the run, and a log that only
+  counts money says you paid less than you did.
+
+**Smaller things**
+
+- Grey quests are left out of the "ready to hand in" count. They give no
+  experience, so counting them made the number wrong in the one direction
+  that matters.
+- The bar's heading shows the span you configured rather than the level you
+  happen to be, and the fill and the percentage are of the whole step, not of
+  the level inside it, with a tick drawn at each level boundary.
+- The search box moved below the tab row, which had grown too long to share
+  the line with it.
+- The minimap button goes through LibDBIcon now. The hand-rolled one drew the
+  same icon in the same place, but every button-collecting addon on the screen
+  looks for LibDBIcon buttons and complains about anything else. Being right
+  about the pixels is worth less than being the shape the rest of the
+  ecosystem expects. The tooltip and the three clicks are still ours, and the
+  tooltip gained the honour line and the count of players nearby.
+- `/chain` prints `/chain` in its own help, and `/chain trade`, `/chain
+  enemies`, `/chain kos NAME`, `/chain nearby`, `/chain groups` and
+  `/chain minimap` are in the list.
+- The push program's install instructions are rewritten as three numbered
+  steps, and the shell version now carries settings over from either of the
+  older names rather than one.
+
 ## 1.0.0
 
 Renamed from Level Tracker to Chain before release. Anything recorded under
