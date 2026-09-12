@@ -23,7 +23,7 @@ local function Button(parent, label, w, h, onClick)
   b:SetSize(w, h)
   b.bg = Tex(b, "BACKGROUND", 0.15, 0.15, 0.15, 0.9)
   b.bg:SetAllPoints()
-  b.fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  b.fs = b:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
   b.fs:SetPoint("CENTER")
   b.fs:SetText(label)
   b:SetScript("OnEnter", function(self) self.bg:SetColorTexture(0.3, 0.3, 0.3, 0.9) end)
@@ -37,7 +37,7 @@ local function NumBox(parent, w, onSet)
   local e = CreateFrame("EditBox", nil, parent)
   e:SetSize(w, 18)
   e:SetAutoFocus(false)
-  e:SetFontObject("GameFontHighlightSmall")
+  e:SetFontObject("ChainFontHighlightSmall")
   e:SetJustifyH("CENTER")
   e:SetMaxLetters(6)
   e.bg = Tex(e, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
@@ -93,7 +93,7 @@ local function BuildOptions()
   opt.bg:SetAllPoints()
   opt.bg:SetDrawLayer("BACKGROUND", 2)
 
-  opt.title = opt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  opt.title = opt:CreateFontString(nil, "OVERLAY", "ChainFontNormal")
   opt.title:SetPoint("TOPLEFT", 10, -8)
   opt.title:SetText(BT.NAME .. " settings")
 
@@ -116,7 +116,7 @@ local function BuildOptions()
 
   opt:SetScale(ChainDB.optScale or 1)
 
-  opt.help = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  opt.help = opt:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   opt.help:SetPoint("TOPLEFT", 16, -56)
   opt.help:SetJustifyH("LEFT")
   -- bounded and wrapping: written out in full it ran off the right edge
@@ -135,7 +135,7 @@ local function BuildOptions()
   local hx = 16
   opt.routeHeads = {}
   for _, h in ipairs(heads) do
-    local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = opt:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
     fs:SetPoint("TOPLEFT", hx, -76)
     fs:SetText(h[1])
     table.insert(opt.routeHeads, fs)
@@ -180,7 +180,7 @@ local function BuildOptions()
       if row.id then ChainDB.route[row.id].on = v end
     end)
     row.check:SetPoint("LEFT", 0, 0)
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.name = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
     row.name:SetPoint("LEFT", 34, 0)
     row.name:SetWidth(78)
     row.name:SetJustifyH("LEFT")
@@ -188,11 +188,11 @@ local function BuildOptions()
     -- the instance is actually meant for. Neither is common knowledge, and
     -- guessing them is how a route ends up full of grey mobs or full of
     -- instances you cannot get into yet.
-    row.min = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.min = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
     row.min:SetPoint("LEFT", 116, 0)
     row.min:SetWidth(30)
     row.min:SetJustifyH("LEFT")
-    row.span = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.span = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
     row.span:SetPoint("LEFT", 150, 0)
     row.span:SetWidth(42)
     row.span:SetJustifyH("LEFT")
@@ -217,7 +217,7 @@ local function BuildOptions()
       else ChainDB.route[row.id].pack = math.max(1, math.min(99, math.floor(v))) end
     end)
     row.pack:SetPoint("LEFT", 324, 0)
-    row.note = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.note = row:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
     row.note:SetPoint("LEFT", 360, 0)
     row.note:SetWidth(112)
     row.note:SetJustifyH("LEFT")
@@ -225,7 +225,7 @@ local function BuildOptions()
   end
 
   local y = -92 - PER_PAGE * 24 - 6
-  opt.pageText = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  opt.pageText = opt:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   opt.pageText:SetPoint("TOPLEFT", 16, y)
   opt.prevPage = Button(opt, "< prev", 56, 18, function()
     if optPage > 1 then optPage = optPage - 1 BT.RenderOptions() end
@@ -246,7 +246,7 @@ local function BuildOptions()
   local function NextRow() row = row + 1 end
 
   local function Field(c, label, width, get, set)
-    local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local fs = opt:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
     local x, ly = At(c)
     fs:SetPoint("TOPLEFT", x, ly)
     fs:SetText(label)
@@ -281,7 +281,7 @@ local function BuildOptions()
     local chk = Check(opt, set)
     local x, ly = At(c)
     chk:SetPoint("TOPLEFT", x - 2, ly + 4)
-    local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local fs = opt:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
     fs:SetPoint("TOPLEFT", x + 20, ly)
     fs:SetText(label)
     -- room to breathe: the columns are 284 apart now, so a long label no
@@ -317,7 +317,7 @@ local function BuildOptions()
     claimed[b] = true
   end
 
-  Page("Runs and prices", "runs")
+  Page("Runs & prices", "runs")
   opt.pack = Field(1, "Runs per price", 40, function() return ChainDB.pack end,
     -- the fallback only: the 'runs' column above beats it per instance, and a
     -- pack typed against a booster beats them both while he is boosting you
@@ -328,7 +328,7 @@ local function BuildOptions()
     function(v) ChainDB.limit = math.max(1, math.floor(v or 5)) end)
   NextRow()
 
-  Page("Resets and alerts", "resets")
+  Page("Resets & sounds", "resets")
   opt.sound = Toggle(1, "Sound on reset", function(v) ChainDB.sound = v end)
   do
     local x, ly = At(1)
@@ -364,7 +364,7 @@ local function BuildOptions()
     opt.soundOut = Button(opt, "", 156, 18, function() Cycle("out") end)
     opt.soundOut:SetPoint("TOPLEFT", x2, ly2 - 1)
     local x3, ly3 = At(3)
-    opt.soundHint = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    opt.soundHint = opt:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
     opt.soundHint:SetPoint("TOPLEFT", x3, ly3)
     opt.soundHint:SetWidth(156)
     opt.soundHint:SetJustifyH("LEFT")
@@ -372,12 +372,12 @@ local function BuildOptions()
   end
   NextRow()
 
-  Page("What to read out of chat", "chat")
+  Page("Chat", "chat")
   -- Its history is taken into our own log on every login whether this is on
   -- or off. This only decides whether its live count is trusted over ours.
   opt.nit = Toggle(1, "Read NIT's count",
     function(v) ChainDB.useNIT = v end)
-  opt.ads = Toggle(2, "Read boost adverts", function(v) ChainDB.readAds = v end)
+  opt.ads = Toggle(2, "Read sellers out of chat", function(v) ChainDB.readAds = v end)
 
   opt.signal = Toggle(3, "Marker in the chat log", function(v)
     ChainDB.logSignal = v
@@ -405,7 +405,7 @@ local function BuildOptions()
   do
     -- its own row: the explanation is longer than any column
     local x, ly = At(1)
-    local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    local fs = opt:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
     fs:SetPoint("TOPLEFT", x, ly + 4)
     fs:SetWidth(WIDTH - 30)
     fs:SetJustifyH("LEFT")
@@ -416,7 +416,7 @@ local function BuildOptions()
   end
   NextRow()
 
-  Page("Who is out there", "enemies")
+  Page("Enemies", "enemies")
   opt.watch = Toggle(1, "Watch for enemies", function(v)
     ChainDB.watchEnemies = v
   end)
@@ -506,13 +506,53 @@ local function BuildOptions()
   end
   NextRow()
 
-  Page("Sharing and the bar", "share")
+  -- A list that only exists while somebody is nearby is a list you cannot
+  -- glance at: an empty screen and a broken addon look exactly alike, and you
+  -- find out which it was when a rogue is already on you. The header alone is
+  -- two words high and answers it.
+  opt.nearbyAlways = Toggle(1, "Keep the header on screen", function(v)
+    if BT.ToggleNearbyAlways then BT.ToggleNearbyAlways(v) end
+  end)
+  NextRow()
+
+  Page("Bar & sharing", "share")
   opt.announceLock = Toggle(1, "Tell the group your lockout",
     function(v) ChainDB.announceLock = v end)
+  -- The count moves twice on the way in - up when you zone, back down when
+  -- the mobs prove it is the one you were just in - and a number that
+  -- corrects itself in silence is a number you end up arguing with.
+  opt.sayCount = Toggle(2, "Say it in chat when the count moves",
+    function(v) ChainDB.sayCount = v end)
+
   opt.minimap = Toggle(3, "Button on the minimap", function(v)
     ChainDB.minimap = v
     if BT.RefreshMinimap then BT.RefreshMinimap() end
   end)
+  NextRow()
+
+  -- The bar's tooltip runs to a page on a tall screen, so it is split in two
+  -- side by side. On a narrow one that is worse than the height was.
+  opt.oneColumn = Toggle(1, "Bar tooltip in one column",
+    function(v) ChainDB.oneColumn = v end)
+  do
+    -- The face the whole addon is written in. Five font objects sit behind
+    -- every label, so this changes all of them at once and takes effect on
+    -- the spot - there is nothing to reload.
+    local x, ly = At(2)
+    local lbl = opt:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
+    lbl:SetPoint("TOPLEFT", x, ly)
+    lbl:SetText("Text")
+    opt.face = Button(opt, "", 150, 20, function()
+      local faces = BT.FACES
+      local at = 1
+      for i, f in ipairs(faces) do
+        if f.key == (ChainDB.face or faces[1].key) then at = i end
+      end
+      BT.SetFace(faces[(at % #faces) + 1].key)
+      BT.RenderOptions()
+    end)
+    opt.face:SetPoint("TOPLEFT", x + 40, ly + 4)
+  end
   NextRow()
 
   opt.share = Toggle(1, "Share what you measure", function(v)
@@ -525,7 +565,7 @@ local function BuildOptions()
     -- the button can be sized to the longest value rather than to a sentence.
     -- It carried the whole phrase before and ran clean through the button
     -- beside it.
-    opt.scopeLabel = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    opt.scopeLabel = opt:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
     opt.scopeLabel:SetPoint("TOPLEFT", x, ly)
     opt.scopeLabel:SetText("share with")
     opt.scope = Button(opt, "", 90, 18, function()
@@ -542,7 +582,7 @@ local function BuildOptions()
     -- you take one away. It sits in the column that was empty, not on top of
     -- the toggle next to it.
     local x3, ly3 = At(3)
-    opt.channels = Button(opt, "advert channels...", 140, 18,
+    opt.channels = Button(opt, "where to listen...", 140, 18,
       function() BT.ShowAdChannels() end)
     opt.channels:SetPoint("TOPLEFT", x3, ly3 - 1)
   end
@@ -550,14 +590,14 @@ local function BuildOptions()
 
   do
     local x, ly = At(1)
-    opt.friendsLabel = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    opt.friendsLabel = opt:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
     opt.friendsLabel:SetPoint("TOPLEFT", x, ly)
     opt.friendsLabel:SetText("names to whisper")
     opt.friends = CreateFrame("EditBox", nil, opt)
     opt.friends:SetSize(290, 18)
     opt.friends:SetPoint("TOPLEFT", x + 148, ly + 3)
     opt.friends:SetAutoFocus(false)
-    opt.friends:SetFontObject("GameFontHighlightSmall")
+    opt.friends:SetFontObject("ChainFontHighlightSmall")
     opt.friends.bg = Tex(opt.friends, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
     opt.friends.bg:SetAllPoints()
     opt.friends:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
@@ -737,11 +777,15 @@ function BT.RenderOptions()
   opt.snap:SetChecked(db.snapSignal and true or false)
   opt.groups:SetChecked(db.readGroups and true or false)
   opt.announceLock:SetChecked(db.announceLock and true or false)
+  if opt.face and BT.Face then opt.face.fs:SetText(BT.Face().name) end
   opt.minimap:SetChecked(db.minimap ~= false)
   opt.watch:SetChecked(db.watchEnemies and true or false)
   opt.alertAll:SetChecked(db.alertEveryone and true or false)
   opt.enemySound:SetChecked(db.enemySound and true or false)
   opt.nearbyList:SetChecked(db.nearbyList ~= false)
+  opt.nearbyAlways:SetChecked(db.nearbyAlways == true)
+  opt.sayCount:SetChecked(db.sayCount ~= false)
+  opt.oneColumn:SetChecked(db.oneColumn == true)
   opt.share:SetChecked(db.share and true or false)
   opt.nit:SetChecked(db.useNIT and true or false)
   opt.lock:SetChecked(db.locked and true or false)
@@ -816,14 +860,14 @@ local function BuildAdChannels()
   chanFrame.bg:SetAllPoints()
   chanFrame.bg:SetDrawLayer("BACKGROUND", 2)
 
-  chanFrame.title = chanFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  chanFrame.title = chanFrame:CreateFontString(nil, "OVERLAY", "ChainFontNormal")
   chanFrame.title:SetPoint("TOPLEFT", 10, -8)
-  chanFrame.title:SetText("Read adverts from")
+  chanFrame.title:SetText("Read sellers from")
 
   local close = Button(chanFrame, "X", 22, 18, function() chanFrame:Hide() end)
   close:SetPoint("TOPRIGHT", -6, -6)
 
-  chanFrame.help = chanFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  chanFrame.help = chanFrame:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   chanFrame.help:SetPoint("TOPLEFT", 10, -26)
   chanFrame.help:SetWidth(240)
   chanFrame.help:SetJustifyH("LEFT")
@@ -840,7 +884,7 @@ local function BuildAdChannels()
       if row.key then BT.SetAdSource(row.key, v) end
     end)
     row.check:SetPoint("LEFT", 0, 0)
-    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.label = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
     row.label:SetPoint("LEFT", 24, 0)
     row.label:SetWidth(200)
     row.label:SetJustifyH("LEFT")
@@ -858,7 +902,7 @@ local function BuildAdChannels()
     BT.RenderAdChannels()
   end)
   none:SetPoint("TOPLEFT", 78, y)
-  chanFrame.note = chanFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  chanFrame.note = chanFrame:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   chanFrame.note:SetPoint("TOPLEFT", 146, y - 2)
 end
 
@@ -886,7 +930,7 @@ function BT.RenderAdChannels()
   chanFrame.note:SetText(off == 0 and (C.dim .. "reading all of them" .. C.off)
     or (C.warn .. off .. " turned off" .. C.off))
   if not ChainDB.readAds then
-    chanFrame.note:SetText(C.bad .. "adverts are off in the settings" .. C.off)
+    chanFrame.note:SetText(C.bad .. "reading sellers is off in the settings" .. C.off)
   end
 end
 
@@ -926,8 +970,11 @@ end
 -- CSV export
 --------------------------------------------------------------------------
 function BT.BuildTradeCSV()
-  local out = { "at,date,traded_with,paid_copper,got_copper,net_gold,where,step,level,was_booster,char" }
+  local out = { "at,date,traded_with,paid_copper,got_copper,net_gold,where,step,"
+    .. "level,was_booster,gold_per_run,runs_bought,runs_left,char" }
+  local ledger = BT.CreditLedger and BT.CreditLedger() or {}
   for _, t in ipairs(ChainDB.trades) do
+    local led = ledger[t]
     table.insert(out, table.concat({
       t.at or 0,
       date("%Y-%m-%d %H:%M", t.at or 0),
@@ -939,6 +986,9 @@ function BT.BuildTradeCSV()
       t.id or "",
       t.lvl or "",
       t.by and "1" or "0",
+      (led and led.per) and string.format("%.4f", led.per) or "",
+      (led and led.bought) and string.format("%.3f", led.bought) or "",
+      (led and led.left) and string.format("%.3f", led.left) or "",
       '"' .. (t.char or "") .. '"'
     }, ","))
   end
@@ -946,7 +996,8 @@ function BT.BuildTradeCSV()
 end
 
 function BT.BuildCSV()
-  local out = { "at,date,zone,step,xp,seconds,mobs,booster,level,group_size,group_avg,reentry,char" }
+  local out = { "at,date,zone,step,xp,seconds,mobs,raw_copper,booster,level,"
+    .. "group_size,group_avg,reentry,char" }
   for _, r in ipairs(ChainDB.runs) do
     table.insert(out, table.concat({
       r.at or 0,
@@ -956,6 +1007,7 @@ function BT.BuildCSV()
       r.xp or 0,
       r.t or 0,
       r.k or 0,
+      r.coin or 0,
       r.by or "",
       r.lvl or "",
       r.grp or "",
@@ -986,7 +1038,7 @@ function BT.ShowExport(what)
     exportFrame.bg:SetAllPoints()
     exportFrame.bg:SetDrawLayer("BACKGROUND", 2)
 
-    local title = exportFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local title = exportFrame:CreateFontString(nil, "OVERLAY", "ChainFontNormal")
     title:SetPoint("TOPLEFT", 10, -8)
     title:SetText("Ctrl+C to copy, then paste into a spreadsheet")
 
@@ -1000,7 +1052,7 @@ function BT.ShowExport(what)
 
     local edit = CreateFrame("EditBox", nil, scroll)
     edit:SetMultiLine(true)
-    edit:SetFontObject("GameFontHighlightSmall")
+    edit:SetFontObject("ChainFontHighlightSmall")
     edit:SetWidth(500)
     edit:SetAutoFocus(false)
     edit:SetScript("OnEscapePressed", function() exportFrame:Hide() end)
@@ -1035,9 +1087,11 @@ SlashCmdList["CHAIN"] = function(input)
     BT.ToggleWindow()
   elseif cmd == "boosters" or cmd == "gold" or cmd == "trade" or cmd == "route"
       or cmd == "history" or cmd == "instances" or cmd == "adverts"
+      or cmd == "sellers" or cmd == "selling"
       or cmd == "groups" or cmd == "lfg" or cmd == "lfm" then
     BT.ShowTab(cmd == "history" and "runs" or cmd == "instances" and "locks"
-      or cmd == "adverts" and "ads" or cmd == "trade" and "gold"
+      or (cmd == "adverts" or cmd == "sellers" or cmd == "selling") and "ads"
+      or cmd == "trade" and "gold"
       or (cmd == "lfg" or cmd == "lfm") and "groups" or cmd)
   elseif cmd == "config" or cmd == "options" or cmd == "opt" then
     BT.ToggleOptions()
@@ -1102,7 +1156,7 @@ SlashCmdList["CHAIN"] = function(input)
     end
   elseif cmd == "ads" then
     ChainDB.readAds = not ChainDB.readAds
-    Say("reading boost adverts from chat is "
+    Say("reading sellers out of chat is "
       .. (ChainDB.readAds and "on" or "off"))
   elseif cmd == "flush" then
     -- the blunt instrument: close the chat log so everything in the buffer
@@ -1140,6 +1194,79 @@ SlashCmdList["CHAIN"] = function(input)
     else
       BT.ShowTab("enemies")
     end
+  -- Money the addon never saw, and the balance it cannot work out from it.
+  -- The same two doors as the Trade tab, for when the window is shut and you
+  -- are standing at the summoning stone with the gold already handed over.
+  elseif cmd == "paid" then
+    local who, gold = rest:match("^(%S+)%s+([%d%.]+)$")
+    local rec, why = who and BT.LogPayment(who, gold)
+    if rec then
+      Say("logged " .. BT.G(tonumber(gold)) .. " to " .. rec.with .. " - "
+        .. string.format("%.1f", (BT.BoosterCredit(rec.with) or {}).left or 0)
+        .. " runs to go")
+    else
+      Say(why and (C.bad .. why .. "|r") or "usage: /chain paid <booster> <gold>")
+    end
+  elseif cmd == "left" or cmd == "credit" then
+    local who, n = rest:match("^(%S+)%s+(%-?[%d%.]+)$")
+    if who and n then
+      local rec, why = BT.SetRunsLeft(who, n)
+      if rec then Say(rec.with .. ": " .. n .. " runs left, counting from now")
+      else Say(C.bad .. (why or "no") .. "|r") end
+    elseif rest and rest ~= "" then
+      local name = BT.CleanName(rest)
+      local c = BT.BoosterCredit(name)
+      Say(c and string.format("%s: %.1f runs left (%s paid, %d runs since)",
+                              c.who, c.left, BT.G(BT.Gold(c.paid)), c.runsDone)
+        or ("nothing on record with " .. rest))
+      -- And what the run log actually has under that name. A balance that
+      -- will not move is almost always two spellings of one man, and there is
+      -- no way to see that from the number alone.
+      local exact, others = 0, {}
+      for _, r in ipairs(ChainDB.runs or {}) do
+        if r.by == name then exact = exact + 1
+        elseif r.by and BT.CleanName(r.by) == name then
+          others[r.by] = (others[r.by] or 0) + 1
+        end
+      end
+      Say(exact .. " runs logged under exactly \"" .. name .. "\"")
+      for other, n in pairs(others) do
+        Say(C.warn .. n .. " more under \"" .. other .. "\"|r - same man, "
+          .. "different spelling")
+      end
+    else
+      Say("usage: /chain left <booster> - or /chain left <booster> <runs> to "
+        .. "say what it is")
+    end
+  -- Half the gold in a boost goes to a bank alt rather than the booster. The
+  -- trade is real and the money is gone; it just lands against a name that
+  -- has never run anything for you.
+  elseif cmd == "alt" then
+    local alt, booster = rest:match("^(%S+)%s+(%S+)$")
+    if alt and booster then
+      local to, why = BT.SetPaysFor(alt, booster)
+      if to then
+        Say(BT.CleanName(alt) .. " now pays for " .. to
+          .. " - what you hand it counts against his runs")
+      else
+        Say(C.bad .. (why or "no") .. "|r")
+      end
+    elseif rest and rest ~= "" then
+      local name = BT.CleanName(rest)
+      local to = BT.PaysFor(name)
+      if to then
+        BT.SetPaysFor(name, nil)
+        Say(name .. " is his own man again")
+      else
+        Say("usage: /chain alt <alt> <booster>")
+      end
+    else
+      Say("usage: /chain alt <alt> <booster>  - gold you hand the alt counts "
+        .. "for the booster. /chain alt <alt> on its own undoes it.")
+    end
+  elseif cmd == "notnew" or cmd == "notanewinstance" then
+    local e = BT.NotANewInstance and BT.NotANewInstance()
+    if not e then Say("nothing counted this hour to take back") end
   elseif cmd == "enemies" or cmd == "spy" then
     BT.ShowTab("enemies")
   elseif cmd == "koslist" or cmd == "marked" then
@@ -1202,7 +1329,27 @@ SlashCmdList["CHAIN"] = function(input)
   elseif cmd == "announce" then
     ChainDB.announce = not ChainDB.announce
     Say("reset announcements to the group are "
-      .. (ChainDB.announce and "on" or "off"))
+      .. (ChainDB.announce and "on" or "off")
+      .. C.dim .. " (lockout countdown is "
+      .. (ChainDB.announceLock and "on" or "off") .. ", /chain lockout)" .. C.off)
+  -- The other half of the same switch. Two things get said to the group and
+  -- they are separate on purpose - the reset call is every twenty seconds in
+  -- a chain, the countdown is four lines an hour - so each gets its own.
+  elseif cmd == "font" then
+    local faces = BT.FACES
+    local at = 1
+    for i, f in ipairs(faces) do if f.key == (ChainDB.face or faces[1].key) then at = i end end
+    local pick = faces[(at % #faces) + 1]
+    BT.SetFace(pick.key)
+    Say("writing in " .. pick.name .. C.dim .. " - " .. pick.note .. C.off)
+  elseif cmd == "lockout" or cmd == "lock" then
+    ChainDB.announceLock = not ChainDB.announceLock
+    Say("the lockout countdown to the group is "
+      .. (ChainDB.announceLock and "on" or "off"))
+    if ChainDB.announceLock and BT.AnnounceLock then
+      ChainCharDB.toldLocked = nil
+      BT.AnnounceLock()
+    end
   elseif cmd == "export" then
     BT.ShowExport((rest == "gold" or rest == "trade" or rest == "trades")
                   and "trades" or "runs")
@@ -1239,14 +1386,21 @@ SlashCmdList["CHAIN"] = function(input)
     print("  /chain testalert  preview the reset alert")
     print("  /chain signal     write markers for the phone-notification script")
     print("  /chain share      swap prices and thumbs with other addon users")
-    print("  /chain ads        read boost adverts out of chat")
-    print("  /chain adverts    everyone who has advertised, with whisper")
+    print("  /chain ads        read sellers out of chat")
+    print("  /chain sellers    who is selling right now, with whisper")
     print("  /chain groups     everyone looking rather than selling")
     print("  /chain heard      the last adverts the addon picked up")
     print("  /chain testpush   write test markers for the phone program")
     print("  /chain flush      force the chat log out to disk")
     print("  /chain announce   tell the group when the instance resets")
+    print("  /chain lockout    tell the group your lockout, and count it down")
+    print("  /chain font       the face the addon is written in")
     print("  /chain trade      what you have paid, and to whom")
+    print("  /chain paid NAME 400   log gold the addon never saw")
+    print("  /chain left NAME       how many runs he still owes you")
+    print("  /chain left NAME 7     or tell it outright, from now on")
+    print("  /chain notnew     take back the last instance it counted")
+    print("  /chain alt ALT BOOSTER  gold to his bank alt counts for him")
     print("  /chain loot       everything that dropped, yours and the group's")
     print("  /chain fps        the frames and latency readout, on or off")
     print("  /chain pvp        the rank planner - add a number to set a target")

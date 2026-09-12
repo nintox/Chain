@@ -14,6 +14,48 @@ local C = BT.COL
 -- second one that comes and goes.
 local BUDGET = 74
 local bar
+
+-- ...but how much that is depends on the face. The budget is in characters
+-- because the text is built long before there is a frame to measure it in,
+-- and seventy-four was measured once, in the face the addon used at the time.
+-- Ship a different face and the same seventy-four characters draw straight
+-- over each other - which is exactly what happened.
+--
+-- So the number is measured instead of remembered: a sample of the kind of
+-- thing that actually goes down there, drawn in the real font, gives the width
+-- of an average character, and the budget is however many of those fit. The
+-- 1.17 is the old slack - the lines are centred under the bar and are allowed
+-- to run a little past it, which is what keeps the summary on one line rather
+-- than shedding its last chunk onto a second one that comes and goes.
+local SAMPLE = "11,704 xp/run   5m/run   (5 - 43m left)   ~400g (1x10)"
+local budgetFor
+local function Chars(factor, fallback)
+  local w = (ChainDB and ChainDB.width) or 380
+  local face = (BT.Face and BT.Face().key) or "?"
+  if not (budgetFor and budgetFor.face == face and budgetFor.w == w) then
+    local fs = bar and bar.bottomLeft
+    if not fs or not fs.GetStringWidth then return fallback end
+    local keep = fs:GetText()
+    fs:SetText(SAMPLE)
+    local px = fs:GetStringWidth() or 0
+    fs:SetText(keep or "")
+    if px <= 0 then return fallback end
+    budgetFor = { face = face, w = w, per = px / #SAMPLE }
+  end
+  return math.max(20, math.floor(w * factor / budgetFor.per))
+end
+
+local function Budget() return Chars(1.17, BUDGET) end
+
+-- The corners get a tighter one, and this is the part that was wrong from the
+-- start. The packed lines are centred under the bar and may run past both ends
+-- of it - that is what the slack above is for. The two corners are pinned to
+-- the two ends, so anything past the bar's own width is one drawn on top of
+-- the other. They were being measured against the padded number.
+local function CornerBudget() return Chars(0.98, math.floor(BUDGET / 1.17)) end
+-- and the measurement is thrown away when the face changes under it
+function BT.ForgetBudget() budgetFor = nil end
+BT.Budget = Budget
 -- the level markers drawn inside the bar, kept here rather than on the frame
 local ticks = {}
 -- and the milestone marks on the honour bar under it
@@ -23,6 +65,69 @@ local HONOR_H = 12
 --------------------------------------------------------------------------
 -- The text
 --------------------------------------------------------------------------
+-- The two bottom corners are one line: a fontstring pinned to the left end of
+-- the bar and another pinned to the right, with nothing between them but the
+-- bar's width. Text that does not fit there does not wrap - it draws straight
+-- over the other corner, which is how "8,881 xp/run" ended up on top of
+-- "7m left" on top of the booster's name.
+--
+-- So they are measured together, and whatever does not fit goes down to the
+-- packed lines underneath, which do wrap.
+local function Corners(one, budget)
+  local left = one[1]
+  local used = BT.VisLen(left)
+  local right, spill = {}, {}
+  for i = 2, #one do
+    local b = one[i]
+    local w = BT.VisLen(b)
+    if #spill == 0 and used + 3 + w <= budget then
+      right[#right + 1] = b
+      used = used + 3 + w
+    else
+      spill[#spill + 1] = b
+    end
+  end
+  return left, (#right > 0) and table.concat(right, "   ") or nil, spill
+end
+
+-- The rate, coloured against what this normally gives you.
+--
+-- A number on its own says nothing: 56,000 xp/h is good in Scarlet Monastery
+-- and terrible in Stratholme, and neither of those is something you should
+-- have to remember. So it is measured against the thing you are doing.
+--
+-- In a boost that is the step's own record - experience a run over minutes a
+-- run, which is what this dungeon with this booster has actually been paying.
+-- Falling short of it means this run is going badly: a slow booster, a wipe,
+-- or twenty minutes at the stone.
+--
+-- On your own it is your own session, once it is long enough to mean
+-- anything. That answers the only question you can act on alone - am I going
+-- slower than I have been - and it does not pretend to know what a good rate
+-- is for the place you happen to be standing.
+--
+-- No reference, no colour. A green number nobody has checked is worse than a
+-- white one.
+local function RateColour(rate, step)
+  if not rate or rate <= 0 then return nil end
+  local ref
+  local st = step and BT.StepStats and BT.StepStats(step)
+  if st and (st.xp or 0) > 0 and (st.t or 0) > 0 then
+    ref = st.xp / st.t * 3600
+  else
+    local ses = ChainCharDB.session
+    local mins = ses and ((time() - (ses.start or time())) / 60) or 0
+    if ses and (ses.xp or 0) > 0 and mins >= 20 then
+      ref = ses.xp / mins * 60
+    end
+  end
+  if not ref or ref <= 0 then return nil end
+  local r = rate / ref
+  if r >= 0.95 then return C.good end
+  if r >= 0.80 then return C.warn end
+  return C.bad
+end
+
 -- Average group level, coloured by what the make-up costs you in experience.
 local function GroupChunk()
   local avg, n, ratio = BT.GroupInfo()
@@ -66,8 +171,17 @@ local function LockoutChunk()
   local dayLimit = ChainDB.daily or K.DAILY
   if count == 0 and (daily or 0) == 0 then return nil, 0 end
   local txt = "inst " .. count .. "/" .. limit
-  if freeOne then txt = txt .. " +1 in " .. BT.T(freeOne) end
-  if freeAll and count > 1 then txt = txt .. " (all " .. BT.T(freeAll) .. ")" end
+  -- "+1 in 9m" next to 3/5 reads as a wait, and there is no wait: you have
+  -- two in hand. The clock only answers a question you are asking when the
+  -- door is actually shut.
+  if count >= limit then
+    if freeOne then txt = txt .. " +1 in " .. BT.T(freeOne) end
+  else
+    txt = txt .. C.dim .. " " .. (limit - count) .. " to go" .. C.off .. C.gold
+  end
+  if freeAll and count >= limit then
+    txt = txt .. " (all " .. BT.T(freeAll) .. ")"
+  end
   if fromNIT then txt = txt .. " NIT" end
   if count >= limit then txt = C.bad .. txt .. C.off
   elseif count >= limit - 1 then txt = C.warn .. txt .. C.off end
@@ -124,9 +238,13 @@ local function BoostText()
   S.barLeft = "Lvl " .. lvl
   local left, right
 
-  -- one: the corners under the bar. two: the second line, which is the next
-  -- thing that happens and the decision it leads to. three: the run you are
-  -- in. Everything else is on the tooltip.
+  -- The two the bar is for: how many runs you have left, and how long until
+  -- you ding. They get the corners to themselves.
+  local runsLeft, ding
+
+  -- one: what used to share those corners, now tooltip material. two: the
+  -- second line, which is the next thing that happens and the decision it
+  -- leads to. three: the run you are in.
   local one, two, three = {}, {}, {}
 
   -- The reset notice gets a line to itself: it is the one thing you have to
@@ -138,6 +256,7 @@ local function BoostText()
   local mx = UnitXPMax("player") or 0
   local xpNow = UnitXP("player") or 0
   S.barCenter = BT.N(remain) .. " to " .. step.to
+  local lvlPlain = S.barLeft
   if mx > 0 then
     S.barLeft = S.barLeft .. C.dim .. "  " .. BT.Pct(xpNow / mx) .. C.off
   end
@@ -191,12 +310,41 @@ local function BoostText()
     elseif paid > 0 then
       table.insert(one, C.gold .. "paid " .. BT.G(BT.Gold(paid)) .. C.off)
     end
+    -- What you have already paid for and not yet had. This is the number you
+    -- were otherwise keeping on your fingers halfway through a pull, and the
+    -- moment it matters is the moment it runs out - so it turns red before
+    -- the booster has to ask.
+    do
+      local credit = BT.BoosterCredit
+        and BT.BoosterCredit(byWho or BT.CurrentBooster()) or nil
+      if credit then
+        -- His own counter first when he has one. His addon announces where you
+        -- are in his pack, and that is the number he is charging against -
+        -- ours is inferred from when you paid, and the two can honestly
+        -- differ. Both are on the tooltip.
+        if credit.hisLeft then
+          local v = credit.hisLeft
+          local col = (v >= 1) and C.good or ((v > 0) and C.warn or C.bad)
+          runsLeft = col .. credit.hisDone .. "/" .. credit.hisOf .. " runs" .. C.off
+        else
+          local v = credit.left
+          local col = (v >= 1) and C.good or ((v > -0.5) and C.warn or C.bad)
+          local n = string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
+          runsLeft = col .. ((v < -0.5)
+            and (n:gsub("^%-", "") .. " runs owed")
+            or (n .. " runs left")) .. C.off
+        end
+      end
+    end
     local toNext = mx - (UnitXP("player") or 0)
     if toNext > 0 then
       local nr = toNext / avg
-      table.insert(two, C.info .. "lvl " .. (lvl + 1) .. " in " .. ((avgT > 0)
+      -- "ding in" rather than "lvl 42 in": the bar says which level you are on
+      -- and the top line says which stretch you are running, so the number
+      -- is the only part that is news
+      ding = C.info .. "ding in " .. ((avgT > 0)
         and ("~" .. BT.T(nr * avgT))
-        or (string.format("%.1f", nr) .. " runs")) .. C.off)
+        or (string.format("%.1f", nr) .. " runs")) .. C.off
     end
   else
     right = BT.N(remain) .. " xp"
@@ -227,9 +375,36 @@ local function BoostText()
   -- The booster's name, his rate, gold per level and experience per gold went
   -- the same way earlier, for the same reason. The bar keeps what you act on.
 
-  -- the first group is short enough to sit in the two bottom corners
-  S.bottomLeft = one[1]
-  S.bottomRight = one[2] and table.concat(one, "   ", 2, #one) or nil
+  -- Two facts under the bar, and only two: how many runs you have left, and
+  -- how long until you ding. That is what you are in there for. Everything
+  -- else that used to be packed along this line - experience a run, minutes a
+  -- run, what it costs, what you have paid - is on the tooltip, where there is
+  -- room to say what it means and where it is not sitting on top of the two
+  -- numbers you actually came for.
+  -- The line directly under the bar, and nothing else on it: how many runs you
+  -- have left at one end, when you ding at the other. The bar itself keeps
+  -- saying where you are and how far it is; this line is the two numbers you
+  -- are actually counting.
+  -- and the same in a boost, between the runs you have left and the ding
+  do
+    local rate = BT.Rate and BT.Rate()
+    if rate and rate > 0 then
+      local col = RateColour(rate, step)
+      S.bottomCenter = (col or "") .. BT.N(rate) .. " xp/h" .. (col and C.off or "")
+    end
+  end
+
+  local spill = {}
+  local facts = {}
+  if runsLeft then facts[#facts + 1] = runsLeft end
+  if ding then facts[#facts + 1] = ding end
+  if #facts > 0 then
+    -- one of them alone takes the left corner rather than being centred or
+    -- padded out: a single fact is a single fact
+    S.bottomLeft, S.bottomRight, spill = Corners(facts, CornerBudget())
+  else
+    S.bottomLeft, S.bottomRight, spill = Corners(one, CornerBudget())
+  end
 
   -- Two lines under the bar, and always the same two: the run you are in,
   -- then what the step adds up to. Group, ding and the switch advice ride on
@@ -238,8 +413,9 @@ local function BoostText()
   -- while you are reading it. Everything dropped from here is in the tooltip.
   local lines = {}
   if alert then table.insert(lines, alert) end
-  BT.Pack(three, lines, BUDGET)
-  BT.Pack(two, lines, BUDGET)
+  BT.Pack(spill, lines, Budget())
+  BT.Pack(three, lines, Budget())
+  BT.Pack(two, lines, Budget())
   S.barRight = right
   S.extra = table.concat(lines, "\n")
   -- The fill measures the step you configured, not the stretch left from here.
@@ -322,12 +498,13 @@ local function HonorText()
     end
     table.insert(one, txt)
   end
-  S.bottomLeft = one[1]
-  S.bottomRight = one[2] and table.concat(one, "   ", 2, #one) or nil
+  local spill
+  S.bottomLeft, S.bottomRight, spill = Corners(one, CornerBudget())
 
   local lines = {}
   local alert = ResetAlert()
   if alert then table.insert(lines, alert) end
+  BT.Pack(spill, lines, Budget())
   -- somebody nearby is worth a line here, since this is the bar you are
   -- looking at when you are out in the world rather than in an instance
   local near = BT.Nearby and BT.Nearby() or nil
@@ -353,7 +530,9 @@ local function LevelText()
   S.barLeft = "Lvl " .. lvl .. C.dim
     .. string.format("  %.1f%%", (mx > 0) and (xp / mx * 100) or 0) .. C.off
   S.barCenter = BT.N(xp) .. " / " .. BT.N(mx)
-  S.barRight = rate and ("~" .. BT.T(remain / rate * 3600) .. " to " .. (lvl + 1))
+  -- the same words the boost line uses: which level you are on is already on
+  -- the other end of the bar, so the number is the only part that is news
+  S.barRight = rate and ("ding in ~" .. BT.T(remain / rate * 3600))
     or (BT.N(remain) .. " xp")
 
   -- how long you have been at it, in the two top corners
@@ -363,12 +542,18 @@ local function LevelText()
 
   -- say why there is no rate rather than claiming to still be measuring one
   local rateTxt
-  if rate then rateTxt = BT.N(rate) .. " xp/h"
-  elseif idle and idle > K.IDLE_MIN then rateTxt = "no xp for " .. BT.T(idle * 60)
+  if rate then
+    local col = RateColour(rate, nil)
+    rateTxt = (col or "") .. BT.N(rate) .. " xp/h" .. (col and C.off or "")
+  elseif idle and idle > 0 then
+    rateTxt = C.dim .. "no xp for " .. BT.T(idle * 60) .. C.off
   else rateTxt = "measuring xp/h" end
 
+  -- The rate goes between the two corners, on the line it is measured
+  -- alongside: how much is left on one side, how fast it is coming in in the
+  -- middle, when it runs out on the other.
   S.bottomLeft = BT.N(remain) .. " to go"
-  S.bottomRight = rateTxt
+  S.bottomCenter = rateTxt
   local more = {}
 
   local ses = c.session
@@ -413,7 +598,7 @@ local function LevelText()
   -- a reset is worth saying wherever you are, not only in boost mode
   local alert = ResetAlert()
   if alert then table.insert(lines, alert) end
-  BT.Pack(more, lines, BUDGET)
+  BT.Pack(more, lines, Budget())
 
   -- The step you are heading for, so the target stays visible while questing
   local route = BT.Route()
@@ -476,7 +661,7 @@ function BT.AllLines(S)
   S = S or BT.BuildText() or {}
   local out = {}
   for _, k in ipairs({ "topLeft", "topRight", "barLeft", "barCenter", "barRight",
-                       "bottomLeft", "bottomRight" }) do
+                       "bottomLeft", "bottomCenter", "bottomRight" }) do
     if S[k] and S[k] ~= "" then table.insert(out, S[k]) end
   end
   for line in ((S.extra or "") .. "\n"):gmatch("([^\n]*)\n") do
@@ -596,6 +781,10 @@ function BT.PlaceBarText(honorShown)
   bar.bottomLeft:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 2, -3 - drop)
   bar.bottomRight:ClearAllPoints()
   bar.bottomRight:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", -2, -3 - drop)
+  if bar.bottomCenter then
+    bar.bottomCenter:ClearAllPoints()
+    bar.bottomCenter:SetPoint("TOP", bar, "BOTTOM", 0, -3 - drop)
+  end
   bar.text:ClearAllPoints()
   bar.text:SetPoint("TOP", bar, "BOTTOM", 0, -18 - drop)
 end
@@ -650,12 +839,12 @@ function BT.InitUI()
   bar.honor.pending = MakeTexture(bar.honor, "ARTWORK", 2, 0.55, 0.42, 0.12, 0.85)
   bar.honor.pending:SetPoint("TOPLEFT")
   bar.honor.pending:SetPoint("BOTTOMLEFT")
-  bar.honor.fs = bar.honor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  bar.honor.fs = bar.honor:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
   bar.honor.fs:SetPoint("CENTER")
   bar.honor:Hide()
 
-  -- Seven fixed slots: two above, three inside, two below. Every figure has
-  -- its own corner, so you look at a place rather than reading a line.
+  -- Eight fixed slots: two above, three inside, three below. Every figure has
+  -- its own place, so you look at a spot rather than reading a line.
   local function Slot(point, rel, relPoint, x, y, font, just)
     local fs = bar:CreateFontString(nil, "OVERLAY", font)
     fs:SetPoint(point, rel, relPoint, x, y)
@@ -664,23 +853,28 @@ function BT.InitUI()
   end
 
   bar.topLeft     = Slot("BOTTOMLEFT",  bar, "TOPLEFT",      2, 3,
-                         "GameFontHighlightSmall", "LEFT")
+                         "ChainFontHighlightSmall", "LEFT")
   bar.topRight    = Slot("BOTTOMRIGHT", bar, "TOPRIGHT",    -2, 3,
-                         "GameFontHighlightSmall", "RIGHT")
-  bar.barLeft     = Slot("LEFT",  bar, "LEFT",   6, 0, "GameFontNormal", "LEFT")
-  bar.barCenter   = Slot("CENTER", bar, "CENTER", 0, 0, "GameFontNormal", "CENTER")
-  bar.barRight    = Slot("RIGHT", bar, "RIGHT", -6, 0, "GameFontNormal", "RIGHT")
+                         "ChainFontHighlightSmall", "RIGHT")
+  bar.barLeft     = Slot("LEFT",  bar, "LEFT",   6, 0, "ChainFontNormal", "LEFT")
+  bar.barCenter   = Slot("CENTER", bar, "CENTER", 0, 0, "ChainFontNormal", "CENTER")
+  bar.barRight    = Slot("RIGHT", bar, "RIGHT", -6, 0, "ChainFontNormal", "RIGHT")
   bar.bottomLeft  = Slot("TOPLEFT",  bar, "BOTTOMLEFT",   2, -3,
-                         "GameFontHighlightSmall", "LEFT")
+                         "ChainFontHighlightSmall", "LEFT")
   bar.bottomRight = Slot("TOPRIGHT", bar, "BOTTOMRIGHT", -2, -3,
-                         "GameFontHighlightSmall", "RIGHT")
+                         "ChainFontHighlightSmall", "RIGHT")
+  -- Between the two of them rather than inside the bar: the rate belongs on
+  -- the line it is measured alongside, halfway between how much is left and
+  -- when it runs out.
+  bar.bottomCenter = Slot("TOP", bar, "BOTTOM", 0, -3,
+                          "ChainFontHighlightSmall", "CENTER")
 
   bar.barLeft:SetTextColor(1, 1, 1)
   bar.barCenter:SetTextColor(1, 1, 1)
   bar.barRight:SetTextColor(1, 0.82, 0)
 
   -- anything that did not fit a corner, under the bottom row
-  bar.text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  bar.text = bar:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
   -- centred on the bar, not on the left slot, and clear of the bottom row
   bar.text:SetPoint("TOP", bar, "BOTTOM", 0, -18)
   bar.text:SetJustifyH("CENTER")
@@ -702,7 +896,7 @@ function BT.InitUI()
     end
   end)
   bar:SetScript("OnEnter", function(self) BT.BarTooltip(self) end)
-  bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  bar:SetScript("OnLeave", function() BT.HideBarTooltip() end)
 
   -- one timer, not one per event: the elapsed-time figures have to tick even
   -- when nothing at all is happening
@@ -743,10 +937,10 @@ local function Banner(text, r, g, b)
     banner.edge:SetPoint("BOTTOMRIGHT", 1, -1)
     banner.bg = MakeTexture(banner, "BACKGROUND", 1, 0.04, 0.03, 0.02, 0.95)
     banner.bg:SetAllPoints()
-    banner.fs = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    banner.fs = banner:CreateFontString(nil, "OVERLAY", "ChainFontNormalLarge")
     banner.fs:SetPoint("CENTER")
     banner.fs:SetJustifyH("CENTER")
-    banner.hint = banner:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    banner.hint = banner:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
     -- the hint follows the banner downwards, so nothing is printed into the
     -- gap between the bar and the alert
     banner.hint:SetPoint("TOP", banner, "BOTTOM", 0, -2)
@@ -802,6 +996,7 @@ function BT.Refresh()
   bar.barRight:SetText(S.barRight or "")
   bar.bottomLeft:SetText(S.bottomLeft or "")
   bar.bottomRight:SetText(S.bottomRight or "")
+  bar.bottomCenter:SetText(S.bottomCenter or "")
   bar.text:SetText(S.extra or "")
   -- The centre slot is the first thing to go when the bar is narrow or the
   -- two ends are long; better to drop it than to have three strings overlap.
@@ -809,6 +1004,9 @@ function BT.Refresh()
   local function sw(fs) return (fs.GetStringWidth and fs:GetStringWidth()) or 0 end
   local room = w - sw(bar.barLeft) - sw(bar.barRight) - 24
   bar.barCenter:SetShown(room > sw(bar.barCenter))
+  -- and the same below, where the rate sits between the two ends
+  local under = w - sw(bar.bottomLeft) - sw(bar.bottomRight) - 24
+  bar.bottomCenter:SetShown(under > sw(bar.bottomCenter))
 
   local cur, max = S.cur, S.max
   max = (max and max > 0) and max or 1
@@ -869,14 +1067,88 @@ end
 -- The tooltip carries everything that would otherwise have to sit on the bar:
 -- the bar is what you glance at, this is what you look at. Anything that can
 -- live here instead of out there, does.
+-- The tooltip outgrew one column. On a 1080-high screen it ran from the top
+-- of the screen to the bottom, which is not a tooltip, it is a page. A second
+-- one alongside the first halves the height, and the split is by subject
+-- rather than by line count: what you are doing on the left, who you are
+-- doing it with and where you stand on the right.
+local side
+local function SideTip()
+  if side then return side end
+  side = CreateFrame("GameTooltip", "ChainSideTooltip", UIParent,
+                     "GameTooltipTemplate")
+  return side
+end
+BT.SideTooltip = SideTip
+
+-- Which of the two the lines are going to. Everything below writes through
+-- this rather than naming a tooltip, so moving the split is moving one line.
+local active = nil
+local function Tip() return active or GameTooltip end
+
 local function Pair(left, right)
   if right == nil or right == "" then return end
-  GameTooltip:AddDoubleLine(left, right, 0.72, 0.72, 0.72, 1, 1, 1)
+  Tip():AddDoubleLine(left, right, 0.72, 0.72, 0.72, 1, 1, 1)
+end
+
+-- Which column a block goes in is a judgement about the block, not about how
+-- much room is left: the run you are in belongs with what you are doing, even
+-- though the booster's own figures were written before it.
+local split = false
+local function Column1() active = nil end
+local function Column2Again() if split then active = side end end
+
+-- Start the second column, anchored to the right of the first
+local function Column2()
+  if ChainDB.oneColumn then return end
+  split = true
+  local t = SideTip()
+  t:SetOwner(GameTooltip, "ANCHOR_NONE")
+  t:ClearAllPoints()
+  t:SetPoint("TOPLEFT", GameTooltip, "TOPRIGHT", 2, 0)
+  t:ClearLines()
+  active = t
+  t:AddLine(BT.NAME, 1, 0.82, 0)
+end
+
+-- Two columns of different widths, with the pair hanging off to the right of
+-- the bar, read as one tooltip that had burst rather than as a layout. Same
+-- width, and the pair centred under the bar, is what makes it look deliberate.
+--
+-- It takes two passes: a tooltip is only as wide as what is in it, so the
+-- widths are not known until both have been shown once.
+local GAP = 2
+local function Balance(owner)
+  if not side or not side:IsShown() then return end
+  local w = math.max(GameTooltip.GetWidth and GameTooltip:GetWidth() or 0,
+                     side.GetWidth and side:GetWidth() or 0)
+  if w > 0 and GameTooltip.SetMinimumWidth then
+    GameTooltip:SetMinimumWidth(w)
+    side:SetMinimumWidth(w)
+    GameTooltip:Show()
+    side:Show()
+  end
+  if w <= 0 then w = 260 end
+  -- and the pair sits under the middle of the bar rather than starting there
+  GameTooltip:ClearAllPoints()
+  GameTooltip:SetPoint("TOP", owner, "BOTTOM", -(w + GAP) / 2, -4)
+end
+
+function BT.HideBarTooltip()
+  -- GameTooltip belongs to the whole game, so the width we forced on it has
+  -- to come off again - otherwise every item tooltip in the game inherits it.
+  if GameTooltip.SetMinimumWidth then GameTooltip:SetMinimumWidth(0) end
+  GameTooltip:Hide()
+  if side then side:Hide() end
+  active = nil
 end
 
 function BT.BarTooltip(owner)
+  active, split = nil, false
+  if GameTooltip.SetMinimumWidth then GameTooltip:SetMinimumWidth(0) end
+  if side and side.SetMinimumWidth then side:SetMinimumWidth(0) end
   GameTooltip:SetOwner(owner, "ANCHOR_BOTTOM")
-  GameTooltip:AddLine(BT.NAME)
+  Tip():AddLine(BT.NAME)
 
   local lvl = UnitLevel("player") or 1
   local mx = UnitXPMax("player") or 0
@@ -884,11 +1156,11 @@ function BT.BarTooltip(owner)
   local step = routeStep or (BT.FocusStep and BT.FocusStep())
 
   if not step then
-    GameTooltip:AddLine("No route set - right-click to pick your instances",
+    Tip():AddLine("No route set - right-click to pick your instances",
       0.7, 0.7, 0.7)
   else
     local lo, hi = BT.SpanOf(step)
-    GameTooltip:AddLine(step.label, 1, 1, 1)
+    Tip():AddLine(step.label, 1, 1, 1)
     if lo then
       -- the one thing nobody looks up: what this place is actually for
       local note = (lvl > hi) and "  you have outgrown it"
@@ -924,7 +1196,7 @@ function BT.BarTooltip(owner)
     end
 
     local st, borrowed, by = BT.StepStats(step)
-    GameTooltip:AddLine(" ")
+    Tip():AddLine(" ")
     if st and (st.xp or 0) > 0 then
       Pair("xp per run", BT.N(st.xp)
         .. C.dim .. (by and ("  " .. by .. "'s own") or borrowed and "  estimated"
@@ -966,22 +1238,64 @@ function BT.BarTooltip(owner)
               .. C.dim .. "   " .. packs .. " x " .. pack .. C.off)
             local spare = paid - left
             if spare >= 1 then
-              GameTooltip:AddLine(string.format(
+              Tip():AddLine(string.format(
                 "the last pack covers %.1f runs past %d - they are bought either way",
                 spare, step.to), 0.6, 0.6, 0.6, true)
             end
           end
         end
       end
+
+      -- The running account with this booster, spelled out. The bar shows the
+      -- one number; this says where it came from, because "3.2 runs paid up"
+      -- is only trustworthy if you can see the arithmetic behind it.
+      do
+        local who = by or BT.CurrentBooster()
+        local credit = BT.BoosterCredit and BT.BoosterCredit(who) or nil
+        if credit then
+          Tip():AddLine(" ")
+          Tip():AddLine("your account with " .. who, 1, 0.82, 0)
+          Pair("paid him", C.gold .. BT.G(BT.Gold(credit.paid)) .. C.off
+            .. C.dim .. "   " .. credit.trades
+            .. ((credit.trades == 1) and " trade" or " trades") .. C.off)
+          Pair("that buys", string.format("%.1f runs", credit.runsPaid))
+          Pair("runs since", tostring(credit.runsDone))
+          if credit.hisOf then
+            Pair("his own count", C.gold .. credit.hisDone .. " of "
+              .. credit.hisOf .. C.off)
+          end
+          local v = credit.left
+          Pair(((v < -0.5) and "you owe" or "still owed you"),
+            (((v >= 1) and C.good) or ((v > -0.5) and C.warn) or C.bad)
+            .. string.format("%.1f runs", math.abs(v)) .. C.off)
+          -- A run on credit is normal; a whole pack of them means money
+          -- changed hands and we did not see it. Trades to a bank alt do
+          -- that, and so does one the client never announced.
+          local pack = math.max(2, BT.PackFor and BT.PackFor(step, who) or 1)
+          if -v >= pack then
+            Tip():AddLine("that is a whole pack past what is logged - if you "
+              .. "paid and it was not picked up, /chain paid " .. who,
+              0.6, 0.6, 0.6, true)
+          end
+          if credit.guessed > 0 then
+            Tip():AddLine(credit.guessed .. " of those trades predate the "
+              .. "addon keeping the price, so they are priced at today's rate",
+              0.6, 0.6, 0.6, true)
+          end
+          Tip():AddLine("counted from your first payment to him, with two "
+            .. "hours of slack in front for a sitting paid at the end",
+            0.5, 0.5, 0.5, true)
+        end
+      end
     else
-      GameTooltip:AddLine("No runs recorded here yet", 0.7, 0.7, 0.7)
+      Tip():AddLine("No runs recorded here yet", 0.7, 0.7, 0.7)
     end
 
     -- the booster, in full: the bar only has room for the headline
     local b = BT.BoosterRating(step.id)
     if b then
-      GameTooltip:AddLine(" ")
-      GameTooltip:AddLine(b.by, 1, 0.82, 0)
+      Column2()
+      Tip():AddLine(b.by, 1, 0.82, 0)
       Pair("xp per hour", string.format("%.0fk", b.rate / 1000))
       if (b.timePerRun or 0) > 0 then Pair("his time per run", BT.T(b.timePerRun)) end
       if (b.mobs or 0) > 0 then Pair("his mobs per run", string.format("%.0f", b.mobs)) end
@@ -1020,19 +1334,22 @@ function BT.BarTooltip(owner)
 
     local switch = BT.SwitchLine and BT.SwitchLine(step, BT.CurrentBooster())
     if switch then
-      GameTooltip:AddLine(" ")
-      GameTooltip:AddLine(switch)
+      Tip():AddLine(" ")
+      Tip():AddLine(switch)
     end
   end
 
   -- what is true wherever you are
-  -- The run you are in. First, because while you are in one it is the thing
-  -- you are actually wondering about.
+  -- The run you are in. Back in the first column: it is part of what you are
+  -- doing, not part of who you are doing it with, and it evens the two halves
+  -- out - a pair of columns one of which is twice the height of the other
+  -- reads as one tooltip that burst rather than as a layout.
+  Column1()
   do
     local r = ChainCharDB.run
     if r and ((r.xp or 0) > 0 or (r.k or 0) > 0
               or (time() - (r.start or time())) >= 30) then
-      GameTooltip:AddLine(" ")
+      Tip():AddLine(" ")
       local st2 = select(1, BT.StepStats(step))
       local elapsed = time() - (r.start or time())
       Pair("this run", C.gold .. BT.N(r.xp or 0) .. " xp" .. C.off
@@ -1050,16 +1367,17 @@ function BT.BarTooltip(owner)
       end
       -- why it will or will not count, said in words rather than as a tag
       if r.partial then
-        GameTooltip:AddLine("you were part way in when this started, so it is "
+        Tip():AddLine("you were part way in when this started, so it is "
           .. "left out of the averages", 0.6, 0.6, 0.6, true)
       elseif r.reentry then
-        GameTooltip:AddLine("the same instance again rather than a fresh one",
+        Tip():AddLine("the same instance again rather than a fresh one",
                             0.6, 0.6, 0.6, true)
       end
     end
   end
 
-  GameTooltip:AddLine(" ")
+  Column2Again()
+  Tip():AddLine(" ")
   local avg, n, ratio = BT.GroupInfo()
   if avg then
     Pair("group", string.format("%.1f average, %d in it", avg, n)
@@ -1103,7 +1421,7 @@ function BT.BarTooltip(owner)
   if BT.PvPState then
     local p = BT.PvPState()
     if (p.honor or 0) > 0 or (p.rank or 0) > 0 then
-      GameTooltip:AddLine(" ")
+      Tip():AddLine(" ")
       Pair("rank", p.rankName .. C.dim .. "  " .. BT.Pct(p.progress or 0) .. C.off)
       Pair("honor this week", BT.N(p.honor)
         .. C.dim .. "  " .. (p.kills or 0) .. " kills" .. C.off)
@@ -1135,16 +1453,22 @@ function BT.BarTooltip(owner)
               and (C.dim .. "  " .. BT.T(p.short / p.rate * 3600) .. " to the next"
                    .. C.off) or ""))
       end
-      GameTooltip:AddLine("honor between two milestones is worth nothing",
+      Tip():AddLine("honor between two milestones is worth nothing",
                           0.5, 0.5, 0.5)
     end
   end
 
-  GameTooltip:AddLine(" ")
-  GameTooltip:AddLine("Left-click: history, gold and boosters", 0.5, 0.8, 1)
-  GameTooltip:AddLine("Right-click: settings", 0.5, 0.8, 1)
-  GameTooltip:AddLine("Drag to move" .. (ChainDB.locked and " (locked)" or ""), 0.5, 0.8, 1)
+  Tip():AddLine(" ")
+  Tip():AddLine("Left-click: history, gold and boosters", 0.5, 0.8, 1)
+  Tip():AddLine("Right-click: settings", 0.5, 0.8, 1)
+  Tip():AddLine("Drag to move" .. (ChainDB.locked and " (locked)" or ""), 0.5, 0.8, 1)
   GameTooltip:Show()
+  if active then
+    active:Show()
+    Balance(owner)
+  elseif side then
+    side:Hide()
+  end
 end
 
 function BT.ToggleBar()

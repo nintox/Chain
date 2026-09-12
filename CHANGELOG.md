@@ -82,6 +82,47 @@ parts that are not.
 - The alert's "done" menu closed itself before you could reach it. One menu is
   shared by the list and the alert, and the list's refresh was closing it on
   every tick whatever it happened to be open on; it only closes its own now.
+- **The alert itself can be clicked to target.** That is where your eye
+  already is in that second, and having to find the list instead is exactly
+  the second a rogue needs. Targeting is protected - `TargetUnit` cannot be
+  called from an addon at all - so the only way is a secure button running a
+  `/targetexact` macro, which is what the banner now carries.
+  - In combat the macro cannot be changed. One set before the fight still
+    works, so the button is not dead; it is pointed at whoever it was pointed
+    at. The line underneath says which: **click to target**, or **in combat -
+    click targets Zånzå**. A banner shouting one name while the click takes
+    another is worse than one that admits it.
+  - The instant a fight ends, the banner and the list re-arm - from the
+    event, not from the next tick.
+- A secure button makes its parent protected too, and a protected frame
+  cannot be hidden in combat: the call is simply refused. Both the banner and
+  the list carry secure buttons, so both now ask first and come back to the
+  hide when the fight is over. Both are also built at login rather than on
+  first use, because a secure button created during a fight cannot have its
+  attributes set for the rest of that fight.
+- **The list can be kept on screen with nobody about** - a new setting, and on
+  its right-click menu. A list that only exists while somebody is nearby is a
+  list you cannot glance at: an empty screen and a broken addon look exactly
+  alike, and you find out which it was when a rogue is already on you. With
+  nobody around it is the header alone, two words high, and it says **nobody
+  about** rather than a bare "0 nearby" that reads like something failed.
+- The header said **locked** when it was locked. The word only ever meant "you
+  can drag this", so it was on the wrong state entirely: it now says **drag
+  me** when unlocked and nothing at all when locked, which is a box you have
+  deliberately pinned down and does not need to keep mentioning it.
+- **Somebody going into stealth is read off the combat log**, the way Spy does
+  it. It used to be read only from the auras on a unit the client was already
+  drawing - a nameplate, your target - which means you had to be able to see
+  them before the addon would tell you that you could not. The combat log
+  announces the aura the moment it lands, two rooms away, and that is the
+  warning worth having. Swinging at somebody, or the aura falling off, takes
+  them back out of it: a rogue who opens on you is a rogue you can see.
+- And it is matched by **spell id first**. The old table was five English
+  words, so on a German or French client it matched nothing at all and the
+  whole feature was quietly off. The names are now learned from the ids at
+  login by asking the client what it calls them - so a German client matches
+  "Schleichen" without anybody shipping a list of translations. Stealth,
+  Prowl, Vanish, Shadowmeld and both invisibilities, every rank.
 - A stealthed player gets the stealth icon rather than the class ring. What
   matters about a rogue you cannot see is that you cannot see him, and a druid
   in cat form is the same news - the class is on the line underneath either
@@ -130,10 +171,44 @@ parts that are not.
   Grouped on the way out, not on the way in: the log still stores one entry
   per thing, so exports and totals are unaffected and two of the same item off
   one mob is still two drops.
-- Coins carry the source too. They came off the same corpse as everything
-  else in that loot window, and leaving it out put the money and the cloth
-  from one mob on two lines that did not look related to each other. The count
-  column shows a dash for coins rather than "1", which meant nothing.
+- **Raw coin is not in the loot log at all any more.** It comes off nearly
+  every corpse and it is split before you ever see it, so a row per pickup
+  buries the things you opened the tab for: a night in Scarlet Monastery came
+  to four hundred and forty-five rows, and fifteen of them were greens. Nova
+  carries it as one figure per instance - Raw Gold From Mobs - and that is the
+  right shape. It belongs to the run.
+  - **History** has a **gold** column now, one figure per run, and the run
+    tooltip says it in words. The loot tab's total still counts it.
+  - Coin picked up outside a run is not money the instance gave you - it is a
+    quest reward or a vendor - and it is left out of both numbers.
+  - The rows already in your log are folded into the runs they happened in by
+    their timestamps, once, on the way in; anything that lands in no run is
+    kept as a lump so the total stays true. It says how much it moved.
+- **Uncached items now load, so the tooltip is the real one.** An item the
+  client has never seen is a name and nothing else - `GetItemInfo` answers nil
+  and the tooltip draws a box with no stats, no armour, no required level -
+  and that is most of somebody else's loot, because it never passed through
+  your bags. Asking is the whole fix: the addon now asks for every item as it
+  is logged and again before the tab draws, and redraws when the answers
+  arrive. Names, prices and qualities fill in with it.
+- **The item's own tooltip on hover**, straight from the client - stats,
+  level, binding, everything a list of names cannot say. Ours goes underneath
+  rather than instead: the rest of what that corpse gave, who took it and
+  where, which is the part the item tooltip does not know. Shift-click puts
+  the link in whatever you are typing, the way it works everywhere else.
+- **A quality column**, and it sorts. On the number rather than the word, so
+  epic lands above rare instead of alphabetically between them - and because
+  the search box reads whatever the rows say, typing **rare** now narrows the
+  log to rares without the box needing to know anything about quality. The
+  word is the client's own (`ITEM_QUALITY3_DESC`), so it is "Selten" on a
+  German client without a translation table.
+- The quality shown for a row is the best thing that corpse gave, which is the
+  one you would have opened a tooltip for.
+- **One line in chat when the instance count moves**, the way Nova does it:
+  up when you zone in, back down when the mobs prove it is the one you were
+  just in. A number that corrects itself in silence is a number you end up
+  arguing with - saying both halves out loud is exactly what makes it possible
+  to check. At most a handful an hour, and it can be turned off.
 - Coins are written the way the game writes them - "15s 3c", "2g 15s". They
   went through the gold formatter, which rounds to whole gold, so fifteen
   silver came out as "0g" and a column of noughts read as a broken log rather
@@ -263,6 +338,397 @@ parts that are not.
   you gave, what you got back, both ways. Half of what crosses the table in a
   boost is a stack of cloth or the greens off the run, and a log that only
   counts money says you paid less than you did.
+- **Trades are logged on Classic Era again - second attempt, and this time
+  from the right end.** Requiring both accept ticks in one event was still too
+  strict: when the second person accepts, the trade executes and the window is
+  torn down, and that last event does not reliably arrive. Trades were still
+  going unlogged.
+  A cancel, on the other hand, always announces itself - it fires after the
+  close when you abort and before it when the other side does - so a trade
+  window that closes and never mentions a cancel is a trade that completed.
+  That is the rule now, with a moment's wait to cover both orderings. The
+  ticks are kept as a second opinion rather than the deciding one.
+  Because that is an inference rather than a certainty, **every trade row can
+  be deleted now**, not only the ones you typed. Anything inferred has to be
+  correctable by the person who was actually there.
+- **Runs stopped counting against what you had paid, and the reason was two
+  spellings of one man.** The run log kept the client's own spelling of a
+  booster's name; the trade log kept the cleaned one every typed name goes
+  through. They are compared with a plain equals - so a booster called CartEr
+  was two different people to the addon. His runs counted for one and his gold
+  for the other, and the balance sat at "10 runs paid up" while you ran.
+  One spelling everywhere now, and the log you already have is tidied on the
+  way in - runs, trades, the last booster, and the booster table itself, which
+  is keyed by name and so has to be re-keyed. Two halves of one man are merged
+  rather than one silently winning.
+  `/chain left NAME` also says how many runs are logged under that exact name,
+  and names any other spelling it found. A balance that will not move is
+  almost always this, and there is no way to see it from the number alone.
+- **The booster's own counter is read out of chat.** Boosters run an addon
+  that announces where everybody is in the pack - `[BoostBuddy] Nintoz - Run
+  4/10` - and that is the number he is charging against. He knows when the
+  pack started; we are inferring it from when you paid, so the two can
+  honestly differ. His goes on the bar when he has one, ours stays as the
+  fallback for boosters who announce nothing, and both are on the tooltip.
+  Only lines naming you count, and only from the booster you are running with.
+- **A trade to a stranger asks whose purse it was**, the moment it goes
+  through rather than later. Paying somebody who has never run for you while
+  somebody else is boosting you is a bank alt nine times in ten, and that is
+  the moment you know which. Asked once per name; say no and it stays no.
+- **Gold handed to a bank alt counts for the booster.** Half the money in a
+  boost goes to somebody who has never run anything for you - a bank alt, a
+  guild mate holding the purse - so his account looked unpaid and the alt's
+  looked like a stranger who owed you twenty runs. Point the alt at him once
+  (`/chain alt Banken Berreta`, or answer the question the addon asks the
+  first time you pay a stranger while he is boosting you) and everything
+  handed to that name counts against his runs, priced at **his** rate.
+  Payments already made to that alt are repriced when you link it, since they
+  had been valued at the instance's fallback price for want of anything
+  better. A price you typed against the alt yourself is left alone.
+- **Names can be picked instead of typed.** Half of them are Zånzå and Cartèr,
+  and getting the accents right off a screenshot is not a task an addon should
+  be setting you. The **pick** button on the Trade tab lists your group, the
+  booster, and everybody you have traded lately.
+- **Trades are logged on Classic Era again.** The addon was listening for the
+  client to say "Trade complete.", which Classic Era does not reliably send,
+  so a trade that plainly happened left the log empty. It now takes both
+  players ticking accept and the window closing as the completion, which is
+  what Classic actually gives you, and keeps the message as a second signal
+  for the realms that do send it. A cancel still gets its chance to call it
+  off first.
+- **What the money bought, and what is left of it.** You hand over 400g for
+  ten runs and then you count on your fingers. The addon knows what a run
+  costs with him and how many you have had, so it does the subtraction: the
+  Trade tab shows what each payment buys and the balance after it, the
+  Boosters tab carries **runs left** next to the verdict, and the bar says
+  *6.0 runs paid up* - in red once you have gone past what you paid for.
+- The price is recorded **on the trade**, so editing a price later reprices
+  what you buy next rather than rewriting what you already bought.
+- The count starts at your first payment to that booster, with two hours of
+  slack in front of it, so somebody you ran with before you installed this
+  does not appear owing you twenty runs, and a sitting paid for at the end
+  still counts.
+- **A trade the addon never saw can be typed in**, on the Trade tab or from
+  chat. Gold sent by mail, a trade that went through during a reload, and
+  above all the arrangement you were already halfway through on the day you
+  installed this - without a way in, the balance is wrong from the first day
+  and stays wrong, and a number you know is wrong is a number you stop
+  reading.
+  - `I paid him` takes a name and an amount and prices it the way a watched
+    trade would have been: `/chain paid Boostar 400`.
+  - `runs left` takes the answer directly - `/chain left Boostar 7` - and is
+    the one to use when you never counted the gold. It is a line drawn under
+    everything above it: the tally starts again from that number.
+  - Lines you typed say **by hand** in the where column and carry an x to
+    remove them. Trades the addon watched have no x: that is measured
+    history, and an x on it would be an invitation to make the log say
+    something other than what happened.
+
+**The five an hour**
+
+- **The wait is announced to the group on a countdown.** A group standing at
+  the summoning stone is a group waiting on the number somebody has to keep
+  asking for, so it is said on a rhythm rather than whenever something happens
+  to poke it: once when you hit the cap, every five minutes while the wait is
+  long, once at **one minute**, and once when a slot actually opens. Each mark
+  is said once - the check runs every few seconds, and a countdown that
+  repeats itself is worse than one that says nothing. Every line is worded the
+  same way - `free in 47m`, `free in 15m`, `free in 5m` - because a countdown
+  that changes its phrasing halfway makes you read it twice to see that the
+  two halves are the same sentence. Whole minutes, always, rounded up and never
+  zero: seconds in a line about an hour's lockout are false precision, and
+  "free in 50s" is a different unit you have to convert before you can compare
+  it with the line before it.
+  What gets said is the real time left rather than the name of the mark, so a
+  check that catches the mark a little late still tells the truth. Still
+  behind **Tell the group your lockout**, and still your chat, not ours.
+
+- **Everything it says to the group now says who is saying it** -
+  `[CHAIN] - 5/5 - 15m to go`. Four people in a party are running three addons
+  between them and all of them are putting numbers into the same window; a
+  line with nothing in front of it reads as somebody typing, and somebody
+  typing gets asked follow-up questions. It costs seven characters and it
+  means the group knows where the number came from - and who to go and get it
+  from. The reset call and the stealth spot carry the same tag.
+
+- **In a boost the line under the bar carries two things and only two:**
+
+      9/10 runs                                        ding in ~41m
+
+  How many runs you have left, and when you ding. That is what you are in
+  there for. The bar itself goes on saying where you are and how far it is;
+  this line is the two numbers you are actually counting. `his count` and
+  `lvl 42 in` are gone from the wording - the bar says which level you are on
+  and the top line says which stretch you are running, so the number is the
+  only part that is news. Levelling says it the same way: the right-hand end
+  reads `ding in ~41m` rather than `~41m to 32`.
+
+- **The Adverts tab is the Sellers tab, and it only lists people who are
+  actually selling.** "Adverts" named the mechanism; what you want off that tab
+  is a person to whisper. And an advert is somebody standing in a city saying
+  they are free *now* - half an hour later they are three levels into somebody
+  else's chain, and a list of them is a list of people to be disappointed by.
+  So anything older than thirty minutes drops off. What was learned from the
+  advert - his price, his pack size - stays on his record: that is knowledge
+  about him, and it does not go stale the way the offer does. `/chain sellers`
+  opens it; `/chain adverts` still works.
+
+- **A whole pack past what is logged as paid says so, once.** One run past is
+  normal - you take one on credit and settle at the end of the pack. Ten past
+  is not: it means money changed hands and the addon never saw it, which is
+  what a trade to a bank alt looks like, and what a trade the client never
+  announced looks like. Rather than letting the number drift until the bar
+  claims you owe seven runs, it says which booster and what to type:
+  `/chain paid Cartèr 400`. Once per payment - settle up, or tell it what you
+  paid, and it goes quiet. The bar tooltip says the same thing under the
+  balance.
+
+- **The booster's own run counter is carried forward instead of frozen where
+  he left it.** He announces once a run, and a booster who stops announcing -
+  his addon off, his attention elsewhere, the pack finished - leaves us holding
+  a number that was right twenty minutes and three runs ago. `9/10 runs` sat on
+  the bar for two hours after the pack was over, because that was the last
+  thing he ever said. Every run we have seen with him since he said it now
+  counts one off the pack, and when that reaches the end of the pack there is
+  nothing of his left to believe: our own arithmetic takes over, and that one
+  knows you have gone seven runs past what you paid for. A payment newer than
+  the announcement ends it too - that is a new pack, and his old number was
+  about the last one.
+
+- **The rate stands between the two corners under the bar, in both modes.**
+
+      Lvl 31  47.9%      35,800 / 74,800        ding in ~41m
+      39,000 to go         56,348 xp/h
+
+  It belongs on the line it is measured alongside: how much is left on one
+  side, how fast it is coming in in the middle, when it runs out on the other.
+  In a boost that reads `9/10 runs  ·  56,348 xp/h  ·  ding in ~36m`. That
+  makes three slots below the bar rather than two, and the middle one is
+  dropped rather than allowed to overlap when the two ends leave it no room -
+  the same rule the middle of the bar has always had. Without a measurement
+  yet it says so: `measuring xp/h`, or `no xp for 12m` if you have been
+  standing still.
+
+- **And it is coloured against what the thing you are doing normally gives
+  you.** A rate on its own says nothing: 56,000 xp/h is good in Scarlet
+  Monastery and terrible in Stratholme, and neither of those is something you
+  should have to hold in your head. In a boost it is measured against the
+  step's own record - experience a run over minutes a run, which is what this
+  dungeon with this booster has actually been paying - so falling short of it
+  means this run is going badly: a slow booster, a wipe, or twenty minutes at
+  the stone. On your own it is measured against your own session, once that is
+  twenty minutes old, which answers the only question you can act on alone: am
+  I going slower than I have been. Green at or near it, yellow a fifth below,
+  red past that. With nothing to measure against there is no colour - a green
+  number nobody has checked is worse than a white one.
+
+- **On your own, five quiet minutes stops the clock.** The rate allowed ten
+  before it gave up, which is right in a group, where a gap that long is a
+  reset, a summon or waiting on somebody. Alone it is you not being there, and
+  a rate still counting while you are at the mailbox is a rate that says you
+  ding in five minutes.
+  Experience a run, minutes a run, what it costs, what you have paid and how
+  many packs that is have all moved to the tooltip, where there is room to say
+  what they mean and where they are not sitting on top of the two numbers you
+  actually came for.
+
+- **And the corners are measured against the bar rather than the padded line
+  budget** - which is what was wrong from the start. The packed lines are
+  centred under the bar and may run past both ends of it, and that slack was
+  being handed to the two corners as well; but they are pinned to the two ends,
+  so anything past the bar's own width is one drawn on top of the other.
+
+- **The bar works out how much fits on a line instead of remembering it.** The
+  summary under the bar is packed to a budget in characters, because the text
+  is built long before there is a frame to measure it in - and seventy-four was
+  measured once, in the face the addon used at the time. Ship a different face
+  and the same seventy-four characters draw straight over each other, which is
+  exactly what happened: `11,704 xp/run` on top of `5m/run` on top of
+  `(5 - 43m left)`. The number is now measured rather than remembered - a
+  sample of the kind of thing that goes down there, drawn in the real font,
+  gives the width of an average character - so it follows whichever face you
+  pick, and the bar re-packs itself the moment you change it.
+
+- **The whole addon is written in a face that was chosen for this.** Friz
+  Quadrata is the game's own, and it is a display face - made for carved signs
+  and quest titles, not for a column of numbers at nine pixels, where its
+  serifs turn to mush. This addon is almost entirely small text in rows, so it
+  now comes with one: **DejaVu Sans**, which is even, sturdy and made to be
+  read small, and covers every accent a character name can carry. The client's
+  own four are all compromises here - Friz Quadrata is a display face, Arial
+  Narrow is narrow, and thin strokes on a dark background are the first thing
+  to go at nine pixels; Morpheus and Skurri are for titles and damage numbers -
+  so all four are offered and none of them is the default. The licence DejaVu
+  comes under lets it be shipped like this, and sits next to it in `Fonts/`.
+  Change it in **Bar & sharing** or with `/chain font`.
+  Behind it are five font objects of ours. A font object is shared by every
+  string using it, so a swap changes every label in the addon at once, on the
+  spot with no reload, and leaves the rest of the interface alone. Each one
+  keeps the size of the game object it was built from, so changing the face
+  does not quietly resize half the addon.
+
+- **The settings tabs say what is in them.** *What to read out of chat*, *Who
+  is out there* and *Sharing and the bar* were sentences where a label was
+  wanted. They are **Chat**, **Enemies** and **Bar & sharing**.
+
+- **The list's resize handle is not drawn when the list is locked.** A handle
+  you cannot pull is a smudge in the corner of a box you have deliberately
+  pinned down - and with nobody about the box is one line tall, which put that
+  smudge right next to the new button.
+
+- **Empty, the list says what it is rather than what it has not got.** It used
+  to read **nobody about**, which is an answer to a question nobody asked and
+  makes the box sound like it is announcing that it has nothing to do. It now
+  says **Enemy tracker**, and the count takes the line back the moment there is
+  one.
+- **And there is a way in to the rest of it**: a small **E** in the header opens
+  the Enemies tab. The list is a corner of that tab - everything you want after
+  seeing a name is there - and until now the only way in was a slash command you
+  had to remember.
+
+- **A click anywhere else closes the menu.** Every other menu in the game puts
+  itself away when you click past it, so one that does not reads as stuck: you
+  click, nothing happens, and you go looking for the way out. A full-screen
+  frame one strata below the menu catches it - the menu sits on top, so its own
+  items still get their clicks - and it exists only while the menu is open. All
+  six menus share the one frame, so this is the meter, the nearby list, the
+  alert, the player menu and both of the gold ones at once.
+  That frame depends on the click landing on us rather than on somebody else's
+  full-screen frame, and there is no way to be sure of that - so there are two
+  more ways out that do not depend on anything. **The menu gives up five
+  seconds after the pointer leaves it**, because a menu you have walked away
+  from is one you are done with; and **asking for it again on the same thing
+  puts it away**, since that is somebody closing it rather than opening it
+  twice.
+
+- **The list and the alert could not actually be clicked**, and the reason was
+  one line in each of them. A secure button registered for `LeftButtonUp` and
+  `RightButtonUp` - the obvious registration, and the one every example uses -
+  does not run its action at all on this client. Spy carries that exact line in
+  its source with a comment character in front of it and `AnyDown, AnyUp`
+  underneath, which is how we found out. Both buttons are registered for down
+  and up now, so half the clicks arrive as the press: the targeting itself is
+  happy to run twice, and everything that is not targeting - the shift-mark,
+  the right-click menu - ignores the press.
+- **A row also points itself at the moment you click it**, rather than trusting
+  the last refresh to have done it. The list reorders as people are seen, and a
+  row that moved half a second ago should not cost you the target.
+- **Rows target with `/targetexact` rather than `/target`.** The banner always
+  did. `/target` matches on a prefix, so a click on "Ara" takes whoever is
+  nearest whose name begins that way, which in a list of enemies is the wrong
+  man often enough to matter.
+
+- **The countdown is not said from inside the instance.** Going in is what
+  puts you on the cap, so that was exactly when it fired - in at 4/5, then
+  `5/5 - free in 11m` fifteen seconds later, to four people who had just
+  watched you walk through the door. It waits until you are back outside,
+  which is the moment somebody would have asked anyway, and picks up from
+  wherever the clock has got to.
+  The one line that is still said from inside is the one the group is actually
+  waiting on: **`[CHAIN] - 4/5 - instance unlocked`**, and the countdown says
+  the same word: `5/5 - instance free in 15m`.
+  Solo, there is nobody to tell - so the same line goes to your own chat frame
+  instead of nowhere, and what you see alone is what the group sees when you
+  are not.
+
+- **The instance counter was reading the wrong half of the creature id, and
+  undercounting badly.** A creature comes back as
+  `Creature-0-4672-33-573-3849-...`; we took field four as the instance, but
+  33 is Shadowfang Keep's map - the same number in every copy of it that has
+  ever existed. So the second Stockade of the day looked like walking back
+  into the first: marked a re-entry, dropped from the log, never counted. A
+  full Scarlet Monastery chain of three read as **one**.
+- It now takes fields four and five together. Which of the two is the map and
+  which is this copy of it is documented one way round and used the other way
+  round by every addon that actually counts instances, so the pair is the only
+  answer that is right either way.
+- Scarlet Monastery is the case that makes this matter: a boost there is
+  several instances in a row behind one zone name, and until one is reset
+  walking back into it is not a new one. Same pair, same instance - and now
+  three wings count three.
+- **The entries that bug threw away are put back from the run log**, once, on
+  the way in. A recorded run is proof you were inside; an entry is only a note
+  made on the way in, and a log reading 2/5 with nine runs behind it in the
+  same hour is not arithmetic. Runs already known to be re-entries are left
+  alone - they did not count then and they do not count now.
+- **Being refused now writes entries, not a correction.** "You have entered
+  too many instances recently" means the game has seen instances we have not,
+  and those are written into the log as entries of their own, stamped at the
+  refusal. They then count, expire and drive both clocks like any other entry.
+  - As a number added on top it was wrong twice over. It was a snapshot, so
+    once our own counting caught up it was still being added - which is how
+    the bar reached **7/5**, a number the game will not give you.
+  - And it moved the "oldest" entry forward to the moment of the refusal,
+    which could put it after the newest, which is how **"one free in 58m"**
+    ended up above a line saying they were all free in 47m.
+- **A run in progress is never split by mob ids.** A run starts when the zone
+  name changes, and in Scarlet Monastery it does not - all four wings report
+  "Scarlet Monastery" - so the obvious move is to watch the mob ids and start
+  a new run when one stops matching. That was tried, and the bar went to
+  **6/5**: a number the game will not give you, so whatever it counted was not
+  an instance. Nova does not do it either - it uses the mob id only to decide
+  whether a run that has just *started* is the previous one carrying on, never
+  to end one that is in progress. The id is written once, at the start, and
+  the run keeps it.
+- **A corpse in your target frame no longer files a fresh instance as a
+  return to the old one** - which was the real reason the count ran short, and
+  is fixed where it happens rather than by counting harder somewhere else. The run read its instance id off whatever you had
+  targeted when it started, and walking out and back in with the dead mob
+  still selected meant the new run was stamped a re-entry and its entry
+  thrown away. A dead target gets no say, and a run split off another one is
+  told which instance it is in rather than asked.
+- **"+1 in 9m" next to 3/5 was a wait that did not exist.** Under the cap the
+  bar and the minimap now say how many you have left - **3 to go** - and the
+  clock only appears when the door is actually shut.
+- **A `/reload` was counting as an instance entry, and that was the whole
+  story.** On a reload the addon threw away the run in progress and let the
+  next zone check start another - and starting a run writes an entry against
+  the five-an-hour cap. So every reload while standing inside a dungeon
+  counted as walking into a new one. A day of reloading to pick up changes put
+  the count several ahead of the truth, which is every off-by-one in this
+  list. Nova prints "UI Reload detected, loading last instance data instead of
+  creating new" for exactly this reason.
+  Come back to the same place and the run you had is the run you are in; only
+  somewhere else ends it. The client can also announce the world before it
+  admits to being in an instance, so a second guard covers the case where the
+  run went missing during the loading screen.
+  That second guard was too wide on its first outing and ate a real entry: it
+  asked whether the last zone matched, which is still true half a minute after
+  you have walked out of the place - so a reload in town followed by walking
+  straight in had its entry thrown away, and the count sat one short for the
+  rest of the hour. It now asks whether a run was actually in progress in that
+  instance when the lights went out, which is the only case it was ever for,
+  and the window is fifteen seconds rather than thirty.
+- **The same arrival is not counted twice - and the reset log is what settles
+  it.** This one came out of the log rather than out of my head: the Instances
+  tab showed two "entered SM" a minute apart, nothing between them, and the
+  hour reading 7/5. One arrival, reported twice.
+  A second entry into the same instance is only a second instance if somebody
+  reset it in between - that is the whole mechanic - so two entries with no
+  reset recorded between them cannot both be real. Two that *do* have a reset
+  between them are kept however close together they are, because a fast chain
+  looks exactly like that. The clock is only a guard against acting on a gap
+  so wide that a missed reset is the likelier explanation.
+  It runs on the tick and after a NIT import, so a log that is already wrong
+  is cleaned up rather than only prevented from getting worse.
+- **A count that cannot be true is trimmed on the clock**, not only when you
+  next zone in - which is the one moment that will never arrive, because the
+  bar is telling you the door is shut. Guesses go first, and it says what it
+  dropped.
+- **And the same escape hatch Nova has.** `/chain notnew` takes back the last
+  instance it counted, for when a zone-in was not one. A zone-in is the only
+  evidence there is at that moment, and it can be wrong.
+- Every line that moves the count now carries the **instance id**, and the
+  Instances tab says where each row came from - own, rebuilt, the game said,
+  from NIT. A wrong number you can trace is a bug; a wrong number you cannot
+  is an argument.
+- **Getting through the door removes them again.** If the game lets you in you
+  were not at the limit, whatever we thought: a refusal is evidence in one
+  direction and an entry is the same evidence in the other, and only using
+  half of it is what let a guess sit in the count for a full hour.
+  Guesses only, and in order: first what the game told us about and we never
+  saw, then what we rebuilt from the run log. An entry we actually watched
+  happen is never thrown away to make a number look right.
 
 **At the top of the ladder**
 
@@ -317,6 +783,45 @@ parts that are not.
   one was.
 
 **Smaller things**
+
+- **The bar's tooltip is two columns now.** It had grown to a page: on a tall
+  screen it ran from the top of the display to the bottom, which is not a
+  tooltip any more. A second one sits alongside the first and the split is by
+  subject rather than by line count - the step, what a run costs and your
+  account with him on the left; who he is, how he compares, where you stand on
+  the hour and the honour week on the right. **Bar tooltip in one column** in
+  the settings puts it back for a narrow screen, where the height was the
+  lesser problem.
+  The two are the same width and the pair sits under the middle of the bar.
+  That takes two passes - a tooltip is only as wide as what is in it, so
+  neither width is known until both have been drawn once - and the width
+  forced on GameTooltip is taken off again when it hides, because that frame
+  belongs to the whole game and every item tooltip would have inherited it.
+  Which column a block goes in is a judgement about the block: the run you are
+  in sits with what you are doing, not with who you are doing it with, which
+  also evens the two halves out.
+- **The Trade tab's balance column was frozen, and reading like it was not.**
+  It is the balance that payment left you on, at the moment it was made -
+  which is what a ledger column is for, and why it does not move afterwards.
+  But it was labelled **left** under a title saying "what is still owed you",
+  so it read as a live figure that had got stuck. It is called **after** now,
+  and the number that does move has a place of its own: the line under the
+  table carries the live balance for whoever you have paid lately, his own
+  count where he announces one.
+- **Tab titles were running under the search box.** Same failure as the bar
+  corners: a fontstring that does not fit does not clip, it draws into its
+  neighbour - which is how the Trade tab read "…what is still oweshow only".
+  The long ones are shortened, and the suite now measures every title against
+  the space it actually has.
+- **The two lines under the bar stopped colliding.** They are not one
+  fontstring: one is pinned to the left end of the bar and one to the right,
+  with nothing between them but the bar's width - so text that does not fit
+  there does not wrap, it draws straight over the other corner. That is how
+  "8,881 xp/run" ended up printed on top of "7m left" on top of the booster's
+  name. The pair is measured together now and whatever does not fit drops to
+  the packed lines underneath, which do wrap.
+  The line-length test had been checking each line on its own, so two corners
+  that were each short enough went straight past it. It measures the pair now.
 
 - The line under the bar describing the run you are in - experience so far,
   mobs, elapsed, pace, whether it counts - has moved to the tooltip. It was

@@ -362,7 +362,31 @@ local KINDS = {
               hold = 6, pulse = false },
 }
 
-local function BuildBanner()
+-- A secure button makes its parent protected too, and a protected frame
+-- cannot be hidden in combat - the call is simply refused. Both the banner
+-- and the list carry secure buttons, so both have to ask first and come back
+-- to it when the fight is over rather than assuming the Hide took.
+local pendingHide = {}
+local function SafeHide(frame)
+  if not frame then return true end
+  if InCombatLockdown and InCombatLockdown() then
+    pendingHide[frame] = true
+    return false
+  end
+  pendingHide[frame] = nil
+  frame:Hide()
+  return true
+end
+
+local function FlushHides()
+  if InCombatLockdown and InCombatLockdown() then return end
+  for frame in pairs(pendingHide) do
+    pendingHide[frame] = nil
+    frame:Hide()
+  end
+end
+
+function BT.BuildBanner()
   if eframe then return eframe end
   eframe = CreateFrame("Frame", "ChainEnemyBanner", UIParent)
   eframe:SetSize(300, 46)
@@ -408,15 +432,62 @@ local function BuildBanner()
     eframe.iconEdge:SetColorTexture(0, 0, 0, 1)
   end
 
-  eframe.head = eframe:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  eframe.head = eframe:CreateFontString(nil, "OVERLAY", "ChainFontNormal")
   eframe.head:SetPoint("TOPLEFT", 46, -5)
   eframe.head:SetJustifyH("LEFT")
-  eframe.name = eframe:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  eframe.name = eframe:CreateFontString(nil, "OVERLAY", "ChainFontNormalLarge")
   eframe.name:SetPoint("TOPLEFT", 46, -22)
   eframe.name:SetJustifyH("LEFT")
+  -- what a click will actually do, said rather than guessed at
+  eframe.hint = eframe:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  eframe.hint:SetPoint("BOTTOMRIGHT", -6, 4)
+  eframe.hint:SetJustifyH("RIGHT")
 
   eframe:SetScript("OnMouseUp", function(_, button)
     if button == "RightButton" then BT.AlertMenu() end
+  end)
+
+  -- One click to target whoever it is shouting about. This has to be a secure
+  -- button with a /target macro on it: TargetUnit is protected and an addon
+  -- cannot call it at all, so there is no other way to do this from code.
+  --
+  -- The price is that the attribute is frozen in combat, which is exactly when
+  -- you would most like it. Nothing can be done about that - it is the same
+  -- wall every addon hits - so the line underneath says which of the two you
+  -- have got rather than leaving you clicking at a banner that will not act.
+  eframe.target = CreateFrame("Button", "ChainAlertTarget", eframe,
+                              "SecureActionButtonTemplate")
+  eframe.target:SetPoint("TOPLEFT", 0, 0)
+  eframe.target:SetPoint("BOTTOMRIGHT", 0, 0)
+  -- "AnyDown", "AnyUp" rather than the obvious "LeftButtonUp": on this client
+  -- a secure button registered for the named up-clicks alone does not run its
+  -- action at all. Spy has the obvious line in its source with a comment
+  -- character in front of it and this one underneath, which is how we found
+  -- out. The cost is that the click arrives twice, once down and once up, so
+  -- everything that is not the targeting itself has to ignore one of them.
+  eframe.target:RegisterForClicks("AnyDown", "AnyUp")
+  eframe.target:RegisterForDrag("LeftButton")
+  eframe.target:SetScript("OnDragStart", function()
+    if not ChainDB.alertLocked then eframe:StartMoving() end
+  end)
+  eframe.target:SetScript("OnDragStop", function()
+    eframe:StopMovingOrSizing()
+    if eframe:GetLeft() then
+      ChainDB.alertPos = { x = eframe:GetLeft(), y = eframe:GetBottom() }
+    end
+  end)
+  -- Point the click at whoever the banner is showing at the moment it is
+  -- clicked, rather than trusting the last refresh to have done it. Attributes
+  -- can be set here - PreClick runs before the secure half - and cannot in
+  -- combat, where whatever was set before the fight is what fires.
+  eframe.target:SetScript("PreClick", function()
+    if eframe.wanted then BT.ArmAlert(eframe.wanted) end
+  end)
+  eframe.target:HookScript("PostClick", function(_, button, down)
+    if down then return end
+    if button == "RightButton" then BT.AlertMenu() return end
+    -- a click that could not be a target is a click that dismisses it
+    if not eframe.armedFor then SafeHide(eframe) end
   end)
 
   eframe.t = 0
@@ -433,7 +504,7 @@ local function BuildBanner()
     else
       self.head:SetAlpha(1)
     end
-    if self.t > (self.hold or 6) then self:Hide() end
+    if self.t > (self.hold or 6) then SafeHide(self) end
   end)
   eframe:Hide()
   return eframe
@@ -463,7 +534,7 @@ end
 
 function BT.Alert(kind, e)
   local k = KINDS[kind] or KINDS.seen
-  BuildBanner()
+  BT.BuildBanner()
   local who = e and e.name or "?"
   local sub = {}
   if e and e.level and e.level > 0 then
@@ -478,6 +549,7 @@ function BT.Alert(kind, e)
   eframe.head:SetTextColor(k.r, k.g, k.b)
   eframe.name:SetText(who)
   eframe.kind = kind
+  eframe.wanted = e and e.name or nil
   eframe.tint = { k.r, k.g, k.b }
   eframe.pulse = k.pulse
   eframe.hold = k.hold
@@ -486,6 +558,8 @@ function BT.Alert(kind, e)
   end
   SetIcon(eframe.icon, e and e.class, kind)
 
+  BT.ArmAlert(e and e.name or nil)
+
   -- wide enough for whichever of the two lines is longer
   local w = math.max(eframe.head:GetStringWidth() or 0,
                      eframe.name:GetStringWidth() or 0)
@@ -493,6 +567,52 @@ function BT.Alert(kind, e)
   eframe.t = 0
   eframe:Show()
   return eframe
+end
+
+-- Point the banner's click at somebody, and say which of the two things a
+-- click is going to do. Refused in combat, where a secure button's attributes
+-- are frozen; the caller finds out from the return value and the hint line
+-- tells you the same thing without having to try it.
+function BT.ArmAlert(name)
+  if not eframe or not eframe.target then return false end
+  local locked = InCombatLockdown and InCombatLockdown()
+  if not locked then
+    eframe.target:SetAttribute("type1", name and "macro" or nil)
+    eframe.target:SetAttribute("macrotext1",
+                               name and ("/targetexact " .. name) or nil)
+    eframe.armedFor = name
+  end
+  -- In combat the attribute cannot be changed - but one set before the fight
+  -- still works, so the button is not dead, it is just pointed at whoever it
+  -- was pointed at. Saying which is the only honest thing to do: a banner
+  -- shouting one name while the click targets another is worse than a banner
+  -- that admits it.
+  if eframe.hint then
+    local armed = eframe.armedFor
+    local txt
+    if not armed then
+      txt = locked and "in combat - click to dismiss" or "click to dismiss"
+    elseif armed == name or not locked then
+      txt = "click to target"
+    else
+      txt = "in combat - click targets " .. armed
+    end
+    eframe.hint:SetText(C.dim .. txt .. C.off)
+  end
+  return eframe.armedFor ~= nil and eframe.armedFor == name
+end
+
+-- The instant a fight ends, everything that could not be armed during it gets
+-- armed. A banner that is still on screen when you come out of combat is one
+-- you can still use, and waiting for the next tick to notice is a second you
+-- spend clicking at nothing.
+function BT.CombatEnded()
+  FlushHides()
+  if eframe and eframe:IsShown() then
+    local name = eframe.wanted
+    if name then BT.ArmAlert(name) end
+  end
+  if BT.RefreshNearby then BT.RefreshNearby() end
 end
 -- One frame for every kind of alert, so they cannot stack up or silence each
 -- other. Both names answer with it; the old one is kept because it was the
@@ -589,7 +709,7 @@ function BT.EnemyBanner(text, loud)
     eframe:SetSize(520, 22)
     eframe:SetPoint("TOP", UIParent, "TOP", 0, -160)
     eframe:SetFrameStrata("HIGH")
-    eframe.fs = eframe:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    eframe.fs = eframe:CreateFontString(nil, "OVERLAY", "ChainFontNormalLarge")
     eframe.fs:SetPoint("CENTER")
     eframe.t = 0
     eframe:SetScript("OnUpdate", function(self, elapsed)
@@ -674,10 +794,51 @@ end
 
 -- Is that unit stealthed right now? The buff is the honest signal; there is
 -- no API that simply says so.
+-- The spells that mean "you cannot see me", kept as ids. An id is the same on
+-- every client; a name is not, and this table used to be five English words,
+-- which on a German client matched nothing at all and quietly turned the
+-- whole feature off. The names are learned from the ids at login by asking
+-- the client what it calls them, so a German client matches "Schleichen"
+-- without anybody shipping a list of translations.
+local STEALTH_IDS = {
+  1784, 1785, 1786, 1787,          -- Stealth, ranks 1-4
+  5215, 6783, 9913,                -- Prowl, ranks 1-3
+  1856, 1857, 26889,               -- Vanish
+  20580, 58984,                    -- Shadowmeld
+  66, 3680, 11392,                 -- Invisibility, and the lesser one
+}
+local STEALTH_ID = {}
+for _, id in ipairs(STEALTH_IDS) do STEALTH_ID[id] = true end
+
+-- seeded in English so the feature still half works if the client will not
+-- answer, and filled in properly the moment it will
 local STEALTH_SPELLS = {
   ["Stealth"] = true, ["Prowl"] = true, ["Shadowmeld"] = true,
+  ["Vanish"] = true,
   ["Invisibility"] = true, ["Lesser Invisibility"] = true,
 }
+
+function BT.LearnStealthNames()
+  if not GetSpellInfo then return 0 end
+  local n = 0
+  for _, id in ipairs(STEALTH_IDS) do
+    local name = GetSpellInfo(id)
+    if name and name ~= "" and not STEALTH_SPELLS[name] then
+      STEALTH_SPELLS[name] = true
+      n = n + 1
+    end
+  end
+  return n
+end
+
+-- Is this the spell of somebody disappearing? By id first, because that is
+-- the answer that cannot be wrong.
+function BT.StealthSpell(spellId, spellName)
+  if spellId and STEALTH_ID[spellId] then return true end
+  if spellName and STEALTH_SPELLS[spellName] then return true end
+  return false
+end
+
 function BT.IsStealthed(unit)
   if not unit or not UnitAura then return nil end
   for i = 1, 40 do
@@ -723,7 +884,14 @@ function BT.HasAbilityData()
   return type(_G.Spy_AbilityList) == "table"
 end
 
-function BT.NoteCombatLogUnit(guid, name, flags, spellId)
+-- The sub-events that mean somebody is swinging rather than hiding. A rogue
+-- who opens on you is a rogue you can see, whatever the last aura said.
+local BREAKS_STEALTH = {
+  SWING_DAMAGE = true, RANGE_DAMAGE = true, SPELL_DAMAGE = true,
+  SPELL_CAST_SUCCESS = true, SWING_MISSED = true, SPELL_MISSED = true,
+}
+
+function BT.NoteCombatLogUnit(guid, name, flags, spellId, sub, spellName, isSrc)
   if not ChainDB.watchEnemies then return end
   if not IsPlayerGUID(guid) or not name then return end
   if not bit or not flags then return end
@@ -745,11 +913,35 @@ function BT.NoteCombatLogUnit(guid, name, flags, spellId)
   local lvl, aClass, aRace
   if spellId then lvl, aClass, aRace = BT.AbilityInfo(spellId) end
 
-  BT.NoteEnemy(name, { how = "combat log", class = class or aClass,
-                       race = race or aRace })
+  -- Somebody going into stealth, which is the thing you actually want to
+  -- know and the one we were missing entirely. It was read only off a unit
+  -- the client was already rendering - a nameplate, your target - which
+  -- means you had to be able to see them before we would tell you that you
+  -- could not. The combat log announces the aura the moment it lands, two
+  -- rooms away, and that is the warning worth having.
+  local stealth
+  if isSrc and sub then
+    local hides = BT.StealthSpell(spellId, spellName)
+    if hides and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REFRESH"
+                  or sub == "SPELL_CAST_SUCCESS") then
+      stealth = true
+    elseif hides and sub == "SPELL_AURA_REMOVED" then
+      stealth = false
+    elseif BREAKS_STEALTH[sub] then
+      stealth = false
+    end
+  end
+
+  local e = BT.NoteEnemy(name, { how = stealth and "went into stealth"
+                                   or "combat log",
+                                 class = class or aClass,
+                                 race = race or aRace,
+                                 stealth = stealth })
   -- the level is its own step: it is a floor rather than a fact, and it may
   -- only ever be raised
   if lvl then BT.NoteAbilityLevel(name, lvl) end
+  if stealth and e and BT.StealthAlert then BT.StealthAlert(e) end
+  return e
 end
 
 -- A floor only rises. Two abilities seen, the higher one wins; and a level we
@@ -783,11 +975,19 @@ f:SetScript("OnEvent", function(_, event, arg1)
     BT.ScanUnits("group's target")
   elseif event == "UNIT_FACTION" then
     BT.NoteUnit(arg1, "faction")
+  elseif event == "PLAYER_REGEN_ENABLED" then
+    -- out of combat: everything that could not be armed during it, now
+    if BT.CombatEnded then BT.CombatEnded() end
+  elseif event == "PLAYER_REGEN_DISABLED" then
+    -- and say so on a banner that is already up, rather than letting it go on
+    -- claiming a click will target somebody
+    if BT.ArmAlert then BT.ArmAlert(nil) end
   end
 end)
 for _, e in ipairs({ "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED",
                      "UPDATE_MOUSEOVER_UNIT",
                      "PLAYER_TARGET_CHANGED", "UNIT_FACTION",
+                     "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED",
                      "UNIT_TARGET" }) do
   f:RegisterEvent(e)
 end
@@ -826,6 +1026,10 @@ local function NearWidth()
   return math.max(120, math.min(420, math.floor(ChainDB.nearbyWidth or NEAR_W)))
 end
 local nearby
+-- Declared here, written further down: the rows' PreClick calls it, and a
+-- local declared below the rows is not a local to anything above them - the
+-- reference compiles to a global lookup, and a global lookup of a local is nil.
+local ArmRow
 
 local CLASS_COLOUR = {
   WARRIOR = { 0.78, 0.61, 0.43 }, PALADIN = { 0.96, 0.55, 0.73 },
@@ -976,7 +1180,7 @@ function BT.AnnounceSighting(e, chan, force)
   if not text then return nil end
   chan = chan or BT.SightChannel()
   ChainDB.sightQuiet[e.name] = time()
-  SendChatMessage("Spotted: " .. text, chan)
+  SendChatMessage((BT.SAY or "") .. "Spotted: " .. text, chan)
   return text, chan
 end
 
@@ -1153,7 +1357,19 @@ end
 
 function BT.ToggleNearbyLock()
   ChainDB.nearbyLocked = not ChainDB.nearbyLocked
+  if BT.RefreshNearby then BT.RefreshNearby() end
   return ChainDB.nearbyLocked
+end
+
+-- Keep the header on screen with nobody about. A list that only exists while
+-- somebody is nearby is a list you cannot glance at: an empty screen and a
+-- broken addon look exactly alike, and you find out which it was when a rogue
+-- is already on you. The header alone is two words high and answers it.
+function BT.ToggleNearbyAlways(on)
+  if on == nil then on = not (ChainDB.nearbyAlways == true) end
+  ChainDB.nearbyAlways = on and true or false
+  if BT.RefreshNearby then BT.RefreshNearby() end
+  return ChainDB.nearbyAlways
 end
 
 -- Putting the list where you want it is impossible while it is only on screen
@@ -1224,6 +1440,8 @@ end
 -- it cannot be broken by another addon replacing UIDropDownMenu.
 local menu
 local MENU_MAX = 9
+-- how long the menu waits with nobody on it before it gives up
+local MENU_IDLE = 5
 local function BuildMenu()
   if menu then return menu end
   menu = CreateFrame("Frame", "ChainNearbyMenu", UIParent)
@@ -1241,7 +1459,7 @@ local function BuildMenu()
   menu.bg:SetDrawLayer("BACKGROUND", 2)
   menu:EnableMouse(true)
 
-  menu.head = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  menu.head = menu:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
   menu.head:SetPoint("TOPLEFT", 8, -5)
   menu.head:SetJustifyH("LEFT")
 
@@ -1253,7 +1471,7 @@ local function BuildMenu()
     b.bg = b:CreateTexture(nil, "BACKGROUND")
     b.bg:SetAllPoints()
     if b.bg.SetColorTexture then b.bg:SetColorTexture(0, 0, 0, 0) end
-    b.fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.fs = b:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
     b.fs:SetPoint("LEFT", 6, 0)
     b.fs:SetJustifyH("LEFT")
     b:SetScript("OnEnter", function(self)
@@ -1264,6 +1482,36 @@ local function BuildMenu()
     end)
     menu.items[i] = b
   end
+  -- A click anywhere else puts it away. Every other menu in the game does
+  -- this, so one that does not reads as stuck: you click past it, nothing
+  -- happens, and you go looking for the way out. The way it is done is a
+  -- full-screen frame one strata below the menu - the menu sits on top of it,
+  -- so its own items still get their clicks, and anything outside the menu
+  -- lands on the frame instead. It exists only while the menu is open, so it
+  -- is not in the way of anything the rest of the time.
+  menu.closer = CreateFrame("Frame", nil, UIParent)
+  menu.closer:SetAllPoints(UIParent)
+  menu.closer:SetFrameStrata("FULLSCREEN")
+  menu.closer:EnableMouse(true)
+  menu.closer:SetScript("OnMouseDown", function() menu:Hide() end)
+  menu.closer:Hide()
+  menu:SetScript("OnShow", function() menu.closer:Show() end)
+  menu:SetScript("OnHide", function() menu.closer:Hide() end)
+
+  -- And it puts itself away on its own. The click-anywhere frame depends on
+  -- the click landing on us rather than on somebody else's full-screen frame,
+  -- and there is no way to be certain of that - so the menu also gives up
+  -- five seconds after the pointer leaves it. A menu you have walked away
+  -- from is a menu you are done with.
+  menu:SetScript("OnUpdate", function(self, elapsed)
+    if self.IsMouseOver and self:IsMouseOver() then
+      self.idle = 0
+      return
+    end
+    self.idle = (self.idle or 0) + (elapsed or 0)
+    if self.idle > MENU_IDLE then self:Hide() end
+  end)
+
   menu:Hide()
   return menu
 end
@@ -1272,6 +1520,13 @@ end
 -- gap, which is how the player's own actions are kept apart from the list's.
 local function ShowMenu(title, items, anchorTo)
   BuildMenu()
+  -- Asked for again on the same thing, from the same button that opened it:
+  -- that is somebody putting it away, not opening it twice.
+  if menu:IsShown() and menu.owner == (anchorTo or nearby) then
+    menu:Hide()
+    return menu
+  end
+  menu.idle = 0
   local top = 4
   if title then
     menu.head:SetText(title)
@@ -1351,6 +1606,12 @@ local function ListItems()
         for i, v in ipairs(steps) do if math.abs(v - now) < 0.02 then at = i end end
         BT.SetNearbyScale(steps[(at % #steps) + 1])
       end },
+    { text = (ChainDB.nearbyAlways
+              and (C.good .. "Always on screen" .. C.off .. C.dim
+                   .. " - only when somebody is" .. C.off)
+              or (C.dim .. "Only when somebody is about" .. C.off
+                  .. " - always")),
+      fn = function() BT.ToggleNearbyAlways() end },
     { text = "Move it" .. C.dim .. "  keeps it on screen" .. C.off,
       fn = function() BT.PlaceNearby(true) end },
     { text = "Back to the middle", fn = function() BT.ResetNearbyPos() end },
@@ -1443,9 +1704,9 @@ function BT.NotePopup(e)
     end
     notePop.bg:SetDrawLayer("BACKGROUND", 2)
 
-    notePop.title = notePop:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    notePop.title = notePop:CreateFontString(nil, "OVERLAY", "ChainFontNormal")
     notePop.title:SetPoint("TOPLEFT", 10, -8)
-    notePop.hint = notePop:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    notePop.hint = notePop:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
     notePop.hint:SetPoint("TOPLEFT", 10, -26)
     notePop.hint:SetText("your own words, never shared")
 
@@ -1453,7 +1714,7 @@ function BT.NotePopup(e)
     notePop.box:SetSize(300, 20)
     notePop.box:SetPoint("TOPLEFT", 10, -42)
     notePop.box:SetAutoFocus(true)
-    notePop.box:SetFontObject("GameFontHighlightSmall")
+    notePop.box:SetFontObject("ChainFontHighlightSmall")
     notePop.box:SetMaxLetters(120)
     notePop.box.bg = notePop.box:CreateTexture(nil, "BACKGROUND")
     notePop.box.bg:SetAllPoints()
@@ -1488,7 +1749,7 @@ function BT.NotePopup(e)
       b.bg = b:CreateTexture(nil, "BACKGROUND")
       b.bg:SetAllPoints()
       if b.bg.SetColorTexture then b.bg:SetColorTexture(0.15, 0.15, 0.15, 0.9) end
-      b.fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+      b.fs = b:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
       b.fs:SetPoint("CENTER")
       b.fs:SetText(label)
       b:SetScript("OnClick", fn)
@@ -1587,7 +1848,31 @@ function BT.BuildNearby()
     nearby.bg:SetTexture(0, 0, 0, 0.55)
   end
 
-  nearby.title = nearby:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  nearby.title = nearby:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
+
+  -- A way in to the rest of it. The list is a corner of the Enemies tab -
+  -- everything you would want after seeing a name is there, and the only way
+  -- in was a slash command you had to remember. One letter in the header is
+  -- cheap and it is where you are already looking.
+  nearby.open = CreateFrame("Button", nil, nearby)
+  nearby.open:SetSize(16, 14)
+  nearby.open.fs = nearby.open:CreateFontString(nil, "OVERLAY",
+                                                "ChainFontNormalSmall")
+  nearby.open.fs:SetAllPoints()
+  nearby.open.fs:SetText(C.dim .. "E" .. C.off)
+  nearby.open:SetScript("OnClick", function()
+    if BT.ShowTab then BT.ShowTab("enemies") end
+  end)
+  nearby.open:SetScript("OnEnter", function(self)
+    self.fs:SetText(C.warn .. "E" .. C.off)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine("Open the Enemies tab")
+    GameTooltip:Show()
+  end)
+  nearby.open:SetScript("OnLeave", function(self)
+    self.fs:SetText(C.dim .. "E" .. C.off)
+    GameTooltip:Hide()
+  end)
 
   nearby.rows = {}
   for i = 1, NEAR_MAX do
@@ -1602,13 +1887,15 @@ function BT.BuildNearby()
     -- everybody who turns up; it is the part that matters mid-fight anyway.
     local row = CreateFrame("Button", nil, nearby, "SecureActionButtonTemplate")
     row:SetSize(NearWidth() - 12, 13)
-    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    -- see the banner: the named up-clicks alone leave a secure button that
+    -- does nothing on this client
+    row:RegisterForClicks("AnyDown", "AnyUp")
     -- a row is part of the box: hold and move and the whole thing comes with
     -- you, while a click that does not move still marks him
     row:RegisterForDrag("LeftButton")
     row:SetScript("OnDragStart", BeginDrag)
     row:SetScript("OnDragStop", EndDrag)
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.name = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
     row.name:SetPoint("LEFT", 0, 0)
     row.name:SetJustifyH("LEFT")
     row.name:SetWidth(NearWidth() - 12 - RIGHT_W)
@@ -1618,14 +1905,22 @@ function BT.BuildNearby()
     row.stripe = row:CreateTexture(nil, "BACKGROUND")
     row.stripe:SetAllPoints()
     -- level and class together on the right, the way the game writes it
-    row.right = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.right = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
     row.right:SetPoint("RIGHT", -2, 0)
     row.right:SetJustifyH("RIGHT")
     row:SetScript("OnEnter", RowTooltip)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     -- The secure half handles left-click on its own; everything else hangs
     -- off PostClick, which runs after and is allowed to do ordinary things.
-    row:HookScript("PostClick", function(self, button)
+    -- Armed at the moment of the click as well as on every refresh: the row
+    -- under the cursor is the one the click should take, and a list that
+    -- reordered itself half a second ago should not cost you the target.
+    row:SetScript("PreClick", function(self)
+      ArmRow(self, self.rec and self.rec.name or nil)
+    end)
+    row:HookScript("PostClick", function(self, button, down)
+      -- registered for down and up both, so half the clicks are the press
+      if down then return end
       local e = self.rec
       if button == "RightButton" then
         if e then BT.PlayerMenu(e, self) end
@@ -1646,7 +1941,7 @@ function BT.BuildNearby()
     row:Hide()
     nearby.rows[i] = row
   end
-  nearby:Hide()
+  SafeHide(nearby)
   return nearby
 end
 
@@ -1679,23 +1974,43 @@ local function LayoutNearby(shown)
   if nearby.grip then
     nearby.grip:ClearAllPoints()
     nearby.grip:SetPoint(GrowUp() and "TOPRIGHT" or "BOTTOMRIGHT", 0, 0)
+    -- Locked, the corner does nothing - so it is not drawn. A handle you
+    -- cannot pull is a smudge in the corner of a box you have deliberately
+    -- pinned down.
+    if ChainDB.nearbyLocked then nearby.grip:Hide() else nearby.grip:Show() end
+  end
+  if nearby.open then
+    -- The button lives on the header line. The handle is in the opposite
+    -- corner and normally nowhere near it - but with nobody about the box is
+    -- the header alone, top and bottom are the same line, and the two land on
+    -- each other. Then, and only then, the button steps aside.
+    local tight = (shown or 0) == 0 and not ChainDB.nearbyLocked
+    nearby.open:ClearAllPoints()
+    nearby.open:SetPoint(up and "BOTTOMRIGHT" or "TOPRIGHT",
+                         tight and -16 or -4, up and 4 or -4)
   end
 
   -- and the height stays put while you are holding it: a box that grows or
   -- shrinks under the cursor drifts away from where you are putting it
   if not dragging and not sizing then
-    nearby:SetHeight(22 + math.max(1, shown) * ROW_H)
+    -- With nobody about and the header kept on screen, the header is the
+    -- whole thing: a box with a row's worth of empty space under it is a box
+    -- that looks broken rather than quiet.
+    nearby:SetHeight(22 + ((shown > 0) and (shown * ROW_H) or 0))
   end
   AnchorNearby()
 end
 
 -- Point a row's click at somebody. Refused in combat, where a secure button's
 -- attributes are frozen - so the caller has to know whether it worked.
-local function ArmRow(row, name)
+function ArmRow(row, name)
   if row.armedFor == name then return true end
   if InCombatLockdown and InCombatLockdown() then return false end
   row:SetAttribute("type1", name and "macro" or nil)
-  row:SetAttribute("macrotext1", name and ("/target " .. name) or nil)
+  -- /targetexact, not /target: /target matches on a prefix, so a click on
+  -- "Ara" takes whoever is nearest whose name starts that way - which in a
+  -- list of enemies is the wrong man often enough to matter.
+  row:SetAttribute("macrotext1", name and ("/targetexact " .. name) or nil)
   row.armedFor = name
   return true
 end
@@ -1709,7 +2024,7 @@ function BT.RefreshNearby()
     if menu and menu.owner == nearby then menu:Hide() end
   end
   if not placing and (ChainDB.nearbyList == false or not ChainDB.watchEnemies) then
-    if nearby then nearby:Hide() end
+    if nearby then SafeHide(nearby) end
     CloseOurMenu()
     return
   end
@@ -1733,8 +2048,8 @@ function BT.RefreshNearby()
       shown[i] = list[i] or SAMPLE[((i - 1) % #SAMPLE) + 1]
     end
     list = shown
-  elseif #list == 0 then
-    nearby:Hide()
+  elseif #list == 0 and not ChainDB.nearbyAlways then
+    SafeHide(nearby)
     CloseOurMenu()
     return
   end
@@ -1744,9 +2059,23 @@ function BT.RefreshNearby()
     nearby.title:SetText(C.gold .. "drag me into place" .. C.off
       .. C.dim .. "  right-click to finish" .. C.off)
   else
-  nearby.title:SetText(C.warn .. #list .. " nearby" .. C.off
+  -- Empty, and kept on screen on purpose: say so plainly rather than showing
+  -- a bare "0 nearby" that reads like something failed.
+  -- Empty, it says what it is rather than what it has not got. "nobody
+  -- about" is an answer to a question nobody asked, and reads like the addon
+  -- announcing that it has nothing to do; the name is what you want on a box
+  -- sitting quietly on your screen, and the count takes over the moment
+  -- there is one.
+  nearby.title:SetText(((#list == 0)
+      and (C.dim .. "Enemy tracker" .. C.off)
+      or (C.warn .. #list .. " nearby" .. C.off))
     .. ((#list > want) and (C.dim .. "  (" .. want .. " shown)" .. C.off) or "")
-    .. (ChainDB.nearbyLocked and (C.dim .. "  locked" .. C.off) or ""))
+    -- The word only ever meant "you can drag this", so it belongs on the
+    -- state where that is true. Locked is the quiet one: it had the marker on
+    -- the wrong way round, and a box you have deliberately pinned down should
+    -- not keep telling you about it.
+    .. ((not ChainDB.nearbyLocked)
+        and (C.dim .. "  drag me" .. C.off) or ""))
   end
   for i = 1, NEAR_MAX do
     local row = nearby.rows[i]
@@ -1831,7 +2160,7 @@ local function MarkFor(plate)
   m.bg:SetAllPoints()
   if m.bg.SetColorTexture then m.bg:SetColorTexture(0.55, 0.05, 0.05, 0.85)
   else m.bg:SetTexture(0.55, 0.05, 0.05, 0.85) end
-  m.fs = m:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  m.fs = m:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
   m.fs:SetPoint("CENTER")
   m.fs:SetText("|cffffffffKOS|r")
   marks[plate] = m

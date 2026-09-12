@@ -185,6 +185,9 @@ BT.K = {
   DAILY = 0,
   -- the experience rate is stale after this many minutes without a gain
   IDLE_MIN = 10,
+  -- ...but five when you are on your own. In a group a long gap is a reset, a
+  -- summon or somebody's dog; alone it is you not being there.
+  IDLE_SOLO = 5,
   -- a gap this long ends the session
   SESSION_GAP = 1800,
   -- how many runs to keep in the log before the oldest are dropped
@@ -200,6 +203,89 @@ BT.COL = {
   dim = "|cffcfcfcf", gold = "|cffffd100", rested = "|cff40a0ff",
   info = "|cff9fd3ff", alert = "|cffffb040", off = "|r"
 }
+
+--------------------------------------------------------------------------
+-- The face everything is written in
+--------------------------------------------------------------------------
+-- Friz Quadrata is the game's own face and it is a display face: made for
+-- carved signs and quest titles, not for a column of numbers at nine pixels.
+-- At that size its serifs turn to mush, and this addon is almost entirely
+-- small text in rows.
+--
+-- So everything we draw goes through five font objects of our own rather than
+-- the game's. A font object is shared by every string using it, so changing
+-- the face on these five changes every label in the addon at once - live, with
+-- no reload - and it leaves the rest of the interface alone.
+--
+-- The client ships four faces and all of them are compromises here: Friz
+-- Quadrata is a display face, Arial Narrow is narrow (thin strokes on a dark
+-- background are the first thing to go at small sizes), Morpheus and Skurri
+-- are for titles and damage numbers. So one comes with the addon. DejaVu Sans
+-- is even, sturdy and made to be read small, it covers every accent a
+-- character name can carry, and the Bitstream Vera licence it comes under lets
+-- it be shipped like this - the licence is next to it in Fonts/.
+BT.FACES = {
+  { key = "sans", name = "DejaVu Sans",
+    path = "Interface\\AddOns\\Chain\\Fonts\\DejaVuSans.ttf", nudge = -1,
+    note = "even and solid at small sizes - comes with the addon" },
+  { key = "game", name = "Game default",
+    path = "Fonts\\FRIZQT__.TTF", nudge = 0,
+    note = "Friz Quadrata, the same as the rest of the interface" },
+  { key = "arial", name = "Arial Narrow",
+    path = "Fonts\\ARIALN.TTF", nudge = 1,
+    note = "narrow - fits more in a row, thinner to read" },
+  { key = "skurri", name = "Skurri",
+    path = "Fonts\\skurri.ttf", nudge = 0,
+    note = "the damage numbers face - heavier, squarer" },
+}
+
+local FONTS = {
+  ChainFontNormal        = "GameFontNormal",
+  ChainFontNormalSmall   = "GameFontNormalSmall",
+  ChainFontNormalLarge   = "GameFontNormalLarge",
+  ChainFontHighlightSmall = "GameFontHighlightSmall",
+  ChainFontDisableSmall  = "GameFontDisableSmall",
+}
+
+function BT.Face()
+  local want = ChainDB and ChainDB.face
+  for _, f in ipairs(BT.FACES) do if f.key == want then return f end end
+  return BT.FACES[1]
+end
+
+-- Build them if they are not there yet, then point them at the chosen face.
+-- The size comes from the game's own object of the same name, so a face swap
+-- does not quietly resize half the addon; the nudge is per face, because a
+-- narrow face at the same point size reads a shade smaller.
+function BT.ApplyFont()
+  if type(CreateFont) ~= "function" then return end
+  local face = BT.Face()
+  for mine, theirs in pairs(FONTS) do
+    local obj = _G[mine]
+    if not obj then
+      obj = CreateFont(mine)
+      local from = _G[theirs]
+      if from and obj.SetFontObject then obj:SetFontObject(from) end
+      obj.__from = theirs
+    end
+    local from = _G[obj.__from or theirs]
+    local _, size, flags
+    if from and from.GetFont then _, size, flags = from:GetFont() end
+    if obj.SetFont then
+      obj:SetFont(face.path, (size or 10) + (face.nudge or 0), flags or "")
+    end
+  end
+  return face
+end
+
+function BT.SetFace(key)
+  ChainDB.face = key
+  local face = BT.ApplyFont()
+  -- the bar packs its lines to a character count measured in the old face
+  if BT.ForgetBudget then BT.ForgetBudget() end
+  if BT.Refresh then BT.Refresh() end
+  return face
+end
 
 --------------------------------------------------------------------------
 -- Defaults

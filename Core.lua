@@ -71,7 +71,13 @@ function BT.Booster()
       end
     end
   end
-  return name and BT.ShortName(name) or nil
+  -- Through the same cleaner every typed name goes through. The run log used
+  -- to keep the client's raw spelling while the trade log kept the cleaned
+  -- one, and the two are compared with a plain equals - so a booster called
+  -- CartEr was two different people to the addon, his runs counted for one
+  -- and his gold for the other, and the balance never moved.
+  return name and ((BT.CleanName and BT.CleanName(name)) or BT.ShortName(name))
+    or nil
 end
 
 -- Who is boosting right now, for stats purposes
@@ -86,6 +92,45 @@ end
 -- Are we boosting right now? Inside a run it is whatever the run started as;
 -- in a group it is the group; on your own it is the route, which is planned
 -- and priced as a boost.
+-- Everybody you could plausibly be handing gold to right now: the group you
+-- are standing in, whoever you last ran with, and whoever you have traded
+-- lately. A name is a thing you should never have to type - half of them are
+-- Zånzå and Cartèr, and getting the accents right from a screenshot is not a
+-- task an addon should be setting you.
+function BT.PayableNames()
+  local out, seen = {}, {}
+  local me = UnitName and UnitName("player") or nil
+  local function add(name, why)
+    if not name or name == "" then return end
+    name = BT.ShortName(name) or name
+    if name == me or seen[name] then return end
+    seen[name] = true
+    out[#out + 1] = { name = name, why = why }
+  end
+
+  -- the group first, because that is who is in front of you
+  if IsInGroup and IsInGroup() and UnitExists then
+    local party = (IsInRaid and IsInRaid()) and "raid" or "party"
+    local size = (party == "raid") and 40 or 4
+    for i = 1, size do
+      local u = party .. i
+      if UnitExists(u) then
+        local lvl = UnitLevel(u) or 0
+        add(UnitName(u), (lvl > 0) and ("in your group, " .. lvl) or "in your group")
+      end
+    end
+  end
+  local by = BT.CurrentBooster and BT.CurrentBooster()
+  if by then add(by, "the booster") end
+  -- then anybody you have handed something to lately
+  local trades = ChainDB.trades or {}
+  for i = #trades, math.max(1, #trades - 40), -1 do
+    local t = trades[i]
+    if t and t.with then add(t.with, "traded before") end
+  end
+  return out
+end
+
 function BT.CurrentBoost()
   local c = ChainCharDB
   if c.run then return c.run.by ~= nil end
@@ -201,8 +246,14 @@ function BT.Rate()
     if gap > 5 then gap = 5 end
     elapsed = elapsed + gap
   end
+  -- How long a silence is allowed before there is no rate to report. In a
+  -- group it is ten minutes: a gap that long is a reset, a summon, or waiting
+  -- on somebody. On your own it is five, because on your own a gap that long
+  -- is you not being there, and a rate that keeps counting while you are at
+  -- the mailbox is a rate that says you ding in five minutes.
+  local cut = (IsInGroup and IsInGroup()) and K.IDLE_MIN or K.IDLE_SOLO
   local tail = m - mins[#mins]
-  if tail > K.IDLE_MIN then return nil end
+  if tail > cut then return nil end
   if tail > 5 then tail = 5 end
   elapsed = elapsed + tail
   if elapsed < 1 then return nil end
@@ -263,21 +314,41 @@ end
 --------------------------------------------------------------------------
 -- Instance identity and the five-per-hour limit
 --------------------------------------------------------------------------
--- Creature-0-<server>-<instanceID>-<zone>-<npc>-<spawn>: field four is the
--- unique id of this instance and only changes when it is actually reset.
+-- Creature-0-<server>-<instanceID>-<zoneUID>-<npc>-<spawn>
+--
+-- Which of fields four and five is the map and which is this particular copy
+-- of it is documented one way round and used the other way round by every
+-- addon that actually counts instances - Nova reads field five, and real
+-- GUIDs back it: a Shadowfang mob comes back
+-- Creature-0-4672-33-573-3849-..., and 33 is Shadowfang Keep's map id in
+-- every copy of it that has ever existed, so field four cannot be the copy.
+--
+-- We take both. The pair is unique per copy whichever way round the two are,
+-- which is the only way to be right without betting on the documentation. We
+-- had field four alone, which meant the second Stockade of the day looked
+-- like walking back into the first: it was marked a re-entry, dropped from
+-- the log, and never counted against the five an hour.
+--
+-- Scarlet Monastery is the case that makes this matter. A boost there is
+-- several instances in a row behind one zone name, and until one is reset
+-- walking back into it is not a new one. Same pair, same instance.
 function BT.InstIdFrom(guid)
   if type(guid) ~= "string" then return nil end
-  local kind, _, _, inst = strsplit("-", guid)
-  if kind ~= "Creature" and kind ~= "Vehicle" then return nil end
-  return inst
+  local kind, _, _, map, uid = strsplit("-", guid)
+  if kind ~= "Creature" and kind ~= "Vehicle" and kind ~= "GameObject" then
+    return nil
+  end
+  if not map or map == "" or map == "0" then return nil end
+  if not uid or uid == "" or uid == "0" then return nil end
+  return map .. ":" .. uid, map, uid
 end
 
-function BT.NoteInstance(guid)
+-- Write an instance id onto the run in progress and do the counting that goes
+-- with it. Split out so the two callers below - a run that has just started,
+-- and a run that turns out to have walked into a different instance - share
+-- one set of bookkeeping.
+local function Record(r, id)
   local c = ChainCharDB
-  local r = c.run
-  if not r or r.instId then return end
-  local id = BT.InstIdFrom(guid)
-  if not id then return end
   r.instId = id
 
   -- Every instance we have been in lately, not just the last one per zone.
@@ -298,21 +369,168 @@ function BT.NoteInstance(guid)
     r.reentry = true
     BT.DropEntry(r.entrySeq)
     r.entrySeq = nil
+    -- Say so. The count moves twice on the way in - up when you zone, back
+    -- down when the mobs prove it is the one you were just in - and a number
+    -- that corrects itself in silence is a number you end up arguing with.
+    -- Nova says both halves out loud and that is exactly why it is possible
+    -- to check.
+    BT.SayCount("same instance as the last one", true, id)
+  else
+    -- Confirmed the other way: the mobs say this is an instance we have not
+    -- been in. The zone-in already counted it; this is the line that says so
+    -- with the id on it, which is the difference between a number you can
+    -- trace and a number you can only argue with.
+    BT.SayCount("confirmed a different instance", false, id)
   end
+end
+
+-- One line in chat when the count moves, and only when it moves. At most a
+-- handful an hour, which is the whole point: you can read back what it
+-- thought and when, instead of watching a number and guessing.
+function BT.SayCount(why, merged, id)
+  if ChainDB.sayCount == false then return end
+  local count = BT.Lockout()
+  local limit = ChainDB.limit or K.LIMIT
+  local C = BT.COL
+  -- The instance id goes on the line. It is the one thing that says whether
+  -- a count was a genuinely different instance or the same one seen twice,
+  -- and without it a wrong number can only be argued about rather than
+  -- traced.
+  print((merged and C.dim or C.info) .. BT.NAME .. ":|r " .. why
+    .. C.dim .. "  -  " .. count .. "/" .. limit .. " this hour"
+    .. (id and ("  [" .. id .. "]") or "") .. C.off)
+end
+
+-- Scarlet Monastery is the reason this needs saying.
+--
+-- A run starts when the zone name changes, and in Scarlet Monastery it does
+-- not: all four wings report "Scarlet Monastery". The obvious move is to
+-- watch the mob ids and split the run when one stops matching - and that is
+-- exactly what must not be done. It was tried, and the bar went to 6/5: a
+-- number the game will not give you, so whatever it counted was not an
+-- instance. Nova does not do it either; it uses the mob id only to decide
+-- whether a run that has just STARTED is really the previous one carrying on,
+-- never to end one that is in progress.
+--
+-- So the id is written once, when the run begins, and after that the run
+-- keeps it. The thing that actually was wrong - a new instance being filed as
+-- a return to the old one - is handled where it happens: in StartRun, which
+-- refuses to read an id off a corpse.
+function BT.NoteInstance(guid)
+  local c = ChainCharDB
+  local r = c.run
+  if not r or r.instId then return end
+  local id = BT.InstIdFrom(guid)
+  if not id then return end
+  Record(r, id)
+end
+
+-- The game enforces five an hour. If our arithmetic says six, our arithmetic
+-- is wrong - there is no sixth to have - so something in the log is not an
+-- instance we actually entered.
+--
+-- Guesses go first, and only guesses. A ghost is something the game told us
+-- about and we never saw; a reconciled entry is one we rebuilt from the run
+-- log because the instance-identity bug had deleted it, and that rebuild
+-- deliberately ignored a re-entry flag it could not trust - so some of what
+-- it put back was a genuine re-entry that should never have counted. This is
+-- where that is paid for. Entries we actually watched happen are left alone,
+-- and the count is reported at the limit rather than above it.
+--
+-- Oldest guess first, so what survives is the most recent one.
+function BT.TrimOverCount()
+  local limit = ChainDB.limit or K.LIMIT
+  local over = BT.Lockout() - limit
+  if over <= 0 then return 0 end
+  local hour = time() - 3600
+  local gone = 0
+  for _, kind in ipairs({ "ghost", "fromRun" }) do
+    for i = 1, #ChainDB.entries do
+      if over <= 0 then break end
+      local e = ChainDB.entries[i]
+      if e and e[kind] and not e.dropped and (e.t or 0) > hour then
+        e.dropped, e[kind] = true, nil
+        over, gone = over - 1, gone + 1
+      end
+    end
+  end
+  for i = #ChainDB.entries, 1, -1 do
+    if ChainDB.entries[i].dropped then table.remove(ChainDB.entries, i) end
+  end
+  if gone > 0 and BT.SayCount then
+    BT.SayCount("dropped " .. gone .. " I could not have been right about",
+                true)
+  end
+  return gone
 end
 
 -- The hourly cap is per character but the daily one is per account, so the
 -- log lives account-wide and every entry remembers who walked in.
+-- Two zone-ins within a few seconds cannot both be instance entries. Leaving
+-- an instance and getting back into a fresh one is two loading screens and a
+-- reset in between; the game will not do that in ten seconds, whatever the
+-- zone events say. So a second entry that close to the last one is the same
+-- arrival reported twice - a loading screen that announced the world again, a
+-- wing transition - and it is thrown away rather than counted.
+--
+-- This is a statement about the game rather than a guess about the cause: it
+-- cannot discard a real entry, because a real one cannot be there.
+local DOUBLE = 10
+
+-- A loading screen is not a doorway. The client announces the world again
+-- after a reload, and it can do so before it admits to being in an instance -
+-- so the run can be ended and restarted a moment later, which is a new entry
+-- for something that never happened.
+-- Fifteen seconds, and only for a run that was actually in progress when the
+-- reload hit. The first version asked whether the last zone matched, which is
+-- still true half a minute after you have walked out of the place - so a
+-- reload in town followed by walking into the instance had its entry thrown
+-- away, and the count sat one short for the rest of the hour.
+--
+-- What this is for is narrow: the client announcing the world before it will
+-- admit to being in an instance, so the run goes missing across the loading
+-- screen and Sync starts another. Anything wider than that eats real entries.
+local RELOAD_GRACE = 15
+
 function BT.NoteEntry()
   local c = ChainCharDB
-  c.entrySeq = (c.entrySeq or 0) + 1
-  local seq = UnitName("player") .. ":" .. c.entrySeq
+  local me = UnitName("player")
   local zone = BT.InDungeon()
+
+  if (time() - (BT.reloadedAt or 0)) < RELOAD_GRACE
+     and zone and BT.reloadRunZone == zone then
+    if BT.SayCount then
+      BT.SayCount("back from a reload - the same instance, not a new one",
+                  true, zone)
+    end
+    return nil
+  end
+
+  local last = ChainDB.entries[#ChainDB.entries]
+  if last and last.char == me and (time() - (last.t or 0)) < DOUBLE then
+    if BT.SayCount then
+      BT.SayCount("the same arrival twice - not counting it again", true, zone)
+    end
+    return last.seq
+  end
+
+  c.entrySeq = (c.entrySeq or 0) + 1
+  local seq = me .. ":" .. c.entrySeq
   table.insert(ChainDB.entries, { t = time(), seq = seq,
                                          zone = zone,
-                                         char = UnitName("player") })
+                                         char = me })
   -- a day of the account-wide cap, with room to spare
   while #ChainDB.entries > 200 do table.remove(ChainDB.entries, 1) end
+
+  -- The game just let us in, so we were not at the limit - whatever we
+  -- thought. Refusal adds the instances it has seen and we have not; getting
+  -- through the door is the same evidence pointing the other way, and without
+  -- it those guesses sit in the count for a full hour and the bar climbs to
+  -- 7/5, which is a number the game will not give you.
+  BT.TrimOverCount()
+  if BT.SayCount then
+    BT.SayCount("new instance" .. (zone and (" - " .. zone) or ""))
+  end
   -- the entry that takes you to the limit is the one the group needs to hear
   -- about, and the moment you zone in is when they are still deciding
   if BT.AnnounceLock then BT.AnnounceLock() end
@@ -326,7 +544,93 @@ function BT.PollLock()
   local now = time()
   if now - lastLockCheck < 5 then return end
   lastLockCheck = now
+  -- Standing outside at a count that cannot be true is the one case zoning in
+  -- will never fix, because you will not try: the bar says the door is shut.
+  -- So the trimming cannot wait for a zone-in to happen.
+  BT.DedupeEntries()
+  BT.TrimOverCount()
   BT.AnnounceLock()
+end
+
+-- Two entries for the same instance with no reset between them.
+--
+-- This one came out of the log rather than out of my head. The Instances tab
+-- showed two "entered SM" a minute apart at the same moment, nothing between
+-- them, and the hour read 7/5 - a number the game does not hand out. One
+-- arrival, reported twice.
+--
+-- The reset log is what makes this safe to act on. A second entry into the
+-- same instance is only a second instance if somebody reset it in between -
+-- that is the whole mechanic - so two entries with no reset recorded between
+-- them cannot both be real, however far apart the clock says they are. The
+-- time window is only a guard against acting on a gap so wide that a missed
+-- reset is the likelier explanation.
+local DUP_WINDOW = 120
+
+local function ResetBetween(from, to, zone)
+  for _, r in ipairs(ChainDB.resets or {}) do
+    local at = r.at or 0
+    if at > from and at <= to then
+      if not zone or not r.zone or r.zone == zone
+         or (BT.Short and BT.Short(r.zone) == BT.Short(zone)) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function BT.DedupeEntries()
+  local list = ChainDB.entries
+  if not list or #list < 2 then return 0 end
+  -- the walk below reads the log forwards in time, so make sure it is: a log
+  -- merged from an older addon or from NIT can arrive in any order, and a
+  -- backwards pair would compare as a negative gap and collapse everything
+  table.sort(list, function(a, b) return (a.t or 0) < (b.t or 0) end)
+  local gone = 0
+  for i = #list, 2, -1 do
+    local e, prev = list[i], list[i - 1]
+    if e and prev and e.char == prev.char
+       and (e.zone or "?") == (prev.zone or "?")
+       and (e.t or 0) - (prev.t or 0) >= 0
+       and (e.t or 0) - (prev.t or 0) <= DUP_WINDOW
+       and not ResetBetween(prev.t or 0, e.t or 0, e.zone) then
+      table.remove(list, i)
+      gone = gone + 1
+    end
+  end
+  if gone > 0 and BT.SayCount then
+    BT.SayCount("dropped " .. gone .. " duplicate arrival"
+      .. ((gone == 1) and "" or "s") .. " - no reset between them", true)
+  end
+  return gone
+end
+
+-- Nova puts a small red X on its "new instance" line, because a zone-in is
+-- the only evidence it has at that moment and a zone-in can be wrong: a wing
+-- transition, a loading screen that reports the world twice. This is the same
+-- escape hatch. It takes back the newest entry of this hour, which is the one
+-- that has just appeared wrongly, and says what it removed.
+function BT.NotANewInstance()
+  local hour = time() - 3600
+  local me = UnitName and UnitName("player") or nil
+  for i = #ChainDB.entries, 1, -1 do
+    local e = ChainDB.entries[i]
+    if e and (e.t or 0) > hour and (e.char == nil or e.char == me) then
+      table.remove(ChainDB.entries, i)
+      local r = ChainCharDB.run
+      if r and r.entrySeq == e.seq then
+        r.entrySeq, r.reentry = nil, true
+      end
+      if BT.SayCount then
+        BT.SayCount("taken back - not a new instance", true, e.zone)
+      end
+      if BT.Refresh then BT.Refresh() end
+      if BT.RenderWindow then BT.RenderWindow() end
+      return e
+    end
+  end
+  return nil
 end
 
 function BT.DropEntry(seq)
@@ -386,6 +690,9 @@ function BT.ImportNIT()
   if added > 0 then
     table.sort(ChainDB.entries, function(a, b) return (a.t or 0) < (b.t or 0) end)
     while #ChainDB.entries > 400 do table.remove(ChainDB.entries, 1) end
+    -- NIT's clock and ours are not the same clock, so its rows can land beside
+    -- our own for the same arrival. The same rule sorts it out.
+    if BT.DedupeEntries then BT.DedupeEntries() end
   end
   return added
 end
@@ -407,6 +714,56 @@ function BT.InstanceLog()
     e.counts = age < 3600
   end
   return out
+end
+
+-- The run log is better evidence than the entry log, and for a while it was
+-- the only honest one. A recorded run is proof you were inside; an entry is
+-- only a note we made on the way in, and the instance-identity bug quietly
+-- deleted most of them as false re-entries. So: every run with no entry
+-- anywhere near it gets one. It costs a pass over two lists that are already
+-- in time order, and it is what makes a log that says 2/5 next to nine runs
+-- in the last hour add up again.
+--
+-- Runs already known to be re-entries are left alone - they did not count at
+-- the time and they do not count now.
+function BT.ReconcileEntries(window, trustReentry)
+  if trustReentry == nil then trustReentry = true end
+  window = window or 86400
+  local cut = time() - window
+  local entries, runs = ChainDB.entries or {}, ChainDB.runs or {}
+  local added = 0
+  local c = ChainCharDB
+  for _, r in ipairs(runs) do
+    local at = r.at or 0
+    if at >= cut and r.id and not (trustReentry and r.reentry) then
+      local found = false
+      for _, e in ipairs(entries) do
+        -- The entry is written as the run starts, so they share a moment.
+        -- A missing name on either side matches anything: records from the
+        -- older addons carry no character, and a nil that only ever equals
+        -- another nil would put a second entry beside every one of them.
+        local sameWho = (e.char == nil) or (r.char == nil) or (e.char == r.char)
+        if sameWho and math.abs((e.t or 0) - at) <= 120 then
+          found = true
+          break
+        end
+      end
+      if not found then
+        c.entrySeq = (c.entrySeq or 0) + 1
+        table.insert(entries, {
+          t = at, seq = (r.char or "?") .. ":r" .. c.entrySeq,
+          zone = r.zone, char = r.char, fromRun = true
+        })
+        added = added + 1
+      end
+    end
+  end
+  if added > 0 then
+    table.sort(entries, function(a, b) return (a.t or 0) < (b.t or 0) end)
+    while #entries > 200 do table.remove(entries, 1) end
+    ChainDB.entries = entries
+  end
+  return added
 end
 
 -- Reading NIT's count live, for anyone who would rather trust it than us.
@@ -437,6 +794,7 @@ end
 function BT.Lockout()
   local nitCount, nitOldest, nitNewest, nitDaily = BT.NITLockout()
   local count, oldest, newest, daily
+  local ghosts = 0
   if nitCount then
     count, oldest, newest, daily = nitCount, nitOldest, nitNewest, nitDaily
   else
@@ -450,32 +808,25 @@ function BT.Lockout()
       -- the hourly one only counts this character
       if t > hour and (e.char == nil or e.char == me) then
         count = count + 1
+        if e.ghost then ghosts = ghosts + 1 end
         if not oldest or t < oldest then oldest = t end
         if not newest or t > newest then newest = t end
       end
     end
   end
-  -- The game's own refusal beats our arithmetic. We only see zone-ins we
-  -- were running for; it sees all of them, including the ones from a day the
-  -- addon was off or from another computer.
-  -- Not "BT.LockedByGame and BT.LockedByGame()": an `and` expression keeps
-  -- only the first return value, so the second one came back nil and the
-  -- correction silently did nothing.
-  local lockedAt, missing
-  if BT.LockedByGame then lockedAt, missing = BT.LockedByGame() end
-  local fromGame = false
-  if lockedAt and (missing or 0) > 0 then
-    count = count + missing
-    fromGame = true
-    -- we cannot know when an instance we never saw expires. The one thing we
-    -- do know is that it was entered before we were refused, so an hour after
-    -- that refusal is the latest it can still be counting.
-    local bound = math.max(0, 3600 - (time() - lockedAt))
-    if not oldest or bound > math.max(0, 3600 - (time() - oldest)) then
-      oldest = time() - (3600 - bound)
-    end
-    if not newest then newest = oldest end
-  end
+  -- The game's own refusal beats our arithmetic, and it is already in the
+  -- count: being told "too many instances" writes the instances we never saw
+  -- into the log as entries of their own (see BT.NoteLockedOut). They are
+  -- entries like any other, so counting, expiry and the two clocks below all
+  -- work on them without a special case.
+  --
+  -- It used to be a number added on top instead, and that was wrong twice
+  -- over. The correction was a snapshot: once our own counting caught up, it
+  -- was still being added, which is how the bar reached 7/5 - a number the
+  -- game will not let you have. And it moved `oldest` forward to the moment
+  -- of the refusal, which could put it after `newest`, which is how "one free
+  -- in 58m" ended up below a line saying they were all free in 47m.
+  local fromGame = ghosts > 0
   if count == 0 then return 0, nil, nil, nitCount ~= nil, daily, false end
   local freeOne = oldest and math.max(0, 3600 - (time() - oldest)) or nil
   local freeAll = newest and math.max(0, 3600 - (time() - newest)) or nil
@@ -619,28 +970,44 @@ function BT.LooksLikeLockout(msg)
 end
 
 -- The game refused us. Whatever we had counted, the truth is "at the limit".
+-- The game refused us, so it has seen instances we have not - a day the addon
+-- was off, another computer, a zone-in that never became a run. Rather than
+-- carry that as a number bolted onto the count, we write the missing ones
+-- into the log as entries. They are entries: they count, they expire, and the
+-- two clocks work on them without knowing they are any different.
+--
+-- Their timestamp is the moment of the refusal, which is the pessimistic
+-- answer. An instance the game is counting was entered some time before it
+-- told us, so an hour from now is the latest it can still be counting - and
+-- being told to wait slightly too long is the right way round to be wrong.
 function BT.NoteLockedOut()
   local c = ChainCharDB
-  c.lockMissing = nil            -- so the count below is our own arithmetic
   c.lockedAt = time()
   local count = BT.Lockout()
   local limit = ChainDB.limit or K.LIMIT
   if count < limit then
-    -- we are behind. Say so out loud rather than quietly showing 3/5 at a
-    -- door that will not open.
-    c.lockMissing = limit - count
+    local need = limit - count
+    local me = UnitName("player")
+    local zone = BT.InDungeon()
+    for _ = 1, need do
+      c.entrySeq = (c.entrySeq or 0) + 1
+      table.insert(ChainDB.entries, {
+        t = time(), seq = me .. ":" .. c.entrySeq, zone = zone,
+        char = me, ghost = true
+      })
+    end
+    while #ChainDB.entries > 200 do table.remove(ChainDB.entries, 1) end
+    -- Say so out loud rather than quietly showing 3/5 at a door that will
+    -- not open.
     print(BT.COL.warn .. BT.NAME .. ":|r the game says you are at the limit, "
-      .. "and I had counted " .. count .. "/" .. limit
-      .. ". Using the game's answer - it has seen instances I have not.")
-  else
-    c.lockMissing = nil
+      .. "and I had counted " .. count .. "/" .. limit .. ". Adding the "
+      .. need .. " it has seen and I have not.")
   end
   if BT.AnnounceLock then BT.AnnounceLock(true) end
   if BT.Refresh then BT.Refresh() end
 end
 
--- How many the game insists on, if it told us lately. The lockout it refers
--- to expires like any other: an hour after it was refused, at the latest.
+-- When the game last refused us, for anyone who wants to say so in words
 function BT.LockedByGame()
   local c = ChainCharDB
   if not c.lockedAt then return nil end
@@ -685,10 +1052,27 @@ end
 
 -- Tell the group, so the boosties are not all waiting on somebody to say it.
 -- Off by default: it is your chat, not ours.
+-- Everything the addon says to the group says who is saying it. Four people
+-- are running three addons between them and all of them are shouting numbers
+-- into the same window; a line with no name on it reads as somebody typing,
+-- and somebody typing gets asked follow-up questions. Nova does the same, and
+-- for the same reason.
+--
+-- Upper case and a dash, so the tag reads as a label rather than as the first
+-- word of the sentence: "[CHAIN] - 5/5 - 15m to go".
+BT.SAY = "[" .. string.upper(BT.NAME) .. "] - "
+
 local function Tell(text)
-  if not (IsInGroup and IsInGroup()) then return false end
+  -- Solo there is nobody to tell, but the number is still worth having - so
+  -- it goes to your own chat frame rather than nowhere. Same line, so what
+  -- you see alone is what the group sees when you are not.
+  if not (IsInGroup and IsInGroup()) then
+    print(BT.COL.info .. BT.SAY .. BT.COL.off .. text)
+    return true
+  end
   if type(SendChatMessage) ~= "function" then return false end
-  SendChatMessage(text, (IsInRaid and IsInRaid()) and "RAID" or "PARTY")
+  SendChatMessage(BT.SAY .. text,
+                  (IsInRaid and IsInRaid()) and "RAID" or "PARTY")
   return true
 end
 
@@ -702,12 +1086,47 @@ end
 -- which is the fastest way to be asked to turn an addon off.
 local LOCK_QUIET = 120
 
+-- Whole minutes, always, and never a zero. Seconds in a line about an hour's
+-- lockout are false precision - nobody stands at the stone counting them - and
+-- "free in 50s" reads as a different unit you have to convert before you can
+-- compare it with the line before.
+local function Mins(sec)
+  return math.max(1, math.ceil((sec or 0) / 60)) .. "m"
+end
+
 local function LockText()
   local count, freeOne = BT.Lockout()
   local limit = ChainDB.limit or K.LIMIT
   if count < limit then return nil, count, limit end
-  return "locked " .. count .. "/" .. limit
-    .. (freeOne and (" - free in " .. BT.T(freeOne)) or ""), count, limit
+  return count .. "/" .. limit
+    .. (freeOne and (" - instance free in " .. Mins(freeOne)) or " - locked"),
+    count, limit
+end
+
+-- The countdown, said out loud.
+--
+-- A group standing at the summoning stone is a group waiting on the number
+-- somebody has to keep asking for. So it is announced on a schedule rather
+-- than whenever something happens to poke it: every five minutes while the
+-- wait is long, once at one minute, and once when a slot actually opens.
+--
+-- The five-minute marks are counted from the end rather than from the start -
+-- "15 minutes" then "10 minutes" then "5 minutes" is a countdown; "12
+-- minutes" then "7 minutes" is somebody reading a clock aloud.
+-- The mark we are counting down to. Speaking is decided by the mark; what
+-- gets spoken is the real time left, because a poll that catches the mark a
+-- little late should still tell the truth rather than read out the label.
+local function FirstMark(left)
+  if not left or left <= 60 then return nil end
+  if left <= 300 then return 60 end
+  return math.floor(left / 300) * 300
+end
+
+local function NextMark(mark)
+  if not mark then return nil end
+  if mark > 300 then return mark - 300 end
+  if mark > 60 then return 60 end
+  return nil
 end
 
 function BT.AnnounceLock(force)
@@ -715,21 +1134,46 @@ function BT.AnnounceLock(force)
   local c = ChainCharDB
   local text, count, limit = LockText()
   if not text then
-    -- out of it again: worth one line, but only if they were told you were in
-    -- it, and only once
+    -- The one line worth saying from inside: a slot is open, and the group
+    -- standing in the instance is exactly who is waiting to hear it. Said in
+    -- words rather than shouted - a bare FREE in capitals next to a count
+    -- reads like a stuck key.
     if c.toldLocked then
-      c.toldLocked = nil
-      if count == limit - 1 then
-        Tell("free again - " .. count .. "/" .. limit .. ", ready when you are")
-      else
-        Tell("free again - " .. count .. "/" .. limit)
-      end
+      c.toldLocked, c.toldMark = nil, nil
+      Tell(count .. "/" .. limit .. " - instance unlocked")
     end
     return
   end
+
+  -- The countdown is for people standing outside. Said from inside it is a
+  -- clock read aloud to four people who are fighting - and going in is what
+  -- puts you on the cap, so that was precisely when the first line fired.
+  if not force and BT.InDungeon and BT.InDungeon() then return end
+
   local now = time()
+  local _, freeOne = BT.Lockout()
+
+  -- The first time, and then on the marks. Each mark is said once: the poll
+  -- runs every few seconds and a countdown that repeats itself is worse than
+  -- one that says nothing.
+  if freeOne and c.toldLocked and not force then
+    local mark = c.toldMark
+    if not mark or freeOne > mark then return end
+    c.toldMark = NextMark(mark)
+    -- The same words every time. "free in 15m" after "free in 47m" is one
+    -- sentence counting down; "15m to go" is a second way of saying the same
+    -- thing, and the group has to read it twice to see they match.
+    if Tell(count .. "/" .. limit .. " - instance free in " .. Mins(freeOne)) then
+      c.toldLocked = now
+    end
+    return
+  end
+
   if not force and c.toldLocked and (now - c.toldLocked) < LOCK_QUIET then return end
-  if Tell(text) then c.toldLocked = now end
+  if Tell(text) then
+    c.toldLocked = now
+    c.toldMark = FirstMark(freeOne)
+  end
 end
 
 function BT.Announce(zone)
@@ -765,6 +1209,71 @@ function BT.NoteResetChat(msg, sender)
   if type(msg) ~= "string" then return end
   if not msg:lower():find("reset", 1, true) then return end
   BT.FlagReset(ChainCharDB.lastZone, sender)
+end
+
+-- The booster's own counter.
+--
+-- Boosters run an addon that announces where everybody is in their pack:
+-- "[BoostBuddy] Nintoz - Run 4/10". That is the number he is charging
+-- against, and it is better than anything we can work out from the outside -
+-- he knows when the pack started and we are guessing from when you paid.
+--
+-- So when a line names you, take it. Ours stays as the fallback for the
+-- boosters who announce nothing, and both are on the tooltip, because the two
+-- can legitimately differ: his counts his pack, ours counts your runs with
+-- him since the money changed hands.
+function BT.NotePackRun(msg, sender)
+  if type(msg) ~= "string" then return nil end
+  local who, n, of = msg:match("(%S+)%s*%-%s*[Rr]un%s*(%d+)%s*/%s*(%d+)")
+  if not who then return nil end
+  n, of = tonumber(n), tonumber(of)
+  if not n or not of or of <= 0 then return nil end
+  local me = UnitName and UnitName("player") or nil
+  if not me or BT.ShortName(who) ~= BT.ShortName(me) then return nil end
+
+  local by = sender and ((BT.CleanName and BT.CleanName(sender))
+                         or BT.ShortName(sender)) or nil
+  ChainCharDB.packRun = { by = by, n = n, of = of, at = time() }
+  if BT.Refresh then BT.Refresh() end
+  if BT.RenderWindow then BT.RenderWindow() end
+  return ChainCharDB.packRun
+end
+
+-- His count, if he said it lately and it was about this booster.
+--
+-- The number he said is only true for the run he said it on. He announces
+-- once a run, and a booster who stops announcing - or whose addon is off, or
+-- who has moved on to somebody else's pack - leaves us holding a number that
+-- was right twenty minutes and three runs ago. "9/10 runs" sat on the bar for
+-- two hours after the pack was finished, because that was the last thing he
+-- ever said.
+--
+-- So it is carried forward with what we can see: every run we have done with
+-- him since he said it is one more off the pack. If that takes the count to
+-- the end of the pack, the pack is over and there is nothing left of his to
+-- believe - our own arithmetic takes it from there, and that one knows you
+-- have gone seven runs past what you paid for.
+--
+-- A payment newer than the announcement ends it too: that is a new pack, and
+-- his old number is about the last one.
+function BT.PackRun(who)
+  local p = ChainCharDB.packRun
+  if not p or not p.of then return nil end
+  if (time() - (p.at or 0)) > 7200 then return nil end
+  if who and p.by and p.by ~= who then return nil end
+
+  local by = who or p.by
+  if by and BT.LastPaid then
+    local paidAt = BT.LastPaid(by)
+    if paidAt and paidAt > (p.at or 0) then return nil end
+  end
+
+  local n = p.n or 0
+  if by and BT.Runs then
+    n = n + #BT.Runs({ by = by, since = (p.at or 0) + 1 })
+  end
+  if n >= p.of then return nil end
+  return n, p.of, p.by
 end
 
 -- A reset you have been told about, still fresh and not yet used.
@@ -945,7 +1454,7 @@ end
 -- `partial` marks a run we only saw the tail of - you logged in or reloaded
 -- while already inside. It is measured and shown but never stored, because
 -- half a run would drag every average down.
-function BT.StartRun(zone, partial, map)
+function BT.StartRun(zone, partial, map, knownId)
   local c = ChainCharDB
   local by = BT.Booster()
   local avg, n = BT.GroupInfo()
@@ -956,7 +1465,20 @@ function BT.StartRun(zone, partial, map)
     partial = partial or nil
   }
   c.resetAt = nil
-  BT.NoteInstance(UnitGUID and UnitGUID("target") or nil)
+  -- The caller already knows which instance this is when the run was split
+  -- off another one: use that rather than asking the target, which at that
+  -- moment is still a mob from the wing we have just walked out of and would
+  -- file the new run as a return to the old instance.
+  if knownId then
+    Record(c.run, knownId)
+    return
+  end
+  -- and a corpse dragged along in the target frame is the same trap in slow
+  -- motion, so a dead target gets no say
+  local guid = UnitGUID and UnitGUID("target") or nil
+  if not guid then return end
+  if UnitIsDead and UnitIsDead("target") then return end
+  BT.NoteInstance(guid)
 end
 
 function BT.EndRun()
@@ -975,13 +1497,21 @@ function BT.EndRun()
     -- never saw a single unit, so no evidence we were really in there
     BT.DropEntry(r.entrySeq)
   end
+  -- A run that is not kept still had money in it. It goes to the loose pile
+  -- rather than nowhere, so the total across the log stays true even though
+  -- this particular run is not in it.
+  if (r.xp or 0) <= 0 or r.partial then
+    if (r.coin or 0) > 0 then
+      ChainDB.coinLoose = (ChainDB.coinLoose or 0) + r.coin
+    end
+  end
   if (r.xp or 0) <= 0 then return end
   if r.partial then return end
 
   local rec = {
     at = r.start, t = math.max(0, time() - (r.start or time())),
     zone = r.zone, map = r.map, id = r.id, by = r.by,
-    xp = r.xp, k = r.k or 0,
+    xp = r.xp, k = r.k or 0, coin = (r.coin or 0) > 0 and r.coin or nil,
     lvl = r.lvl, grp = r.grp, grpAvg = r.grpAvg,
     reentry = r.reentry or nil,
     char = UnitName("player")
@@ -991,6 +1521,38 @@ function BT.EndRun()
   BT.Touch()
   if r.by then c.lastBy = r.by end
   BT.lastRecord = rec
+  if r.by and BT.CheckDebt then BT.CheckDebt(r.by) end
+end
+
+-- A run past what is logged as paid for is normal - you take one on credit and
+-- settle at the end of the pack. A whole pack past it is not: it means money
+-- changed hands and we did not see it. Trades to a bank alt do that, and so
+-- does a trade the client never announced, which is half the reason the
+-- payment log has a way to type one in at all.
+--
+-- So it says so, once, rather than letting the number drift until the bar
+-- claims you owe seven runs. Once per payment: settle up, or tell it what you
+-- paid, and it goes quiet again.
+function BT.CheckDebt(who)
+  if not who or not BT.BoosterCredit then return end
+  local c = BT.BoosterCredit(who)
+  if not c then return end
+  local owed = -(c.left or 0)
+  local pack = (BT.PackFor and BT.PackFor(nil, who)) or 1
+  if pack < 1 then pack = 1 end
+  if owed < math.max(2, pack) then return end
+
+  local key = who .. ":" .. tostring(BT.LastPaid and BT.LastPaid(who) or 0)
+  if ChainCharDB.debtTold == key then return end
+  ChainCharDB.debtTold = key
+
+  local b = ChainDB.boosters[who]
+  local price = b and b.price or nil
+  print(BT.COL.warn .. BT.NAME .. ":|r " .. string.format("%.0f", owed)
+    .. " runs past what is logged as paid to " .. who
+    .. ". If you paid and it was not picked up - a trade to his alt, or one the"
+    .. " client never announced - log it with " .. BT.COL.info .. "/chain paid "
+    .. who .. (price and (" " .. price) or " <gold>") .. "|r.")
 end
 
 -- Check the zone and start or stop a run
@@ -1102,6 +1664,9 @@ function BT.OnEvent(_, event, ...)
 
     ChainDB = BT.ApplyDefaults(ChainDB or {}, BT.DEFAULTS)
     ChainCharDB = BT.ApplyDefaults(ChainCharDB or {}, BT.CHAR_DEFAULTS)
+    -- before anything is drawn: every label in the addon is written in one of
+    -- five font objects of ours, and this is where they are pointed at a face
+    if BT.ApplyFont then BT.ApplyFont() end
     if BT.adopted then
       BT.SayAdopted(BT.adopted)
       BT.adopted = nil
@@ -1125,6 +1690,87 @@ function BT.OnEvent(_, event, ...)
         print(BT.COL.info .. BT.NAME .. ":|r " .. n .. " booster price"
           .. (n == 1 and "" or "s") .. " now read as the price for " .. pack
           .. " runs, not one.")
+      end
+    end
+
+    -- The instance-identity bug threw most entries away as false re-entries,
+    -- so the log can say 2/5 with nine runs behind it in the same hour. The
+    -- runs are the evidence; put the missing entries back from them.
+    --
+    -- Once, ignoring the re-entry flag the runs are carrying. That flag was
+    -- written by the rule that was wrong: it marked every repeat of the same
+    -- *dungeon* as a return to the same instance, so on old records it holds
+    -- no information at all - and the runs it marked are precisely the ones
+    -- whose entries went missing. Counting them is closer to the truth than
+    -- believing it, because the ordinary shape of a boost chain is reset and
+    -- go back in, which is a new instance every time.
+    if BT.ReconcileEntries and not ChainDB.entriesRepaired then
+      ChainDB.entriesRepaired = true
+      local back = BT.ReconcileEntries(86400, false)
+      if back > 0 then
+        print(BT.COL.info .. BT.NAME .. ":|r put " .. back .. " instance entr"
+          .. ((back == 1) and "y" or "ies") .. " back from the run log - they "
+          .. "had been dropped as re-entries by mistake.")
+      end
+    elseif BT.ReconcileEntries then
+      -- and every load after that as a safety net, believing the flag, which
+      -- is worked out properly now
+      BT.ReconcileEntries()
+    end
+
+    -- One spelling, everywhere. Runs kept the client's raw name and trades
+    -- kept the cleaned one, so anything the cleaner changes - a capital
+    -- anywhere but the first letter - made one booster into two.
+    if not ChainDB.namesCleaned and BT.CleanName then
+      ChainDB.namesCleaned = true
+      local fixed = 0
+      local function fix(v)
+        if type(v) ~= "string" or v == "" then return v, false end
+        local c = BT.CleanName(v)
+        if c and c ~= v then fixed = fixed + 1 return c, true end
+        return v, false
+      end
+      for _, r in ipairs(ChainDB.runs or {}) do r.by = (fix(r.by)) end
+      for _, t in ipairs(ChainDB.trades or {}) do
+        t.with = (fix(t.with))
+        t.by = (fix(t.by))
+      end
+      ChainCharDB.lastBy = (fix(ChainCharDB.lastBy))
+      -- and the booster table is keyed by name, so it has to be re-keyed
+      local moved = {}
+      for name, info in pairs(ChainDB.boosters or {}) do
+        local c = BT.CleanName(name)
+        if c and c ~= name then moved[name] = c end
+      end
+      for from, to in pairs(moved) do
+        local a, b = ChainDB.boosters[from], ChainDB.boosters[to]
+        if not b then ChainDB.boosters[to] = a
+        else
+          -- two halves of one man: keep whichever actually has a price
+          if (a.price or 0) > 0 and (b.price or 0) <= 0 then b.price = a.price end
+          if (a.pack or 0) > 0 and (b.pack or 0) <= 0 then b.pack = a.pack end
+          if a.note and not b.note then b.note = a.note end
+        end
+        ChainDB.boosters[from] = nil
+        fixed = fixed + 1
+      end
+      if fixed > 0 then
+        BT.Touch() BT.TouchTrades()
+        print(BT.COL.info .. BT.NAME .. ":|r tidied " .. fixed .. " name"
+          .. ((fixed == 1) and "" or "s") .. " so runs and gold land on the "
+          .. "same person.")
+      end
+    end
+
+    -- Coin used to get a row of its own in the loot log, which is how a night
+    -- of Scarlet Monastery turned into four hundred lines of "3s 95c" with
+    -- the greens somewhere inside them. It belongs to the run now.
+    if BT.FoldCoins and not ChainDB.coinFolded then
+      local moved, loose = BT.FoldCoins()
+      if (moved or 0) + (loose or 0) > 0 then
+        print(BT.COL.info .. BT.NAME .. ":|r " .. BT.Coin(moved + loose)
+          .. " of loose coin moved out of the loot log and onto the runs it "
+          .. "came from.")
       end
     end
 
@@ -1201,6 +1847,13 @@ function BT.OnEvent(_, event, ...)
     -- every addon is loaded by now, so the old saved variables are finally
     -- readable. This is the attempt that actually finds them.
     if BT.PollHonor then BT.PollHonor() end
+    -- Both the banner and the list carry secure buttons, and a secure button
+    -- built during a fight cannot have its attributes set for the rest of
+    -- that fight. Building them now, at login, means the first one you ever
+    -- need is already there and already armable.
+    if BT.LearnStealthNames then BT.LearnStealthNames() end
+    if BT.BuildBanner then BT.BuildBanner() end
+    if BT.BuildNearby then BT.BuildNearby() end
     local from = BT.AdoptOldNames()
     if from then
       ChainDB = BT.ApplyDefaults(ChainDB or {}, BT.DEFAULTS)
@@ -1221,8 +1874,31 @@ function BT.OnEvent(_, event, ...)
     -- so nothing ever reached the history.
     local isLogin, isReload = ...
     if isLogin or isReload then
-      -- only here have we really missed the start of whatever is going on
-      ChainCharDB.run = nil
+      -- A reload is not an instance entry.
+      --
+      -- This threw the run away and let Sync start another one - and starting
+      -- a run writes an entry against the five-an-hour cap. So every /reload
+      -- while standing inside a dungeon counted as walking into a new one,
+      -- and a day of reloading to pick up changes put the count several ahead
+      -- of the truth. Nova prints "UI Reload detected, loading last instance
+      -- data instead of creating new" for exactly this reason.
+      --
+      -- If we come back to the same place we were already in, the run we had
+      -- is still the run we are in. Only somewhere else ends it.
+      local zone = BT.InDungeon()
+      local r = ChainCharDB.run
+      -- Where we were mid-run when the lights went out. Not where we last
+      -- were: you can be standing in a city half a minute after leaving the
+      -- instance, and that is not the same claim at all.
+      BT.reloadRunZone = r and r.zone or nil
+      if not (r and zone and r.zone == zone) then
+        -- only here have we really missed the start of whatever is going on
+        ChainCharDB.run = nil
+      end
+      -- and the client can report the world before it admits to the instance,
+      -- so the guard in NoteEntry covers the case where the check above ran a
+      -- moment too early
+      BT.reloadedAt = time()
       BT.Sync(true)
       -- a reload closes the chat log and drops the marker channel; both have
       -- to be put back or the phone goes quiet without saying so
@@ -1259,7 +1935,7 @@ function BT.OnEvent(_, event, ...)
     if (not r or r.instId) and not watching then return end
     if CombatLogGetCurrentEventInfo then
       local _, sub, _, src, srcName, srcFlags, _, dst, dstName, dstFlags,
-            _, spellId = CombatLogGetCurrentEventInfo()
+            _, spellId, spellName = CombatLogGetCurrentEventInfo()
       if r and not r.instId then
         BT.NoteInstance(src)
         if not r.instId then BT.NoteInstance(dst) end
@@ -1269,7 +1945,10 @@ function BT.OnEvent(_, event, ...)
       if watching then
         -- the spell goes with the caster only: what somebody was hit by says
         -- nothing about them
-        BT.NoteCombatLogUnit(src, srcName, srcFlags, spellId)
+        -- the spell goes with the caster only, and so does what it says
+        -- about whether they can be seen
+        BT.NoteCombatLogUnit(src, srcName, srcFlags, spellId, sub, spellName,
+                             true)
         BT.NoteCombatLogUnit(dst, dstName, dstFlags)
         -- who beat whom, which is the one piece of history about a player
         -- that is genuinely yours rather than the server's
@@ -1294,6 +1973,7 @@ function BT.OnEvent(_, event, ...)
       or event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER" then
     local msg, sender = ...
     BT.NoteResetChat(msg, sender)
+    BT.NotePackRun(msg, sender)
   elseif event == "READY_CHECK" then
     -- Blizzard's own popup and sound already handle this in the room. The only
     -- thing missing is that it never reaches your phone, so all we add is the

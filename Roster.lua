@@ -396,6 +396,10 @@ local function Clean(name)
   return name:sub(1, 1):upper() .. name:sub(2):lower()
 end
 
+-- Anything that takes a name typed by a person needs the same treatment, so
+-- "algo", "Algo" and "Algo-Firemaw" are one man and not three.
+BT.CleanName = Clean
+
 -- Add somebody by hand. `id` ties him to one instance; without it he shows up
 -- under every instance, which is what you want for "sells everything".
 -- Returns the stored name, or nil and why not.

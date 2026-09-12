@@ -32,7 +32,7 @@ local function Button(parent, label, w, h, onClick)
   b:SetSize(w, h)
   b.bg = Tex(b, "BACKGROUND", 0.15, 0.15, 0.15, 0.9)
   b.bg:SetAllPoints()
-  b.fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  b.fs = b:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
   b.fs:SetPoint("CENTER")
   b.fs:SetText(label)
   b:SetScript("OnEnter", function(self) self.bg:SetColorTexture(0.3, 0.3, 0.3, 0.9) end)
@@ -58,14 +58,15 @@ local LAYOUTS = {
       { "time",     45, "t" },
       { "mobs",     40, "k" },
       { "xp/h",     55, "rate" },
+      { "gold",     62, "coin" },
       { "booster",  70, "by" },
       { "lvl",      30, "lvl" },
       { "grp",      40, "grpAvg" }
     }
   },
   boosters = {
-    title = "Everyone selling this step. Type his price and how many runs it "
-      .. "buys; the verdict follows. The note is yours and is never shared.",
+    title = "Everyone selling this step. Type his price and what it buys; the "
+      .. "verdict follows. Notes are never shared.",
     cols = {
       { "booster",  84, "by" },
       { "xp/h",     54, "rate" },
@@ -78,30 +79,33 @@ local LAYOUTS = {
       { "gold/lvl", 62, nil },
       { "xp/gold",  62, "value" },
       { "verdict",  50, "value" },
-      { "reported", 86, nil },
-      { "your note", 120, nil }
+      { "runs left",56, "left" },
+      { "reported", 80, nil },
+      { "your note", 96, nil }
     }
   },
   gold = {
-    title = "Every trade you completed - gold and goods, both ways. Net is "
-      .. "what left your bags after anything traded back.",
+    title = "Every trade, both ways. 'buys' is what it was worth in runs, "
+      .. "'after' the balance it left you on.",
     cols = {
-      { "when",    74, "at" },
+      { "when",    70, "at" },
       { "traded",  84, "with" },
-      { "paid",    58, "gave" },
-      { "got back",58, "got" },
-      { "net",     58, "net" },
-      { "you gave",128, nil },
-      { "he gave", 128, nil },
-      { "where",   92, "zone" },
-      { "step",    64, "id" },
+      { "paid",    54, "gave" },
+      { "got back",54, "got" },
+      { "net",     54, "net" },
+      { "buys",    46, nil },
+      { "after",   50, nil },
+      { "you gave",104, nil },
+      { "he gave", 104, nil },
+      { "where",   78, "zone" },
+      { "step",    56, "id" },
       { "lvl",     30, "lvl" },
       { "booster", 52, nil }
     }
   },
   enemies = {
-    title = "Everyone seen out there, newest first. Click KOS to mark one, "
-      .. "or mark a whole guild - marked ones always raise the alarm.",
+    title = "Everyone seen out there, newest first. Mark one or a whole "
+      .. "guild - marked ones raise the alarm.",
     cols = {
       { "when",     70, "at" },
       { "who",      96, "name" },
@@ -117,18 +121,19 @@ local LAYOUTS = {
     }
   },
   loot = {
-    title = "One row per corpse: everything it gave, and what that came to. "
-      .. "'from' is only ever known for your own loot.",
+    title = "One row per corpse. 'from' is only known for your own loot; raw "
+      .. "coin is one figure per run, on History.",
     cols = {
       { "when",      70, "at" },
-      { "item",     260, "name" },
-      { "n",         30, "n" },
-      { "to",        86, "who" },
-      { "from",     130, "from" },
+      { "item",     236, "name" },
+      { "n",         28, "n" },
+      { "quality",   62, "quality" },
+      { "to",        80, "who" },
+      { "from",     108, "from" },
       { "worth",     74, "value" },
-      { "where",     84, "zone" },
-      { "step",      48, "step" },
-      { "booster",   62, "by" }
+      { "where",     78, "zone" },
+      { "step",      44, "step" },
+      { "booster",   60, "by" }
     }
   },
   koslist = {
@@ -149,7 +154,7 @@ local LAYOUTS = {
   },
   groups = {
     title = "Everyone looking rather than selling: LFM, LFG and WTB, from "
-      .. "every channel. Type in show only to narrow it to what you want.",
+      .. "every channel.",
     cols = {
       { "when",     70, "at" },
       { "who",      88, "by" },
@@ -179,8 +184,8 @@ local LAYOUTS = {
     }
   },
   ads = {
-    title = "Every boost advert read from chat, newest first, whatever "
-      .. "instance. Click whisper to ask about the price.",
+    title = "Who is selling right now, newest first. Off the list after "
+      .. "half an hour. Click whisper to ask the price.",
     cols = {
       { "when",     70, "at" },
       { "booster",  88, "by" },
@@ -193,8 +198,8 @@ local LAYOUTS = {
     }
   },
   locks = {
-    title = "Everything that happened to an instance: every one you entered, "
-      .. "and every reset. Green still counts against the five per hour.",
+    title = "Every instance you entered and every reset. Green still counts "
+      .. "against the five per hour.",
     cols = {
       { "when",     86, "t" },
       { "what",     74, "kind" },
@@ -206,8 +211,8 @@ local LAYOUTS = {
     }
   },
   pvp = {
-    title = "The rank you want, week by week. Honor below a milestone is "
-      .. "worth nothing and honor past one is wasted - so stop on the number.",
+    title = "The rank you want, week by week. Honor below a milestone or past "
+      .. "one is wasted - stop on the number.",
     cols = {
       { "week",          56, "week" },
       { "honor to hit", 100, "honor" },
@@ -242,6 +247,9 @@ local LAYOUTS = {
 -- Green when a run beat the usual, red when it fell short. The comparison is
 -- against that instance's own average in the same mode, so a self-cleared run
 -- is never measured against a boost.
+-- exposed so the suite can measure every title against the space it has
+BT.LAYOUTS = LAYOUTS
+
 local function Rate(value, avg, higherIsBetter)
   if not value or not avg or avg <= 0 then return C.dim end
   local d = value / avg - 1
@@ -273,13 +281,15 @@ local function RunRows()
       rec = r,
       at = r.at, zone = r.zone, xp = r.xp, t = r.t, k = r.k,
       rate = ((r.t or 0) > 0) and (r.xp / r.t * 3600) or 0,
-      by = r.by, lvl = r.lvl, grpAvg = r.grpAvg,
+      by = r.by, lvl = r.lvl, grpAvg = r.grpAvg, coin = r.coin or 0,
       tip = {
         BT.Short(r.zone, r.map) or "?",
         date("%A %d %B, %H:%M", r.at or time()),
         BT.N(r.xp or 0) .. " xp, " .. (r.k or 0) .. " mobs, " .. BT.T(r.t)
           .. ((rate > 0) and (", " .. BT.N(rate) .. " xp/h") or ""),
         r.by and ("boosted by " .. r.by) or "cleared it yourself",
+        ((r.coin or 0) > 0) and (BT.Coin(r.coin) .. " in raw gold off the mobs")
+          or nil,
         r.grpAvg and string.format("group of %d, average level %.1f",
                                    r.grp or 0, r.grpAvg) or nil
       },
@@ -292,6 +302,10 @@ local function RunRows()
         Rate(r.k, a and a.longK, true) .. tostring(r.k or 0) .. C.off,
         (rate > 0) and (Rate(rate, aRate, true)
           .. string.format("%.0fk", rate / 1000) .. C.off) or "-",
+        -- raw gold off the mobs, the way NIT carries it: one number for the
+        -- instance rather than four hundred lines in the loot log
+        ((r.coin or 0) > 0) and (C.gold .. BT.Coin(r.coin) .. C.off)
+          or (C.dim .. "-" .. C.off),
         r.by or (C.dim .. "self" .. C.off),
         tostring(r.lvl or "-"),
         r.grpAvg and string.format("%.1f", r.grpAvg) or "-"
@@ -348,6 +362,17 @@ local function BoosterRows()
         .. string.format("%.0f mobs", sh.mobs) .. C.off
     end
     local info = BT.BoosterInfo(b.by)
+    -- What you have already paid him for and not yet had. Blank for anyone
+    -- you have never traded: a zero there would read as "you are square",
+    -- which is a different thing from "no money has ever changed hands".
+    local credit = BT.BoosterCredit and BT.BoosterCredit(b.by) or nil
+    local leftCell = C.dim .. "-" .. C.off
+    if credit then
+      local v = credit.left
+      local col = (v >= 1) and C.good or ((v > -0.5) and C.warn or C.bad)
+      leftCell = col .. string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
+        .. C.off
+    end
     local vCol, vWord = BT.Grade(b.value, best.value)
     local rCol = select(1, BT.Grade(b.rate, best.rate))
     local mCol = select(1, BT.Grade(b.mobs, best.mobs))
@@ -355,6 +380,7 @@ local function BoosterRows()
       by = b.by, rate = b.rate, perRun = b.perRun, timePerRun = b.timePerRun,
       mobs = b.mobs, n = b.n, form = b.form, info = info, value = b.value,
       mine = (info.mine and b.n == 0) and true or false,
+      left = credit and credit.left or nil, credit = credit,
       cells = {
         ((b.n == 0) and C.dim or "") .. b.by .. ((b.n == 0) and C.off or ""),
         (b.n > 0) and (rCol .. string.format("%.0fk", b.rate / 1000) .. C.off) or "-",
@@ -368,6 +394,7 @@ local function BoosterRows()
           or (quoted and (C.dim .. BT.G(quoted) .. "/run " .. source .. C.off) or "-"),
         b.value and (vCol .. BT.N(b.value) .. C.off) or "-",
         vWord and (vCol .. vWord .. C.off) or (C.dim .. "no price" .. C.off),
+        leftCell,
         others,
         ""            -- the note box sits here
       }
@@ -378,11 +405,28 @@ end
 
 local function GoldRows()
   local out = {}
+  local ledger = BT.CreditLedger and BT.CreditLedger() or {}
   for _, t in ipairs(BT.Trades({})) do
     local net = (t.gave or 0) - (t.got or 0)
+    -- what this money is worth in runs, and where that leaves you. The point
+    -- of the second number is that you stop counting: pay for ten, run four,
+    -- and the row that took your money says six.
+    local led = ledger[t]
+    local buys = (led and led.bought) and (C.gold
+      .. string.format((led.bought < 10) and "%.1f" or "%.0f", led.bought)
+      .. C.off) or (C.dim .. (t.setTo and "set" or "-") .. C.off)
+    local left = C.dim .. "-" .. C.off
+    if led and led.left then
+      local v = led.left
+      local col = (v >= 1) and C.good or ((v > -0.5) and C.warn or C.bad)
+      left = col .. string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
+        .. C.off
+    end
     table.insert(out, {
       at = t.at, with = t.with, gave = t.gave, got = t.got, net = net,
-      id = t.id, lvl = t.lvl, zone = t.zone,
+      id = t.id, lvl = t.lvl, zone = t.zone, rec = t,
+      manual = t.manual and true or nil, setTo = t.setTo,
+      bought = led and led.bought or nil, leftRuns = led and led.left or nil,
       cells = {
         BT.T(time() - (t.at or time())) .. " ago",
         t.with or "?",
@@ -390,11 +434,17 @@ local function GoldRows()
         (t.got or 0) > 0 and BT.G(BT.Gold(t.got)) or "-",
         (net >= 0 and C.gold or C.good) .. BT.G(BT.Gold(math.abs(net)))
           .. (net < 0 and " in" or "") .. C.off,
+        buys,
+        left,
         BT.ItemsText(t.gaveItems) and (C.info .. BT.ItemsText(t.gaveItems) .. C.off)
           or (C.dim .. "-" .. C.off),
         BT.ItemsText(t.gotItems) and (C.info .. BT.ItemsText(t.gotItems) .. C.off)
           or (C.dim .. "-" .. C.off),
-        t.zone or (C.dim .. "-" .. C.off),
+        -- a line you typed has no zone to report, and saying so is the point:
+        -- you should be able to see at a glance which of these the addon
+        -- watched and which you told it about
+        t.manual and (C.dim .. "by hand" .. C.off)
+          or t.zone or (C.dim .. "-" .. C.off),
         t.id and (BT.BY_ID[t.id] and BT.BY_ID[t.id].label or t.id) or "-",
         tostring(t.lvl or "-"),
         t.by and (C.good .. "yes" .. C.off) or (C.dim .. "-" .. C.off)
@@ -409,7 +459,25 @@ local function GoldRows()
           .. (BT.ItemsText(t.gotItems)
               and (((t.got or 0) > 0 and " and " or "he gave ")
                    .. BT.ItemsText(t.gotItems)) or ""),
-        t.zone or nil
+        t.zone or nil,
+        (led and led.bought)
+          and (string.format("%.1f runs at %s a run", led.bought,
+                             BT.G(led.per or 0))
+               .. (((t.perRun or 0) > 0) and "" or " (today's price - this "
+                   .. "trade predates the addon keeping it)"))
+          or nil,
+        (led and led.left)
+          and ((led.left >= 0)
+               and string.format("%.1f runs still owed you after this one",
+                                 led.left)
+               or string.format("%.1f runs past what you have paid for",
+                                -led.left))
+          or nil,
+        t.setTo and ("a balance you set by hand: everything before this line "
+          .. "stops counting, and the tally starts again from "
+          .. string.format("%.1f", t.setTo)) or nil,
+        (t.manual and not t.setTo)
+          and "you entered this one yourself - the x removes it" or nil
       }
     })
   end
@@ -420,10 +488,21 @@ end
 -- Everyone who has advertised, from every channel, newest first. This is the
 -- list you actually shop from: the Boosters tab answers "who sells the step I
 -- am on", and this one answers "who is selling anything at all".
+-- Who is selling. An advert is a person standing in a city saying they are
+-- free right now; half an hour later they are three levels into somebody
+-- else's chain and the line is a list of people to be disappointed by. So the
+-- tab only shows the fresh ones.
+--
+-- What was learned from the advert - his price, his pack size - stays on his
+-- record. That is knowledge about him, and it does not go stale the way the
+-- offer does.
+local AD_KEEP = 1800
+
 local function AdRows()
   local out = {}
+  local now = time()
   for name, info in pairs(ChainDB.boosters) do
-    if info.adZone and info.adAt then
+    if info.adZone and info.adAt and (now - info.adAt) <= AD_KEEP then
       local d = BT.BY_ID[info.adZone]
       local pack = ((info.adPack or 1) > 0) and info.adPack or 1
       local gold = info.adPrice or 0
@@ -825,6 +904,10 @@ end
 local function LootRows()
   local out = {}
   local me = UnitName and UnitName("player") or nil
+  -- Ask the client for anything it has not seen before drawing a single row.
+  -- An uncached item is a name and nothing else - no stats, no armour, no
+  -- required level - and that is most of somebody else's loot.
+  if BT.WarmLoot then BT.WarmLoot(ChainDB.loot) end
   for _, g in ipairs(LootGroups()) do
     local tip = { g.from or ((g.who == me) and "no source recorded"
                              or "loot lines do not say what somebody else looted from") }
@@ -843,13 +926,26 @@ local function LootRows()
         .. "only knows once it has seen the item"
     end
 
+    -- The best thing the corpse gave, which is the one you would have opened
+    -- a tooltip for, and what to call its quality. Sorting on the number
+    -- rather than the word puts epic above rare rather than alphabetically
+    -- between them.
+    local best, bq = BT.BestLoot(g.items)
+    local qWord = BT.QualityWord(bq)
+    local qCell = C.dim .. "-" .. C.off
+    if qWord then
+      qCell = (QUALITY_COL[bq or 1] or "|cffffffff") .. qWord .. C.off
+    end
+
     out[#out + 1] = {
       at = g.at, name = GroupText(g), n = g.n, who = g.who, value = g.value,
       zone = g.zone, step = g.step, by = g.by, from = g.from, rec = g,
+      quality = bq, link = best and best.link or nil,
       cells = {
         C.dim .. BT.T(time() - (g.at or time())) .. " ago" .. C.off,
         GroupText(g),
         (g.n > 0) and tostring(g.n) or (C.dim .. "-" .. C.off),
+        qCell,
         (g.who == me) and (C.good .. (g.who or "?") .. C.off)
           or (C.dim .. (g.who or "?") .. C.off),
         g.from and (C.dim .. g.from .. C.off) or (C.dim .. "-" .. C.off),
@@ -879,7 +975,12 @@ local function LockRows()
         C.dim .. (e.char or "-") .. C.off,
         e.counts and (C.warn .. "yes" .. C.off) or (C.dim .. "no" .. C.off),
         e.counts and (col .. BT.T(e.left) .. C.off) or "-",
-        e.nit and (C.dim .. "from NIT" .. C.off) or (C.dim .. "own" .. C.off)
+        -- where this row came from, because a count you cannot trace is a
+        -- count you can only argue with
+        e.nit and (C.dim .. "from NIT" .. C.off)
+          or e.ghost and (C.warn .. "the game said" .. C.off)
+          or e.fromRun and (C.dim .. "rebuilt" .. C.off)
+          or (C.dim .. "own" .. C.off)
       }
     })
   end
@@ -1040,12 +1141,38 @@ end
 
 -- One line under the table saying what the tab adds up to
 local function Summary()
+  -- The 'after' column is frozen: it is the balance that payment left you on,
+  -- at the moment it was made, which is what a ledger is for. It does not move
+  -- afterwards and it should not. The number that moves belongs here.
+  if mode == "gold" then
+    local seen, out = {}, {}
+    for i = #ChainDB.trades, 1, -1 do
+      local t = ChainDB.trades[i]
+      local who = t.with and ((BT.PaysFor and BT.PaysFor(t.with)) or t.with)
+      if who and not seen[who] then
+        seen[who] = true
+        local c = BT.BoosterCredit and BT.BoosterCredit(who)
+        if c then
+          local v = (c.hisLeft ~= nil) and c.hisLeft or c.left
+          local col = (v >= 1) and C.good or ((v > -0.5) and C.warn or C.bad)
+          out[#out + 1] = who .. " " .. col
+            .. string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
+            .. C.off .. C.dim
+            .. ((c.hisLeft ~= nil) and " left (his count)" or " left") .. C.off
+        end
+      end
+      if #out >= 3 then break end
+    end
+    if #out == 0 then return "no payments on record" end
+    return "still owed you:  " .. table.concat(out, C.dim .. "   -   " .. C.off)
+  end
   if mode == "loot" then
     local value, byWho, items, coins, unknown = BT.LootTotals()
     if items == 0 and coins == 0 then return "nothing logged yet" end
     local txt = items .. " item" .. (items == 1 and "" or "s")
     if coins > 0 then
-      txt = txt .. "  -  " .. C.gold .. BT.Coin(coins) .. C.off .. " in coin"
+      txt = txt .. "  -  " .. C.gold .. BT.Coin(coins) .. C.off
+        .. " raw gold off mobs"
     end
     if value > 0 then
       txt = txt .. "  -  " .. C.gold .. BT.Coin(value) .. C.off .. " all told"
@@ -1151,10 +1278,12 @@ local function Summary()
     local n = #AdRows()
     if n == 0 then
       if not ChainDB.readAds then
-        return C.dim .. "reading adverts is off - turn it on in the settings" .. C.off
+        return C.dim .. "reading sellers out of chat is off - turn it on in "
+          .. "the settings" .. C.off
       end
-      return "nothing heard yet.  Boosters advertise in Trade (only inside a "
-        .. "city) and LookingForGroup - join those channels and stand in a city."
+      return "nobody selling in the last half hour.  Boosters advertise in "
+        .. "Trade (only inside a city) and LookingForGroup - join those "
+        .. "channels and stand in a city."
     end
     -- which channels are actually producing, best first
     local list, best = {}, nil
@@ -1269,6 +1398,14 @@ local function Render()
       or ("everyone seen" .. C.dim .. "  - show marked" .. C.off))
   end
 
+  -- and the hand-entry row belongs to the Trade tab, on that same line again
+  local paying = (mode == "gold")
+  for _, w in ipairs({ win.payLabel, win.payName, win.payPick, win.payGold,
+                       win.payButton, win.payOr, win.payRuns,
+                       win.payRunsButton, win.payNote }) do
+    if w then w:SetShown(paying) end
+  end
+
   -- and the rank box belongs to the Rank tab, on the same line
   local planning = (mode == "pvp")
   for _, w in ipairs({ win.targetLabel, win.targetBox, win.targetUp,
@@ -1326,6 +1463,7 @@ local function Render()
     local d = data[(page - 1) * ROWS + i]
     if d then
       row.tip = d.tip
+      row.link = d.link
       local rx = 0
       for ci, col in ipairs(layout.cols) do
         local fs = row.cells[ci]
@@ -1341,12 +1479,19 @@ local function Render()
       -- the x removes a run from the averages on History, and on Boosters it
       -- removes somebody you put in the list yourself. It never appears on a
       -- booster you have actually run with: that is measured history.
-      row.del.rec, row.del.name = nil, nil
+      row.del.rec, row.del.name, row.del.trade = nil, nil, nil
       if mode == "runs" and d.rec then
         row.del.rec = d.rec
         row.del:Show()
       elseif mode == "boosters" and d.mine then
         row.del.name = d.by
+        row.del:Show()
+      elseif mode == "gold" and d.rec then
+        -- Every trade row, not only the ones you typed. Detection is now an
+        -- inference - a window that closed and never mentioned a cancel - and
+        -- anything inferred has to be correctable by the person who was
+        -- actually there.
+        row.del.trade = d.rec
         row.del:Show()
       else
         row.del:Hide()
@@ -1393,6 +1538,9 @@ local function Render()
         if not row.note:HasFocus() then row.note:SetText(d.note or "") end
         row.note:ClearAllPoints()
         row.note:SetPoint("LEFT", row, "LEFT", nx, 0)
+        -- as wide as the column it sits in, whichever tab that is: a box that
+        -- keeps one fixed width overhangs the moment a column changes size
+        row.note:SetWidth(math.max(40, layout.cols[#layout.cols][2] - 4))
         row.note:Show()
       elseif mode == "enemies" and d.name then
         local kx, nx = 0, 0
@@ -1414,6 +1562,9 @@ local function Render()
         if not row.note:HasFocus() then row.note:SetText(d.note or "") end
         row.note:ClearAllPoints()
         row.note:SetPoint("LEFT", row, "LEFT", nx, 0)
+        -- as wide as the column it sits in, whichever tab that is: a box that
+        -- keeps one fixed width overhangs the moment a column changes size
+        row.note:SetWidth(math.max(40, layout.cols[#layout.cols][2] - 4))
         row.note:Show()
       else
         row.kos:Hide()
@@ -1453,6 +1604,9 @@ local function Render()
         if not row.note:HasFocus() then row.note:SetText(d.info.note or "") end
         row.note:ClearAllPoints()
         row.note:SetPoint("LEFT", row, "LEFT", nx, 0)
+        -- as wide as the column it sits in, whichever tab that is: a box that
+        -- keeps one fixed width overhangs the moment a column changes size
+        row.note:SetWidth(math.max(40, layout.cols[#layout.cols][2] - 4))
         row.note:Show()
       else
         row.price:Hide()
@@ -1461,7 +1615,7 @@ local function Render()
       if not noteShown then row.note:Hide() end
       row:Show()
     else
-      row.tip = nil
+      row.tip, row.link = nil, nil
       row.price:Hide() row.pack:Hide() row.kos:Hide()
       row.note:Hide() row.del:Hide() row.whisper:Hide()
       row:Hide()
@@ -1508,7 +1662,7 @@ local function Build()
   win.bg:SetAllPoints()
   win.bg:SetDrawLayer("BACKGROUND", 2)
 
-  win.title = win:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  win.title = win:CreateFontString(nil, "OVERLAY", "ChainFontNormal")
   win.title:SetPoint("TOPLEFT", 10, -8)
   win.title:SetText(BT.NAME)
 
@@ -1518,7 +1672,7 @@ local function Build()
   tabs = {}
   local tx = 10
   for _, def in ipairs({ { "runs", "History" }, { "boosters", "Boosters" },
-                         { "ads", "Adverts" }, { "groups", "Groups" },
+                         { "ads", "Sellers" }, { "groups", "Groups" },
                          { "reported", "Reported" },
                          { "gold", "Trade" }, { "loot", "Loot" },
                          { "enemies", "Enemies" },
@@ -1533,7 +1687,7 @@ local function Build()
     tx = tx + 78
   end
 
-  win.subtitle = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  win.subtitle = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.subtitle:SetPoint("TOPLEFT", 10, -54)
   -- stops short of the search box, which now sits on this line: nine tabs
   -- fill the row above it, and the last of them was running underneath it
@@ -1543,7 +1697,7 @@ local function Build()
   if win.subtitle.SetWordWrap then win.subtitle:SetWordWrap(false) end
   if win.subtitle.SetMaxLines then win.subtitle:SetMaxLines(1) end
 
-  win.searchLabel = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  win.searchLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.searchLabel:SetPoint("TOPRIGHT", -190, -54)
   win.searchLabel:SetText("show only")
 
@@ -1551,7 +1705,7 @@ local function Build()
   win.search:SetSize(150, 20)
   win.search:SetPoint("TOPRIGHT", -34, -50)
   win.search:SetAutoFocus(false)
-  win.search:SetFontObject("GameFontHighlightSmall")
+  win.search:SetFontObject("ChainFontHighlightSmall")
   win.search.bg = Tex(win.search, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
   win.search.bg:SetAllPoints()
   win.search:SetScript("OnTextChanged", function(self)
@@ -1576,7 +1730,7 @@ local function Build()
   for i = 1, MAX_COLS do
     local h = CreateFrame("Button", nil, win.headerRow)
     h:SetHeight(16)
-    h.fs = h:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    h.fs = h:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
     h.fs:SetPoint("LEFT")
     h:SetScript("OnClick", function(self)
       if not self.key then return end
@@ -1601,19 +1755,43 @@ local function Build()
     -- the chat window instead.
     row:EnableMouse(true)
     row:SetScript("OnEnter", function(self)
-      if not self.tip then return end
+      if not self.tip and not self.link then return end
       GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-      for i, line in ipairs(self.tip) do
-        if i == 1 then GameTooltip:AddLine(line, 1, 0.82, 0)
-        else GameTooltip:AddLine(line, 1, 1, 1, true) end
+      -- An item gets the client's own tooltip - the stats, the level, the
+      -- binding, everything a list of names cannot say. Ours goes underneath
+      -- rather than instead: the rest of what the corpse gave, who took it and
+      -- where, which is the part the item tooltip does not know.
+      local shown = false
+      if self.link and GameTooltip.SetHyperlink then
+        local ok = pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
+        shown = ok
+      end
+      for i, line in ipairs(self.tip or {}) do
+        if i == 1 and not shown then GameTooltip:AddLine(line, 1, 0.82, 0)
+        else
+          if i == 1 then GameTooltip:AddLine(" ") end
+          GameTooltip:AddLine(line, 1, 1, 1, true)
+        end
+      end
+      if self.link then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("Shift-click to put it in chat", 0.4, 0.7, 1)
       end
       GameTooltip:Show()
     end)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- and shift-click drops the link into whatever you are typing, the way it
+    -- works everywhere else in the game
+    row:SetScript("OnMouseUp", function(self, button)
+      if button ~= "LeftButton" or not self.link then return end
+      if IsModifiedClick and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then
+        ChatEdit_InsertLink(self.link)
+      end
+    end)
 
     row.cells = {}
     for c = 1, MAX_COLS do
-      local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+      local fs = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
       fs:SetJustifyH("LEFT")
       -- one line per cell. "1h 42m ago" wrapped inside a narrow column and
       -- took the row's alignment with it; a cell that does not fit is clipped
@@ -1627,7 +1805,7 @@ local function Build()
     row.price = CreateFrame("EditBox", nil, row)
     row.price:SetSize(52, 16)
     row.price:SetAutoFocus(false)
-    row.price:SetFontObject("GameFontHighlightSmall")
+    row.price:SetFontObject("ChainFontHighlightSmall")
     row.price:SetJustifyH("CENTER")
     row.price:SetMaxLetters(6)
     row.price.bg = Tex(row.price, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
@@ -1652,7 +1830,7 @@ local function Build()
     row.pack = CreateFrame("EditBox", nil, row)
     row.pack:SetSize(32, 16)
     row.pack:SetAutoFocus(false)
-    row.pack:SetFontObject("GameFontHighlightSmall")
+    row.pack:SetFontObject("ChainFontHighlightSmall")
     row.pack:SetJustifyH("CENTER")
     row.pack:SetMaxLetters(2)
     row.pack.bg = Tex(row.pack, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
@@ -1674,7 +1852,7 @@ local function Build()
     row.note = CreateFrame("EditBox", nil, row)
     row.note:SetSize(116, 16)
     row.note:SetAutoFocus(false)
-    row.note:SetFontObject("GameFontHighlightSmall")
+    row.note:SetFontObject("ChainFontHighlightSmall")
     row.note:SetJustifyH("LEFT")
     row.note:SetMaxLetters(60)
     row.note.bg = Tex(row.note, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
@@ -1730,6 +1908,11 @@ local function Build()
     row.kos:Hide()
 
     row.del = Button(row, "x", 16, 14, function(self)
+      if self.trade then
+        BT.ForgetTrade(self.trade)
+        Render()
+        return
+      end
       if self.name then
         BT.ForgetBooster(self.name)
         Render()
@@ -1754,7 +1937,7 @@ local function Build()
   -- whisper is worth keeping before you have ever run with him, and the note
   -- is where "only sells mornings" or "does not pull the last room" goes.
   local addY = -94 - ROWS * 18 - 6
-  win.addLabel = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  win.addLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.addLabel:SetPoint("TOPLEFT", 12, addY)
   win.addLabel:SetText("add someone")
 
@@ -1763,11 +1946,11 @@ local function Build()
     e:SetSize(width, 18)
     e:SetPoint("TOPLEFT", x, addY + 3)
     e:SetAutoFocus(false)
-    e:SetFontObject("GameFontHighlightSmall")
+    e:SetFontObject("ChainFontHighlightSmall")
     e:SetMaxLetters(maxLetters or 60)
     e.bg = Tex(e, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
     e.bg:SetAllPoints()
-    e.hint = e:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    e.hint = e:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
     e.hint:SetPoint("LEFT", e, "LEFT", 4, 0)
     e.hint:SetText(hint)
     e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -1799,8 +1982,103 @@ local function Build()
   win.addNote:SetScript("OnEnterPressed", DoAdd)
   win.addButton = Button(win, "Add", 60, 18, DoAdd)
   win.addButton:SetPoint("TOPLEFT", 526, addY + 3)
-  win.addNote2 = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  win.addNote2 = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.addNote2:SetPoint("TOPLEFT", 596, addY)
+
+  -- The same line, for the Trade tab: money the addon never saw. A trade that
+  -- went through during a reload, gold sent by mail, or - the common one - the
+  -- arrangement you were already halfway through on the day you installed
+  -- this. Two ways in, because they answer different questions: "I paid him
+  -- 400g" is a payment, and "I have seven left" is the whole balance, which is
+  -- the only one you can answer when you never counted the gold.
+  win.payLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.payLabel:SetPoint("TOPLEFT", 12, addY)
+  win.payLabel:SetText("never saw it?")
+
+  win.payName = AddBox(104, 100, "booster", 24)
+  win.payGold = AddBox(54, 250, "gold", 8)
+
+  local function Said(msg, bad)
+    win.payLabel:SetText((bad and C.bad or C.good) .. msg .. C.off)
+  end
+
+  -- Pick the name instead of typing it. Half of them are Zånzå and Cartèr,
+  -- and getting the accents right off a screenshot is not a task an addon
+  -- should be setting anybody.
+  win.payPick = Button(win, "pick", 40, 18, function(self)
+    local list = BT.PayableNames and BT.PayableNames() or {}
+    local items = {}
+    for _, p in ipairs(list) do
+      items[#items + 1] = {
+        text = p.name .. C.dim .. "   " .. (p.why or "") .. C.off,
+        fn = function()
+          win.payName:SetText(p.name)
+          win.payName.hint:Hide()
+          Render()
+        end }
+    end
+    if #items == 0 then
+      items[1] = { text = C.dim .. "nobody to pick - type it" .. C.off,
+                   fn = function() end }
+    end
+    if BT.ShowNearbyMenu then BT.ShowNearbyMenu("who did you pay?", items, self) end
+  end)
+  win.payPick:SetPoint("TOPLEFT", 206, addY + 3)
+  local function ResetSaid()
+    win.payLabel:SetText("never saw it?")
+  end
+
+  local function DoPay()
+    local rec, why = BT.LogPayment(win.payName:GetText(), win.payGold:GetText())
+    if not rec then Said(why or "no", true) return end
+    win.payGold:SetText("")
+    win.payGold:ClearFocus()
+    ResetSaid()
+    Render()
+    -- You have just paid somebody who has never run anything for you. That is
+    -- usually a bank alt, and the moment you pay it is the moment you know -
+    -- so ask now rather than leaving his account looking unpaid and the alt's
+    -- looking like a stranger who owes you twenty runs.
+    local who, by = rec.with, BT.CurrentBooster and BT.CurrentBooster()
+    if by and who ~= by and not BT.PaysFor(who)
+       and #BT.Runs({ by = who, limit = 1 }) == 0 then
+      if BT.ShowNearbyMenu then
+        BT.ShowNearbyMenu(who .. " has never run for you", {
+          { text = "It is " .. C.gold .. by .. C.off .. "'s alt"
+                   .. C.dim .. "  - count it for him" .. C.off,
+            fn = function() BT.SetPaysFor(who, by) Render() end },
+          { text = C.dim .. "No, he is his own man" .. C.off,
+            fn = function() end },
+        }, win.payButton)
+      end
+    end
+  end
+  win.payName:SetScript("OnEnterPressed", DoPay)
+  win.payGold:SetScript("OnEnterPressed", DoPay)
+  win.payButton = Button(win, "I paid him", 78, 18, DoPay)
+  win.payButton:SetPoint("TOPLEFT", 310, addY + 3)
+
+  win.payOr = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.payOr:SetPoint("TOPLEFT", 396, addY)
+  win.payOr:SetText(C.dim .. "or just say what is left" .. C.off)
+
+  win.payRuns = AddBox(46, 508, "runs", 6)
+
+  local function DoRuns()
+    local rec, why = BT.SetRunsLeft(win.payName:GetText(), win.payRuns:GetText())
+    if not rec then Said(why or "no", true) return end
+    win.payRuns:SetText("")
+    win.payRuns:ClearFocus()
+    ResetSaid()
+    Render()
+  end
+  win.payRuns:SetScript("OnEnterPressed", DoRuns)
+  win.payRunsButton = Button(win, "runs left", 68, 18, DoRuns)
+  win.payRunsButton:SetPoint("TOPLEFT", 560, addY + 3)
+
+  win.payNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.payNote:SetPoint("TOPLEFT", 636, addY)
+  win.payNote:SetText(C.dim .. "the tally starts again from there" .. C.off)
 
   -- The rank you are aiming at, on the same line and in the same place as the
   -- add-someone row, because only one of the two is ever on screen.
@@ -1809,7 +2087,7 @@ local function Build()
   end)
   win.enemyView:SetPoint("TOPLEFT", 12, addY + 3)
 
-  win.targetLabel = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  win.targetLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.targetLabel:SetPoint("TOPLEFT", 12, addY)
   win.targetLabel:SetText("rank you want")
 
@@ -1817,7 +2095,7 @@ local function Build()
   win.targetBox:SetSize(40, 18)
   win.targetBox:SetPoint("TOPLEFT", 100, addY + 3)
   win.targetBox:SetAutoFocus(false)
-  win.targetBox:SetFontObject("GameFontHighlightSmall")
+  win.targetBox:SetFontObject("ChainFontHighlightSmall")
   win.targetBox:SetJustifyH("CENTER")
   win.targetBox:SetMaxLetters(2)
   win.targetBox:SetNumeric(true)
@@ -1848,15 +2126,15 @@ local function Build()
   win.targetUp = Button(win, "+", 20, 18, Step(1))
   win.targetUp:SetPoint("TOPLEFT", 144, addY + 3)
 
-  win.targetName = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  win.targetName = win:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
   win.targetName:SetPoint("TOPLEFT", 174, addY)
   win.targetName:SetJustifyH("LEFT")
 
-  win.summary = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  win.summary = win:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
   win.summary:SetPoint("BOTTOMLEFT", 12, 26)
   win.summary:SetJustifyH("LEFT")
 
-  win.pageText = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  win.pageText = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.pageText:SetPoint("BOTTOMLEFT", 12, 10)
 
   local prev = Button(win, "< prev", 60, 18, function()
@@ -1887,3 +2165,7 @@ function BT.ToggleWindow()
 end
 
 function BT.RenderWindow() Render() end
+
+-- Which tab is up. Only the tests and the list's own button ask, but a thing
+-- that can be set and not read is a thing you cannot check.
+function BT.WindowMode() return mode end

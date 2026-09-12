@@ -30,7 +30,12 @@ local function Tooltip(tip)
   local count, freeOne = BT.Lockout()
   local limit = ChainDB.limit or BT.K.LIMIT
   local lockTxt = count .. "/" .. limit
-  if freeOne and count > 0 then lockTxt = lockTxt .. "  +1 in " .. BT.T(freeOne) end
+  -- the clock matters when the door is shut; until then the answer is "go"
+  if count >= limit then
+    if freeOne then lockTxt = lockTxt .. "  +1 in " .. BT.T(freeOne) end
+  else
+    lockTxt = lockTxt .. "  " .. (limit - count) .. " to go"
+  end
   tip:AddDoubleLine("instances this hour", lockTxt, 0.7, 0.7, 0.7,
     (count >= limit) and 1 or 0.4, (count >= limit) and 0.4 or 1, 0.4)
 

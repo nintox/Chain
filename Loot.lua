@@ -170,6 +170,41 @@ end
 -- The item id, which is the one part of a link that is stable. Links carry
 -- the player's own level and spec in them on some clients, so two links for
 -- the same item are not always the same string.
+-- Making the client actually know the item.
+--
+-- An item the client has never seen is a name and nothing else: GetItemInfo
+-- answers nil, and GameTooltip:SetHyperlink draws a box with the name in it
+-- and no stats, no armour, no required level. That is most of somebody else's
+-- loot - you never had it in your bags, so the client never fetched it - and
+-- it is why the log's tooltips were a name where the game's own are a full
+-- card.
+--
+-- Asking is the whole fix: calling GetItemInfo on an uncached item makes the
+-- client go and get it, and GET_ITEM_INFO_RECEIVED says when it has. So we
+-- ask for everything as it is logged, ask again for whatever the window is
+-- about to draw, and redraw when the answers come back.
+local warmed = {}
+function BT.WarmItem(id)
+  id = tonumber(id)
+  if not id or warmed[id] then return false end
+  warmed[id] = true
+  if C_Item and C_Item.RequestLoadItemDataByID then
+    C_Item.RequestLoadItemDataByID(id)
+  elseif GetItemInfo then
+    GetItemInfo(id)
+  end
+  return true
+end
+
+-- Everything in a list of log entries, in one go
+function BT.WarmLoot(list)
+  local n = 0
+  for _, e in ipairs(list or {}) do
+    if e.id and BT.WarmItem(e.id) then n = n + 1 end
+  end
+  return n
+end
+
 function BT.ItemID(link)
   if type(link) ~= "string" then return nil end
   return tonumber(link:match("|Hitem:(%d+)"))
@@ -193,6 +228,9 @@ function BT.NoteLoot(who, link, count, mine)
     by = r and r.by or nil,
   }
   table.insert(ChainDB.loot, e)
+  -- ask the client for it now, while you are still standing on the corpse,
+  -- rather than when you open the tab an hour later
+  BT.WarmItem(e.id)
 
   -- trimmed from the front, oldest first
   while #ChainDB.loot > MAX_LOOT do table.remove(ChainDB.loot, 1) end
@@ -200,24 +238,86 @@ function BT.NoteLoot(who, link, count, mine)
   return e
 end
 
+-- Coin is not loot the way an item is.
+--
+-- It comes off nearly every corpse, it is split before you ever see it, and
+-- a row for each pickup buries the things you actually opened the tab for:
+-- four hundred lines of "3s 95c" around fifteen greens. Nova carries it as
+-- one number per instance - Raw Gold From Mobs - and that is the right shape.
+-- It belongs to the run, not to the log.
 function BT.NoteCoins(copper, who, mine)
   if ChainDB.logLoot == false then return nil end
   if not copper or copper <= 0 then return nil end
-  ChainDB.loot = ChainDB.loot or {}
+  if mine == false then return nil end
   local r = ChainCharDB.run
-  local e = {
-    at = time(), who = who, copper = copper, n = 1, mine = mine or nil,
-    zone = (GetRealZoneText and GetRealZoneText()) or nil,
-    -- the coins came off the same corpse as everything else in that window,
-    -- and leaving this out put the money and the cloth from one mob on two
-    -- lines that did not look related
-    from = mine and SourceNow() or nil,
-    step = r and r.id or nil, by = r and r.by or nil,
-  }
-  table.insert(ChainDB.loot, e)
-  while #ChainDB.loot > MAX_LOOT do table.remove(ChainDB.loot, 1) end
-  if BT.RenderWindow then BT.RenderWindow() end
-  return e
+  -- Coin picked up outside a run is not money the instance gave you: it is a
+  -- quest reward or a vendor, and it has no business in either number.
+  if not r then return nil end
+  r.coin = (r.coin or 0) + copper
+  if BT.Refresh then BT.Refresh() end
+  return r.coin
+end
+
+-- Raw gold off mobs, as NIT counts it: per run, and the one you are standing
+-- in counted with them.
+function BT.RunCoin(since)
+  local cut = since and (time() - since) or nil
+  local total = 0
+  for _, r in ipairs(ChainDB.runs or {}) do
+    if not cut or (r.at or 0) >= cut then total = total + (r.coin or 0) end
+  end
+  local cur = ChainCharDB and ChainCharDB.run
+  if cur and cur.coin and (not cut or (cur.start or 0) >= cut) then
+    total = total + cur.coin
+  end
+  -- coin from before this was kept per run, and from runs since trimmed off
+  -- the end of the log: all-time only, because it has no date left on it
+  if not cut then total = total + (ChainDB.coinLoose or 0) end
+  return total
+end
+
+-- One time, on the way in: the log used to keep a row per coin pickup. Fold
+-- them into the runs they happened in and take them out. Both lists are in
+-- time order, so this is one walk rather than a search per row.
+function BT.FoldCoins()
+  if ChainDB.coinFolded then return 0, 0 end
+  ChainDB.coinFolded = true
+  local loot, runs = ChainDB.loot or {}, ChainDB.runs or {}
+  -- The walk below leans on both lists running forwards in time. They do,
+  -- normally - both are appended to - but a log merged from an older addon at
+  -- a rename can arrive in any order, and a pointer that only moves forwards
+  -- would quietly file half the coin as homeless. Sorting copies costs one
+  -- pass on a list we are rewriting anyway.
+  local order = {}
+  for i = 1, #runs do order[i] = runs[i] end
+  table.sort(order, function(a, b) return (a.at or 0) < (b.at or 0) end)
+  runs = order
+  local flat = {}
+  for i = 1, #loot do flat[i] = loot[i] end
+  table.sort(flat, function(a, b) return (a.at or 0) < (b.at or 0) end)
+  loot = flat
+
+  local keep, moved, loose, ri = {}, 0, 0, 1
+  for _, e in ipairs(loot) do
+    if not e.copper then
+      keep[#keep + 1] = e
+    else
+      local at = e.at or 0
+      while ri <= #runs
+        and ((runs[ri].at or 0) + (runs[ri].t or 0) + 5) < at do ri = ri + 1 end
+      local r = runs[ri]
+      if r and at >= (r.at or 0) - 5 then
+        r.coin = (r.coin or 0) + e.copper
+        moved = moved + e.copper
+      else
+        loose = loose + e.copper
+      end
+    end
+  end
+  ChainDB.loot = keep
+  if loose > 0 then ChainDB.coinLoose = (ChainDB.coinLoose or 0) + loose end
+  if BT.Touch then BT.Touch() end
+  return moved, loose
 end
 
 -- Newest first
@@ -252,6 +352,39 @@ function BT.LootQuality(e)
   return quality
 end
 
+-- The word the client itself uses for a quality, so it is right in every
+-- language without a translation table: ITEM_QUALITY3_DESC is "Rare" on an
+-- English client and "Selten" on a German one.
+local QUALITY_WORD = {}
+function BT.QualityWord(q)
+  if not q then return nil end
+  if QUALITY_WORD[q] then return QUALITY_WORD[q] end
+  local word = _G["ITEM_QUALITY" .. q .. "_DESC"]
+  if not word or word == "" then
+    word = ({ "Poor", "Common", "Uncommon", "Rare", "Epic",
+              "Legendary", "Artifact", "Heirloom" })[q + 1]
+  end
+  QUALITY_WORD[q] = word
+  return word
+end
+
+-- The one thing on a corpse worth hovering: the best item it gave. Quality
+-- first, and the more valuable of two the same - that is the one you would
+-- have opened the tooltip for.
+function BT.BestLoot(items)
+  local best, bq, bv
+  for _, e in ipairs(items or {}) do
+    if e.link then
+      local q = BT.LootQuality(e) or 1
+      local v = BT.LootValue(e) or 0
+      if not best or q > bq or (q == bq and v > bv) then
+        best, bq, bv = e, q, v
+      end
+    end
+  end
+  return best, bq
+end
+
 function BT.LootName(e)
   if not e then return "?" end
   if e.copper then return BT.Coin(e.copper) end
@@ -270,7 +403,10 @@ end
 -- both.
 function BT.LootTotals(since)
   local cut = since and (time() - since) or nil
-  local value, known, unknown, items, coins = 0, 0, 0, 0, 0
+  local value, known, unknown, items = 0, 0, 0, 0
+  -- the coin no longer lives in this log; it is a per-run total now
+  local coins = BT.RunCoin(since)
+  value = coins
   local byWho = {}
   for _, e in ipairs(ChainDB.loot or {}) do
     if not cut or (e.at or 0) >= cut then
@@ -299,6 +435,16 @@ local f = CreateFrame("Frame", "ChainLootFrame")
 BT.lootFrame = f
 f:SetScript("OnEvent", function(_, event, msg)
   if not ChainDB or ChainDB.logLoot == false then return end
+  if event == "GET_ITEM_INFO_RECEIVED" then
+    if pendingRedraw then return end
+    pendingRedraw = true
+    local function redraw()
+      pendingRedraw = false
+      if BT.RenderWindow then BT.RenderWindow() end
+    end
+    if C_Timer and C_Timer.After then C_Timer.After(0.5, redraw) else redraw() end
+    return
+  end
   if event == "LOOT_OPENED" or event == "LOOT_READY" then
     BT.NoteLootSource()
   elseif event == "CHAT_MSG_LOOT" then
@@ -318,6 +464,10 @@ f:SetScript("OnEvent", function(_, event, msg)
     end
   end
 end)
+-- The answer to something we asked for above. Items arrive in a burst, so the
+-- window is redrawn on a timer rather than once per item.
+local pendingRedraw = false
+f:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 f:RegisterEvent("CHAT_MSG_LOOT")
 f:RegisterEvent("CHAT_MSG_MONEY")
 f:RegisterEvent("LOOT_OPENED")

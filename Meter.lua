@@ -154,7 +154,7 @@ function BT.BuildMeter()
   meter.bg:SetAllPoints()
   if meter.bg.SetColorTexture then meter.bg:SetColorTexture(0, 0, 0, 0.45) end
 
-  meter.fs = meter:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  meter.fs = meter:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
   meter.fs:SetPoint("CENTER")
 
   meter:SetScript("OnEnter", Tooltip)
