@@ -177,8 +177,15 @@ local function BoostText()
     local paid = BT.Spent and BT.Spent({ id = step.id }) or 0
     local priced = BT.PricePerRun(step, byWho or BT.CurrentBooster())
     if priced > 0 then
-      local cost = BT.Cost(step, runs, byWho or BT.CurrentBooster())
+      local cost, packs = BT.Cost(step, runs, byWho or BT.CurrentBooster())
       local g = "~" .. BT.G(cost)
+      -- how many packs that is, when a pack is more than one run. The gold has
+      -- always been whole packs; the bar never said so, so there was no way to
+      -- tell it apart from a per-run price.
+      local packSize = BT.PackFor(step, byWho or BT.CurrentBooster())
+      if packs and packs > 0 and packSize > 1 then
+        g = g .. C.dim .. " (" .. packs .. "x" .. packSize .. ")" .. C.off .. C.gold
+      end
       if paid > 0 then g = g .. " (paid " .. BT.G(BT.Gold(paid)) .. ")" end
       table.insert(one, C.gold .. g .. C.off)
     elseif paid > 0 then
@@ -938,6 +945,34 @@ function BT.BarTooltip(owner)
       end
       local runs = (mx > 0) and (mx / st.xp) or nil
       if runs then Pair("runs per level", string.format("%.1f", runs)) end
+
+      -- What you actually buy, as opposed to what you actually need.
+      --
+      -- The gold has always been worked out in whole packs - you cannot buy
+      -- four fifths of a ten-run deal - but the bar only ever showed the runs
+      -- you need, so there was no way to tell from looking. The gap is worth
+      -- seeing in both directions: a pack bought for two runs of use is money
+      -- gone, and runs already paid for are runs you may as well take.
+      do
+        local need = select(3, BT.StageSpan())
+        local who = by or BT.CurrentBooster()
+        local pack = BT.PackFor(step, who)
+        if need and need > 0 and pack > 1 then
+          local left = need / st.xp
+          local cost, packs = BT.Cost(step, left, who)
+          if packs and packs > 0 then
+            local paid = packs * pack
+            Pair("you pay for", C.gold .. paid .. " runs" .. C.off
+              .. C.dim .. "   " .. packs .. " x " .. pack .. C.off)
+            local spare = paid - left
+            if spare >= 1 then
+              GameTooltip:AddLine(string.format(
+                "the last pack covers %.1f runs past %d - they are bought either way",
+                spare, step.to), 0.6, 0.6, 0.6, true)
+            end
+          end
+        end
+      end
     else
       GameTooltip:AddLine("No runs recorded here yet", 0.7, 0.7, 0.7)
     end
