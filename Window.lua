@@ -116,6 +116,21 @@ local LAYOUTS = {
       { "your note",124, nil }
     }
   },
+  loot = {
+    title = "One row per corpse: everything it gave, and what that came to. "
+      .. "'from' is only ever known for your own loot.",
+    cols = {
+      { "when",      70, "at" },
+      { "item",     260, "name" },
+      { "n",         30, "n" },
+      { "to",        86, "who" },
+      { "from",     130, "from" },
+      { "worth",     74, "value" },
+      { "where",     84, "zone" },
+      { "step",      48, "step" },
+      { "booster",   62, "by" }
+    }
+  },
   koslist = {
     title = "Everyone you have marked or written about, whether or not they "
       .. "are anywhere near you. Your notes are never shared.",
@@ -742,6 +757,115 @@ local function KOSRows()
   return out
 end
 
+-- One row per corpse.
+--
+-- The log stores one entry per thing, which is right - exports and totals
+-- want it that way, and two of the same item off one mob is two drops. But a
+-- mob that gave you a jerkin, three cloth and thirty-five copper is one
+-- event, and reading it as three lines that happen to sit next to each other
+-- is reading it wrong.
+--
+-- Grouped on the way out rather than on the way in: the same entries can be
+-- counted, exported and totalled without this ever being in the way.
+local GROUP_WINDOW = 6
+
+local function LootGroups()
+  local flat = BT.LootLog()          -- newest first
+  local out = {}
+  for _, e in ipairs(flat) do
+    local g = out[#out]
+    -- the same person, the same corpse, and close enough in time to be the
+    -- same loot window. An unknown corpse only ever groups with itself.
+    local same = g and g.who == e.who and g.from == e.from
+      and math.abs((g.at or 0) - (e.at or 0)) <= GROUP_WINDOW
+    if not same then
+      g = { at = e.at, who = e.who, from = e.from, zone = e.zone,
+            step = e.step, by = e.by, items = {}, n = 0, copper = 0,
+            value = 0, unpriced = 0 }
+      out[#out + 1] = g
+    end
+    if e.copper then
+      g.copper = g.copper + e.copper
+      g.value = g.value + e.copper
+    else
+      g.items[#g.items + 1] = e
+      g.n = g.n + (e.n or 1)
+      local v = BT.LootValue(e)
+      if v then g.value = g.value + v else g.unpriced = g.unpriced + 1 end
+    end
+    if (e.at or 0) > (g.at or 0) then g.at = e.at end
+  end
+  return out
+end
+
+-- Everything that fell, in one cell. Coins last, because they are the one
+-- part that is never the reason you looked.
+local QUALITY_COL = {
+  [0] = "|cff9d9d9d", [1] = "|cffffffff", [2] = "|cff1eff00",
+  [3] = "|cff0070dd", [4] = "|cffa335ee", [5] = "|cffff8000",
+}
+
+local function GroupText(g, full)
+  local bits = {}
+  for _, e in ipairs(g.items) do
+    local q = BT.LootQuality(e)
+    local col = QUALITY_COL[q or 1] or "|cffffffff"
+    local n = (e.n or 1) > 1 and ((e.n) .. "x ") or ""
+    bits[#bits + 1] = col .. n .. BT.LootName(e) .. C.off
+  end
+  if g.copper > 0 then bits[#bits + 1] = C.gold .. BT.Coin(g.copper) .. C.off end
+  if #bits == 0 then return C.dim .. "-" .. C.off end
+  if full or #bits <= 3 then return table.concat(bits, C.dim .. ", " .. C.off) end
+  -- three and a tally: the rest is on the tooltip, and a cell that runs into
+  -- the next column is worse than a cell that says there is more
+  return table.concat(bits, C.dim .. ", " .. C.off, 1, 3)
+    .. C.dim .. "  +" .. (#bits - 3) .. C.off
+end
+
+local function LootRows()
+  local out = {}
+  local me = UnitName and UnitName("player") or nil
+  for _, g in ipairs(LootGroups()) do
+    local tip = { g.from or ((g.who == me) and "no source recorded"
+                             or "loot lines do not say what somebody else looted from") }
+    for _, e in ipairs(g.items) do
+      local v = BT.LootValue(e)
+      tip[#tip + 1] = "   " .. ((e.n or 1) > 1 and (e.n .. "x ") or "")
+        .. BT.LootName(e) .. (v and ("   " .. BT.Coin(v)) or "   not priced yet")
+    end
+    if g.copper > 0 then tip[#tip + 1] = "   " .. BT.Coin(g.copper) end
+    tip[#tip + 1] = " "
+    tip[#tip + 1] = (g.who or "?") .. " picked it up"
+      .. (g.zone and (" in " .. g.zone) or "")
+    if g.by then tip[#tip + 1] = "during a run with " .. g.by end
+    if g.unpriced > 0 then
+      tip[#tip + 1] = g.unpriced .. " of these have no price yet - the client "
+        .. "only knows once it has seen the item"
+    end
+
+    out[#out + 1] = {
+      at = g.at, name = GroupText(g), n = g.n, who = g.who, value = g.value,
+      zone = g.zone, step = g.step, by = g.by, from = g.from, rec = g,
+      cells = {
+        C.dim .. BT.T(time() - (g.at or time())) .. " ago" .. C.off,
+        GroupText(g),
+        (g.n > 0) and tostring(g.n) or (C.dim .. "-" .. C.off),
+        (g.who == me) and (C.good .. (g.who or "?") .. C.off)
+          or (C.dim .. (g.who or "?") .. C.off),
+        g.from and (C.dim .. g.from .. C.off) or (C.dim .. "-" .. C.off),
+        (g.value > 0) and (C.gold .. BT.Coin(g.value) .. C.off
+          .. ((g.unpriced > 0) and (C.dim .. "+" .. C.off) or ""))
+          or (C.dim .. "-" .. C.off),
+        C.dim .. (BT.Short(g.zone) or g.zone or "-") .. C.off,
+        C.dim .. (g.step or "-") .. C.off,
+        C.dim .. (g.by or "-") .. C.off
+      },
+      tip = tip
+    }
+  end
+  return out
+end
+
 local function LockRows()
   local out = {}
   for _, e in ipairs(BT.InstanceLog()) do
@@ -906,6 +1030,7 @@ local function Data()
   if mode == "enemies" then return EnemyRows() end
   if mode == "pvp" then return PvPRows() end
   if mode == "koslist" then return KOSRows() end
+  if mode == "loot" then return LootRows() end
   if mode == "route" then return RouteRows() end
   if mode == "gold" then return GoldRows() end
   if mode == "locks" then return LockRows() end
@@ -915,6 +1040,24 @@ end
 
 -- One line under the table saying what the tab adds up to
 local function Summary()
+  if mode == "loot" then
+    local value, byWho, items, coins, unknown = BT.LootTotals()
+    if items == 0 and coins == 0 then return "nothing logged yet" end
+    local txt = items .. " item" .. (items == 1 and "" or "s")
+    if coins > 0 then
+      txt = txt .. "  -  " .. C.gold .. BT.Coin(coins) .. C.off .. " in coin"
+    end
+    if value > 0 then
+      txt = txt .. "  -  " .. C.gold .. BT.Coin(value) .. C.off .. " all told"
+    end
+    if unknown > 0 then
+      txt = txt .. C.dim .. "  (" .. unknown .. " not priced yet)" .. C.off
+    end
+    if byWho[1] then
+      txt = txt .. C.dim .. "  -  most to " .. byWho[1].who .. C.off
+    end
+    return txt
+  end
   if mode == "pvp" then
     local s2 = BT.PvPState()
     local target = ChainCharDB.pvpTarget or ((s2.rank or 0) + 1)
@@ -1351,13 +1494,17 @@ local function Build()
   win:SetScript("OnDragStop", win.StopMovingOrSizing)
   win:SetClampedToScreen(true)
   win:SetFrameStrata("DIALOG")
+  if win.SetToplevel then win:SetToplevel(true) end
   win:Hide()
 
   -- the edge is just a slightly larger rectangle behind the background
   win.edge = Tex(win, "BACKGROUND", 0.3, 0.3, 0.35, 1)
   win.edge:SetPoint("TOPLEFT", -1, 1)
   win.edge:SetPoint("BOTTOMRIGHT", 1, -1)
-  win.bg = Tex(win, "BACKGROUND", 0.05, 0.05, 0.06, 0.98)
+  -- solid, not nearly-solid: the settings panel is the same size and can sit
+  -- on top of it, and a column of numbers reading faintly through another
+  -- column of numbers is worse than either
+  win.bg = Tex(win, "BACKGROUND", 0.05, 0.05, 0.06, 1)
   win.bg:SetAllPoints()
   win.bg:SetDrawLayer("BACKGROUND", 2)
 
@@ -1373,7 +1520,8 @@ local function Build()
   for _, def in ipairs({ { "runs", "History" }, { "boosters", "Boosters" },
                          { "ads", "Adverts" }, { "groups", "Groups" },
                          { "reported", "Reported" },
-                         { "gold", "Trade" }, { "enemies", "Enemies" },
+                         { "gold", "Trade" }, { "loot", "Loot" },
+                         { "enemies", "Enemies" },
                          { "pvp", "Rank" },
                          { "locks", "Instances" },
                          { "route", "Route" } }) do

@@ -5,7 +5,11 @@ local C = BT.COL
 local PER_PAGE = 11
 -- Wide enough that the right-hand column's box ends inside the frame:
 -- COL[3] + label 112 + box 44 + margin. Everything else is measured off it.
-local WIDTH = 508
+-- The same width as the history window, and laid out the same way: a row of
+-- real tabs at the top, one page at a time underneath. It was 508 wide with
+-- six folding blocks stacked down it, and the columns were narrow enough that
+-- a label in one reached into the next.
+local WIDTH = 880
 local opt, exportFrame, optPage = nil, nil, 1
 
 local function Tex(parent, layer, r, g, b, a)
@@ -66,20 +70,26 @@ local function BuildOptions()
   -- this function, because guessing it is how the buttons ended up hanging
   -- off the bottom edge
   opt:SetSize(WIDTH, 232 + PER_PAGE * 24)
-  opt:SetPoint("CENTER", 200, 0)
+  -- Offset from dead centre so that opening it over the history window still
+  -- leaves the window's tab row in view, and you can see which of the two you
+  -- are looking at.
+  opt:SetPoint("CENTER", 0, -40)
   opt:SetMovable(true)
   opt:EnableMouse(true)
   opt:RegisterForDrag("LeftButton")
   opt:SetScript("OnDragStart", opt.StartMoving)
   opt:SetScript("OnDragStop", opt.StopMovingOrSizing)
   opt:SetClampedToScreen(true)
-  opt:SetFrameStrata("DIALOG")
+  -- Above the history window and solid, so neither one's text can be read
+  -- through the other when both are open
+  opt:SetFrameStrata("FULLSCREEN_DIALOG")
+  if opt.SetToplevel then opt:SetToplevel(true) end
   opt:Hide()
 
   opt.edge = Tex(opt, "BACKGROUND", 0.3, 0.3, 0.35, 1)
   opt.edge:SetPoint("TOPLEFT", -1, 1)
   opt.edge:SetPoint("BOTTOMRIGHT", 1, -1)
-  opt.bg = Tex(opt, "BACKGROUND", 0.05, 0.05, 0.06, 0.98)
+  opt.bg = Tex(opt, "BACKGROUND", 0.05, 0.05, 0.06, 1)
   opt.bg:SetAllPoints()
   opt.bg:SetDrawLayer("BACKGROUND", 2)
 
@@ -107,7 +117,7 @@ local function BuildOptions()
   opt:SetScale(ChainDB.optScale or 1)
 
   opt.help = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  opt.help:SetPoint("TOPLEFT", 10, -26)
+  opt.help:SetPoint("TOPLEFT", 16, -56)
   opt.help:SetJustifyH("LEFT")
   -- bounded and wrapping: written out in full it ran off the right edge
   opt.help:SetWidth(WIDTH - 20)
@@ -122,25 +132,46 @@ local function BuildOptions()
   local heads = { { "use", 34 }, { "instance", 82 }, { "enter", 34 },
                   { "levels", 46 }, { "from", 38 }, { "to", 38 },
                   { "gold", 52 }, { "runs", 36 }, { "per", 114 } }
-  local hx = 12
+  local hx = 16
+  opt.routeHeads = {}
   for _, h in ipairs(heads) do
     local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", hx, -60)
+    fs:SetPoint("TOPLEFT", hx, -76)
     fs:SetText(h[1])
+    table.insert(opt.routeHeads, fs)
     hx = hx + h[2]
   end
 
-  -- A row of buttons that opens one section and folds the rest. The panel had
-  -- grown to six blocks and the length of a screen; almost nobody wants two
-  -- of them at once, and the folding was already there - this is just the
-  -- shortcut for "only that one".
-  opt.picker = {}
+  -- One page at a time, behind a row of tabs. Every page is laid out from the
+  -- same top, so nothing has to be shifted about afterwards and nothing can
+  -- be left behind by a shift that missed it.
+  opt.pages, opt.tabs = {}, {}
+  local curPage
+
+  -- Which page a widget belongs to is decided when it is made, not worked out
+  -- from where it ended up. Where it ended up was how the checkboxes on the
+  -- first row of a section got left behind.
+  local claimed = {}
+  local function Claim()
+    for _, c in ipairs({ opt:GetChildren() }) do
+      if not claimed[c] then
+        claimed[c] = true
+        if curPage then table.insert(curPage.widgets, c) end
+      end
+    end
+    for _, r in ipairs({ opt:GetRegions() }) do
+      if not claimed[r] then
+        claimed[r] = true
+        if curPage then table.insert(curPage.widgets, r) end
+      end
+    end
+  end
 
   opt.rows = {}
   for i = 1, PER_PAGE do
     local row = CreateFrame("Frame", nil, opt)
     row:SetSize(476, 22)
-    row:SetPoint("TOPLEFT", 12, -76 - (i - 1) * 24)
+    row:SetPoint("TOPLEFT", 16, -92 - (i - 1) * 24)
     if i % 2 == 0 then
       row.stripe = Tex(row, "BACKGROUND", 1, 1, 1, 0.03)
       row.stripe:SetAllPoints()
@@ -193,21 +224,22 @@ local function BuildOptions()
     opt.rows[i] = row
   end
 
-  local y = -76 - PER_PAGE * 24 - 6
+  local y = -92 - PER_PAGE * 24 - 6
   opt.pageText = opt:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  opt.pageText:SetPoint("TOPLEFT", 12, y)
-  local prev = Button(opt, "< prev", 56, 18, function()
+  opt.pageText:SetPoint("TOPLEFT", 16, y)
+  opt.prevPage = Button(opt, "< prev", 56, 18, function()
     if optPage > 1 then optPage = optPage - 1 BT.RenderOptions() end
   end)
-  prev:SetPoint("TOPRIGHT", -72, y + 2)
-  local nxt = Button(opt, "next >", 56, 18, function()
+  opt.prevPage:SetPoint("TOPRIGHT", -76, y + 2)
+  opt.nextPage = Button(opt, "next >", 56, 18, function()
     optPage = optPage + 1 BT.RenderOptions()
   end)
-  nxt:SetPoint("TOPRIGHT", -12, y + 2)
+  opt.nextPage:SetPoint("TOPRIGHT", -16, y + 2)
+  local routeBottom = y - 24
 
   -- General settings, laid out on a grid rather than by hand. Every earlier
   -- pass moved one control and quietly landed it on top of another.
-  local COL = { 12, 176, 340 }
+  local COL = { 16, 300, 584 }
   local row = 0
   opt.boxes = {}
   local function At(c, dy) return COL[c], y - row * 24 + (dy or 0) end
@@ -225,60 +257,25 @@ local function BuildOptions()
     return box
   end
 
-  -- A heading and a hairline across the panel. Twenty-odd controls in one
-  -- undifferentiated block is a wall you read every time instead of a list you
-  -- learn the shape of - and the things that belong together were nowhere near
-  -- each other.
-  -- A heading and a hairline, and the heading is a button: click it and the
-  -- section folds away. Twenty-odd controls in one undifferentiated block is a
-  -- wall you read every time rather than a list you learn the shape of, and
-  -- the panel was taller than a lot of screens.
-  --
-  -- Which ones are folded is remembered, so the two settings you actually
-  -- change stay open and the rest stay out of the way.
-  opt.sections = {}
-  local function Section(title, key)
-    row = row + 0.35
-    local x, ly = At(1)
-    local head = CreateFrame("Button", nil, opt)
-    head:SetSize(WIDTH - 24, 14)
-    head:SetPoint("TOPLEFT", x, ly + 2)
-    head.fs = head:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    head.fs:SetPoint("LEFT", 0, 0)
-    head.fs:SetJustifyH("LEFT")
-    local line = Tex(opt, "ARTWORK", 0.35, 0.35, 0.42, 0.8)
-    line:SetHeight(1)
-    line:SetPoint("TOPLEFT", x, ly - 13)
-    line:SetPoint("TOPRIGHT", opt, "TOPLEFT", WIDTH - 12, ly - 13)
+  local PAGE_TOP = -58          -- under the tab row, same as the window's
+  local function Page(title, key)
+    Claim()                     -- everything built since the last one
+    local p = { key = key, title = title, widgets = {} }
+    curPage = p
+    table.insert(opt.pages, p)
 
-    local sec = { key = key, title = title, head = head, line = line, y = ly }
-    head:SetScript("OnClick", function()
-      ChainDB.optFold = ChainDB.optFold or {}
-      ChainDB.optFold[key] = not ChainDB.optFold[key]
-      BT.RenderOptions()
-    end)
-    table.insert(opt.sections, sec)
-
-    -- and a button up in the picker row for it
-    local b = Button(opt, title, 0, 16, function()
-      local only = {}
-      for _, other in ipairs(opt.sections) do only[other.key] = (other.key ~= key) end
-      -- clicking the one that is already alone opens everything again
-      local alone = true
-      for _, other in ipairs(opt.sections) do
-        local folded = (ChainDB.optFold or {})[other.key] and true or false
-        if folded ~= (other.key ~= key) then alone = false end
-      end
-      ChainDB.optFold = alone and {} or only
-      BT.RenderOptions()
-    end)
+    local b = Button(opt, title, 10, 20, function() BT.ShowOptionsPage(key) end)
     b.fs:SetText(title)
-    b:SetWidth((b.fs:GetStringWidth() or 40) + 14)
+    b:SetWidth((b.fs:GetStringWidth() or 60) + 22)
     b.key = key
-    table.insert(opt.picker, b)
+    table.insert(opt.tabs, b)
+    claimed[b] = true           -- a tab belongs to the frame, not to a page
 
-    row = row + 0.75
+    -- every page starts from the same line
+    row = 0
+    y = PAGE_TOP
   end
+
 
   local function Toggle(c, label, set)
     local chk = Check(opt, set)
@@ -287,18 +284,40 @@ local function BuildOptions()
     local fs = opt:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     fs:SetPoint("TOPLEFT", x + 20, ly)
     fs:SetText(label)
-    fs:SetWidth(140)
+    -- room to breathe: the columns are 284 apart now, so a long label no
+    -- longer has to be shortened until it stops saying what it means
+    fs:SetWidth(250)
     fs:SetJustifyH("LEFT")
     chk.label = fs
     return chk
   end
 
-  -- the picker sits between the route table and the first section, on a line
-  -- of its own: above it, it ran into the two-line help text
-  y = y - 24
-  opt.pickerY = y
-  y = y - 22
-  Section("Runs and prices", "runs")
+  -- The instance table is a page like any other, and the first one. It was
+  -- always on screen above everything else, which is most of why the panel
+  -- was the length of a screen.
+  do
+    local p = { key = "route", title = "Instances", widgets = {} }
+    table.insert(opt.pages, 1, p)
+    for _, w in ipairs({ opt.help, opt.pageText, opt.prevPage, opt.nextPage }) do
+      if w then claimed[w] = true table.insert(p.widgets, w) end
+    end
+    for _, w in ipairs(opt.routeHeads or {}) do
+      claimed[w] = true
+      table.insert(p.widgets, w)
+    end
+    for _, r in ipairs(opt.rows) do
+      claimed[r] = true
+      table.insert(p.widgets, r)
+    end
+    local b = Button(opt, "Instances", 10, 20, function() BT.ShowOptionsPage("route") end)
+    b.fs:SetText("Instances")
+    b:SetWidth((b.fs:GetStringWidth() or 60) + 22)
+    b.key = "route"
+    table.insert(opt.tabs, 1, b)
+    claimed[b] = true
+  end
+
+  Page("Runs and prices", "runs")
   opt.pack = Field(1, "Runs per price", 40, function() return ChainDB.pack end,
     -- the fallback only: the 'runs' column above beats it per instance, and a
     -- pack typed against a booster beats them both while he is boosting you
@@ -309,7 +328,7 @@ local function BuildOptions()
     function(v) ChainDB.limit = math.max(1, math.floor(v or 5)) end)
   NextRow()
 
-  Section("Resets and alerts", "resets")
+  Page("Resets and alerts", "resets")
   opt.sound = Toggle(1, "Sound on reset", function(v) ChainDB.sound = v end)
   do
     local x, ly = At(1)
@@ -353,7 +372,7 @@ local function BuildOptions()
   end
   NextRow()
 
-  Section("What to read out of chat", "chat")
+  Page("What to read out of chat", "chat")
   -- Its history is taken into our own log on every login whether this is on
   -- or off. This only decides whether its live count is trusted over ours.
   opt.nit = Toggle(1, "Read NIT's count",
@@ -374,6 +393,14 @@ local function BuildOptions()
   opt.groups = Toggle(3, "Read LFM and LFG posts", function(v)
     ChainDB.readGroups = v
   end)
+
+  NextRow()
+  -- Loot comes through chat too, and for the whole group - the combat log
+  -- carries none of it. Its own row: the label to its left is already wide
+  -- enough to reach into the next column.
+  opt.loot = Toggle(1, "Log loot, yours and the group's", function(v)
+    ChainDB.logLoot = v
+  end)
   NextRow()
   do
     -- its own row: the explanation is longer than any column
@@ -389,7 +416,7 @@ local function BuildOptions()
   end
   NextRow()
 
-  Section("Who is out there", "enemies")
+  Page("Who is out there", "enemies")
   opt.watch = Toggle(1, "Watch for enemies", function(v)
     ChainDB.watchEnemies = v
   end)
@@ -479,7 +506,7 @@ local function BuildOptions()
   end
   NextRow()
 
-  Section("Sharing and the bar", "share")
+  Page("Sharing and the bar", "share")
   opt.announceLock = Toggle(1, "Tell the group your lockout",
     function(v) ChainDB.announceLock = v end)
   opt.minimap = Toggle(3, "Button on the minimap", function(v)
@@ -582,6 +609,21 @@ local function BuildOptions()
     ChainDB.honorMode = v
     if BT.Refresh then BT.Refresh() end
   end)
+  -- Two numbers in the corner of your eye. Off by default: most of the time
+  -- you do not want to know, and a run that suddenly feels heavy is the only
+  -- time you do.
+  opt.meter = Toggle(2, "FPS and ping on screen", function(v)
+    if BT.ToggleMeter then BT.ToggleMeter(v) end
+  end)
+  opt.meterMove = Button(opt, "Move the meter...", 150, 18, function()
+    if BT.ToggleMeter then BT.ToggleMeter(true) end
+    ChainDB.meterLocked = nil
+    opt:Hide()
+  end)
+  do
+    local x3, ly3 = At(3)
+    opt.meterMove:SetPoint("TOPLEFT", x3, ly3 - 1)
+  end
   NextRow()
 
   y = y - row * 24 - 14
@@ -594,121 +636,49 @@ local function BuildOptions()
   end)
   wipe:SetPoint("TOPLEFT", 292, y)
 
-  -- The frame is as tall as what is in it. Every hand-picked height so far
-  -- has been wrong the moment a row was added, and a button drawn past the
-  -- bottom edge still works, which is how it went unnoticed.
+  Claim()                      -- the last page
+
+  -- The tab row, measured rather than spaced by hand
   do
-    -- laid out left to right by their actual widths, wrapping if need be
-    local px, py = 12, opt.pickerY or -44
-    for _, b in ipairs(opt.picker) do
-      if px + b:GetWidth() > WIDTH - 12 then px, py = 12, py - 18 end
-      b:SetPoint("TOPLEFT", px, py)
-      px = px + b:GetWidth() + 4
+    local tx = 10
+    for _, b in ipairs(opt.tabs) do
+      b:SetPoint("TOPLEFT", tx, -28)
+      tx = tx + b:GetWidth() + 4
     end
   end
 
-  opt.fullHeight = -y + 20 + 12
+  -- One height for the whole panel: the tallest page. A frame that changes
+  -- size when you change tab is a frame whose buttons move under the cursor.
+  local tallest = -(y - row * 24) + 30
+  if routeBottom then tallest = math.max(tallest, -routeBottom + 30) end
+  opt.fullHeight = math.max(260, tallest)
   opt:SetSize(WIDTH, opt.fullHeight)
-
-  -- Everything below the first section heading has to be able to move, so its
-  -- built position is recorded once, here, and the layout pass works from
-  -- that rather than from wherever it was last put.
-  opt.placed = {}
-  local function remember(w)
-    if not w or not w.GetPoint then return end
-    local pt, rel, relPt, px, py = w:GetPoint(1)
-    if not pt or not py then return end
-    table.insert(opt.placed, { w = w, pt = pt, rel = rel, relPt = relPt,
-                              x = px, y = py })
-  end
-  for _, c in ipairs({ opt:GetChildren() }) do remember(c) end
-  for _, r in ipairs({ opt:GetRegions() }) do remember(r) end
-
-  -- Which section each thing sits in: by where it is, not by when it was
-  -- made, so the inline blocks that build their own widgets need no special
-  -- handling.
-  -- Headings and their hairlines are excluded by identity, not by a margin.
-  -- The margin was -14, and a checkbox on the first row of a section sits at
-  -- its label's y plus four - which landed six tenths of a pixel on the wrong
-  -- side of it. The boxes were left out of the section, so they stayed put
-  -- while their labels moved, and a folded section left its checkboxes behind
-  -- on the screen. No magic numbers here now.
-  local chrome = {}
-  for _, sec in ipairs(opt.sections) do
-    chrome[sec.head], chrome[sec.line] = true, true
-  end
-
-  for i, sec in ipairs(opt.sections) do
-    local nextY = opt.sections[i + 1] and opt.sections[i + 1].y or -math.huge
-    sec.widgets = {}
-    for _, p in ipairs(opt.placed) do
-      if not chrome[p.w] and p.y < sec.y and p.y > nextY then
-        table.insert(sec.widgets, p)
-      end
-    end
-    -- how much height folding this one away saves
-    local lowest = sec.y - 14
-    for _, p in ipairs(sec.widgets) do
-      local bottom = p.y - (p.w.GetHeight and p.w:GetHeight() or 16)
-      if bottom < lowest then lowest = bottom end
-    end
-    sec.contentH = (sec.y - 14) - lowest
-  end
 end
 
--- Fold the closed sections away and slide everything under them up. Positions
--- come from what was recorded at build time, never from where things are now,
--- so folding and unfolding cannot drift.
-local function LayoutSections()
-  if not opt or not opt.sections then return end
-  local fold = ChainDB.optFold or {}
-  local shift, cut = 0, 0
-  for _, b in ipairs(opt.picker or {}) do
-    local open = not fold[b.key]
-    b.bg:SetColorTexture(open and 0.25 or 0.12, open and 0.25 or 0.12,
-                         open and 0.35 or 0.12, 0.9)
+-- Show one page and hide the rest.
+function BT.ShowOptionsPage(key)
+  if not opt or not opt.pages then return nil end
+  local found
+  for _, p in ipairs(opt.pages) do if p.key == key then found = p end end
+  if found then ChainDB.optPage = key end
+  local want = ChainDB.optPage or (opt.pages[1] and opt.pages[1].key)
+  for _, p in ipairs(opt.pages) do
+    local on = (p.key == want)
+    for _, w in ipairs(p.widgets) do w:SetShown(on) end
   end
-
-  local hidden = {}
-  for _, sec in ipairs(opt.sections) do
-    local closed = fold[sec.key] and true or false
-    sec.head.fs:SetText((closed and (C.dim .. "+ ") or (C.gold .. "- "))
-      .. sec.title .. C.off)
-    sec.head:ClearAllPoints()
-    sec.head:SetPoint("TOPLEFT", 12, sec.y + 2 + shift)
-    sec.line:ClearAllPoints()
-    sec.line:SetPoint("TOPLEFT", 12, sec.y - 13 + shift)
-    sec.line:SetPoint("TOPRIGHT", opt, "TOPLEFT", WIDTH - 12, sec.y - 13 + shift)
-    for _, p in ipairs(sec.widgets) do
-      hidden[p.w] = closed
-      if not closed then
-        p.w:ClearAllPoints()
-        p.w:SetPoint(p.pt, p.rel or opt, p.relPt or p.pt, p.x, p.y + shift)
-      end
-      p.w:SetShown(not closed)
-    end
-    if closed then
-      shift = shift + sec.contentH
-      cut = cut + sec.contentH
-    end
+  for _, b in ipairs(opt.tabs or {}) do
+    local on = (b.key == want)
+    b.active = on
+    b.bg:SetColorTexture(on and 0.25 or 0.15, on and 0.25 or 0.15,
+                         on and 0.35 or 0.15, 0.9)
   end
-
-  -- and the buttons below the last section come up with it
-  local lastY = opt.sections[#opt.sections] and opt.sections[#opt.sections].y or 0
-  for _, p in ipairs(opt.placed) do
-    if hidden[p.w] == nil and p.y < lastY - 14 then
-      p.w:ClearAllPoints()
-      p.w:SetPoint(p.pt, p.rel or opt, p.relPt or p.pt, p.x, p.y + shift)
-    end
-  end
-  opt:SetHeight(math.max(120, (opt.fullHeight or 400) - cut))
+  return want
 end
-BT.LayoutOptions = LayoutSections
 
 function BT.RenderOptions()
   if not opt or not opt:IsShown() then return end
   local db = ChainDB
-  LayoutSections()
+
   opt.zoom.fs:SetText(math.floor((db.optScale or 1) * 100 + 0.5) .. "%")
   local pages = math.ceil(#BT.DUNGEONS / PER_PAGE)
   if optPage > pages then optPage = pages end
@@ -777,6 +747,8 @@ function BT.RenderOptions()
   opt.lock:SetChecked(db.locked and true or false)
   opt.honorBar:SetChecked(db.honorBar ~= false)
   opt.honorMode:SetChecked(db.honorMode ~= false)
+  opt.meter:SetChecked(db.meter == true)
+  opt.loot:SetChecked(db.logLoot ~= false)
   opt.stealth:SetChecked(db.stealthAlert ~= false)
   opt.announceKOS:SetChecked(db.announceKOS and true or false)
   opt.sightChan.fs:SetText((db.announceKOS and C.gold or C.dim)
@@ -806,6 +778,12 @@ function BT.RenderOptions()
   local wantsNames = (db.shareWith == "friends")
   opt.friendsLabel:SetText(wantsNames and "names to whisper"
     or (C.dim .. "names to whisper" .. C.off))
+
+  -- Last, not first. Everything above this shows and hides rows of its own -
+  -- the instance table in particular re-shows its rows every render - so
+  -- choosing the page before them meant the route table came back on top of
+  -- whichever page you were actually looking at.
+  BT.ShowOptionsPage()
 end
 
 --------------------------------------------------------------------------
@@ -1191,6 +1169,10 @@ SlashCmdList["CHAIN"] = function(input)
     Say(BT.PlaceNearby(true)
       and "drag the list where you want it, then right-click it"
       or "nothing to place")
+  elseif cmd == "fps" or cmd == "ping" or cmd == "meter" then
+    Say("fps and ping " .. (BT.ToggleMeter() and "on" or "off"))
+  elseif cmd == "loot" then
+    BT.ShowTab("loot")
   elseif cmd == "nearby" then
     Say("the list on screen is " .. (BT.ToggleNearby() and "on" or "off"))
   elseif cmd == "minimap" then
@@ -1265,6 +1247,8 @@ SlashCmdList["CHAIN"] = function(input)
     print("  /chain flush      force the chat log out to disk")
     print("  /chain announce   tell the group when the instance resets")
     print("  /chain trade      what you have paid, and to whom")
+    print("  /chain loot       everything that dropped, yours and the group's")
+    print("  /chain fps        the frames and latency readout, on or off")
     print("  /chain pvp        the rank planner - add a number to set a target")
     print("  /chain enemies    everyone seen out there, and the KOS list")
     print("  /chain kos NAME   mark somebody kill on sight")

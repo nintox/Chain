@@ -1193,6 +1193,7 @@ function BT.OnEvent(_, event, ...)
     -- the minimap exists by the time the addon loads, so the button can go
     -- straight on rather than waiting for the first frame
     if BT.RefreshMinimap then BT.RefreshMinimap() end
+    if BT.RefreshMeter then BT.RefreshMeter() end
     return
   end
 
@@ -1275,6 +1276,12 @@ function BT.OnEvent(_, event, ...)
         if BT.NoteFight then
           BT.NoteFight(sub, src, srcName, srcFlags, dst, dstName, dstFlags)
         end
+      end
+      -- The name of whatever just died, kept against its GUID. The loot
+      -- window will name the corpse it is showing, but only as a GUID - and
+      -- the only place that GUID was ever given a name is here.
+      if sub == "UNIT_DIED" and BT.NoteCorpse and dst and dstName then
+        BT.NoteCorpse(dst, dstName)
       end
     end
     return

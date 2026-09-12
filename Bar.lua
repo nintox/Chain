@@ -259,12 +259,16 @@ local function HonorText()
   end
   local p = BT.PvPState()
 
+  -- what this week is actually for: the plan's milestone if you have set a
+  -- target, otherwise simply the next one
+  local goal, short = BT.WeekGoal()
+
   local from = 0
   if p.met then from = p.met.honor end
-  local to = p.nextMilestone and p.nextMilestone.honor or from
+  local to = goal and goal.honor or from
   S.cur = math.max(0, (p.honor or 0) - from)
   S.max = math.max(1, to - from)
-  if not p.nextMilestone then S.cur, S.max = 1, 1 end
+  if not goal then S.cur, S.max = 1, 1 end
 
   S.topLeft = p.rankName .. C.dim .. "  " .. BT.Pct(p.progress or 0) .. C.off
   local target = ChainCharDB.pvpTarget
@@ -276,11 +280,20 @@ local function HonorText()
     end
   end
   S.topRight = C.dim .. (p.kills or 0) .. " kills this week" .. C.off
+  if goal then
+    S.topRight = C.dim .. "for " .. BT.RankName(goal.rank) .. "   "
+      .. (p.kills or 0) .. " kills" .. C.off
+  end
 
-  S.barLeft = BT.N(p.honor or 0) .. C.dim .. " honor" .. C.off
-  if p.nextMilestone then
-    S.barCenter = BT.N(p.short) .. " to " .. BT.RankName(p.nextMilestone.rank)
-    S.barRight = BT.N(p.nextMilestone.honor)
+  -- Shaped like the experience bar, because that is the bar this replaces and
+  -- the eye already knows where each number lives: how far along on the left,
+  -- what is left in the middle, what you are aiming at on the right.
+  S.barLeft = BT.N(p.honor or 0) .. C.dim .. " honor  "
+    .. BT.Pct(S.cur / S.max) .. C.off
+  if goal then
+    -- said as what is missing, because that is the number you go and get
+    S.barCenter = C.warn .. BT.N(short) .. " more this week" .. C.off
+    S.barRight = BT.N(goal.honor)
   else
     S.barCenter = "this week is spent"
     S.barRight = p.newRankName
@@ -553,7 +566,11 @@ function BT.RefreshHonorBar(w)
   if not p.enoughKills then
     txt = C.bad .. p.killsShort .. " more kills before any honor counts" .. C.off
   elseif p.nextMilestone then
-    txt = BT.N(p.short) .. " to " .. BT.RankName(p.nextMilestone.rank)
+    local goal, short = BT.WeekGoal()
+    goal = goal or p.nextMilestone
+    short = short or p.short
+    txt = BT.N(short) .. " more this week" .. C.dim .. "  -> "
+      .. BT.RankName(goal.rank) .. C.off
   else
     txt = C.good .. "this week is spent - " .. p.newRankName .. C.off
   end
@@ -1064,6 +1081,12 @@ function BT.BarTooltip(owner)
       Pair("stopping now", (p.met and C.good or C.dim)
         .. (p.met and (p.newRankName .. "  " .. BT.Pct(p.newProgress))
             or "no progress") .. C.off)
+      local goal, short = BT.WeekGoal()
+      if goal then
+        Pair("still needed this week", C.warn .. BT.N(short) .. C.off
+          .. C.dim .. "  of " .. BT.N(goal.honor) .. "  ->  "
+          .. BT.RankName(goal.rank) .. C.off)
+      end
       if p.nextMilestone then
         Pair("next milestone", C.warn .. BT.N(p.nextMilestone.honor) .. C.off
           .. C.dim .. "  " .. BT.N(p.short) .. " to go  ->  "

@@ -25,9 +25,11 @@ Stats.lua
 Decay.lua
 Core.lua
 Trade.lua
+Loot.lua
 PvP.lua
 Enemy.lua
 Roster.lua
+Meter.lua
 Bar.lua
 Minimap.lua
 Window.lua

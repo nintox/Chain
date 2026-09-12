@@ -86,10 +86,58 @@ parts that are not.
   matters about a rogue you cannot see is that you cannot see him, and a druid
   in cat form is the same news - the class is on the line underneath either
   way.
-- The settings have a row of buttons at the top that opens one section and
-  folds the rest, and opens everything again if you click the same one twice.
-  Six blocks the length of a screen, and almost nobody wants two of them at
-  once.
+- **The settings are built like the history window now**: the same width, a
+  row of real tabs at the top, one page at a time underneath - Instances,
+  Runs and prices, Resets and alerts, What to read out of chat, Who is out
+  there, Sharing and the bar. The instance table is a page like any other
+  rather than always sitting above everything else, which is most of why the
+  panel used to be the length of a screen.
+  The columns are 284 pixels apart instead of 164, so a label no longer has to
+  be shortened until it stops saying what it means.
+  Which page a control belongs to is decided when it is made rather than
+  worked out afterwards from where it ended up, and the height is the tallest
+  page rather than the current one - a frame that resizes when you change tab
+  is a frame whose buttons move under the cursor.
+- The settings drew two pages at once: the instance table came back on top of
+  whichever page you had chosen. Choosing the page happened first, and
+  everything after it shows and hides rows of its own - the instance table in
+  particular redraws its rows on every pass. The page is chosen last now, and
+  there is a test that a full redraw does not bring the table back.
+- Both windows are fully opaque and the settings sit strictly above, so
+  neither one's text can be read through the other when both are open.
+- **A loot log**: everything that dropped, yours and everyone else's in the
+  party or raid, with who got it, what it vendors for, and which run and
+  booster it fell under. Its own tab, or `/chain loot`.
+  The combat log carries none of this - the chat messages do, and they arrive
+  for the whole group. The sentences are turned into patterns from the
+  client's own strings ("You receive loot: %s.") rather than matched against
+  English written out by hand, which is the only reason it works on a client
+  in any language. Coins too, with the unit names taken from the client the
+  same way.
+  An item the client has not cached yet says so instead of showing nothing: a
+  zero in a money column is a claim.
+- **What it dropped from**, for your own loot. The loot message does not say -
+  nothing in it does - so this is two halves neither of which is any use
+  alone: the loot window names the corpse it is showing, but only as a GUID,
+  and the only place that GUID was ever given a name is the combat log when
+  the thing died. Somebody else's loot has no source at all and the column
+  stays blank rather than guessing, because a wrong mob is worse than no mob.
+- **One row per corpse.** A mob that gave you a jerkin, three cloth and
+  thirty-five copper is one event, and reading it as three lines that happen
+  to sit next to each other is reading it wrong. The row lists what it gave,
+  coins last, with the total for the whole corpse; more than three things and
+  the rest is a tally with the full list on the tooltip.
+  Grouped on the way out, not on the way in: the log still stores one entry
+  per thing, so exports and totals are unaffected and two of the same item off
+  one mob is still two drops.
+- Coins carry the source too. They came off the same corpse as everything
+  else in that loot window, and leaving it out put the money and the cloth
+  from one mob on two lines that did not look related to each other. The count
+  column shows a dash for coins rather than "1", which meant nothing.
+- Coins are written the way the game writes them - "15s 3c", "2g 15s". They
+  went through the gold formatter, which rounds to whole gold, so fifteen
+  silver came out as "0g" and a column of noughts read as a broken log rather
+  than as small amounts.
 - **A note no longer marks anybody.** They are not the same thing: "always
   rides with two friends" is worth writing about somebody you have no
   intention of hunting, and having to mark him to say it made the mark mean
@@ -221,7 +269,16 @@ parts that are not.
 - **At max level the bar becomes the honour bar, by itself.** There is no
   experience left to measure, so an experience bar there is a bar that will
   never move again; the week's honour is the only thing still going up.
-- The fill runs from the milestone you have already banked to the next one,
+- It says what you are **still missing this week**, in the middle where the
+  experience bar says how much is left to the next level, with a percentage on
+  the left exactly where that bar puts one. Same shape, because it is the bar
+  it replaces and the eye already knows where each number lives.
+- And it is missing towards the right number: if you have set a target rank,
+  the goal is the plan's **first week**, not the smallest step up. Aiming at
+  the small one and stopping there is how a fourteen-week plan quietly becomes
+  a twenty-week one.
+- The fill runs from the milestone you have already banked to the one you are
+  aiming at this week,
   because that gap is the only stretch where the honour you earn is worth
   anything, and where you are inside it is precisely the question. The
   heading is your rank and, if you have set a target, how many weeks away it
@@ -236,6 +293,28 @@ parts that are not.
   on Era and on the anniversary realms, and it is not the same number
   everywhere. There is a switch for anybody who wants the empty experience
   bar back.
+
+**Frames and latency**
+
+- **A small readout on screen**: frames and latency, in the corner of your
+  eye. Off by default, `/chain fps` or the switch under *Sharing and the bar*.
+- The colours are the whole feature. A number you have to compare against a
+  remembered threshold is a number you read; a number that turns orange is a
+  number you notice. Green, gold, amber and red, and the two scales run
+  opposite ways because more frames is better and more milliseconds is not.
+- The latency shown is the **worse of world and home**, because that is the
+  one you feel. The tooltip splits them and says which is which - world is
+  whether a spell goes off, home is chat and the auction house - and says that
+  the client only recomputes latency every thirty seconds, so it sitting still
+  is the game and not a frozen readout.
+- It hangs under the minimap until you say otherwise, which is where the eye
+  already goes for this sort of number - and it no longer jumps while you drag
+  it. The once-a-second refresh was re-anchoring it mid-drag, the same thing
+  that made the nearby list impossible to place; neither the anchor nor the
+  size is touched while you are holding it.
+- Draggable, lockable, resizable, and either number can be switched off on its
+  own; the box shrinks to fit rather than leaving a black bar where the other
+  one was.
 
 **Smaller things**
 

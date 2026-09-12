@@ -31,6 +31,25 @@ function BT.G(v)
   return BT.N(v) .. "g"
 end
 
+-- Coin, written the way the game writes it. BT.G rounds to whole gold, which
+-- is right for a boost price and wrong for a drop: fifteen silver came out as
+-- "0g", and a column of noughts says the log is broken rather than that the
+-- amounts are small.
+function BT.Coin(copper)
+  copper = math.floor(math.max(0, tonumber(copper) or 0) + 0.5)
+  local g = math.floor(copper / 10000)
+  local si = math.floor((copper % 10000) / 100)
+  local c = copper % 100
+  local out = {}
+  if g > 0 then out[#out + 1] = BT.N(g) .. "g" end
+  if si > 0 then out[#out + 1] = si .. "s" end
+  -- copper only when it is all there is, otherwise it is three characters of
+  -- nothing on every line
+  if c > 0 and g == 0 then out[#out + 1] = c .. "c" end
+  if #out == 0 then return "0c" end
+  return table.concat(out, " ")
+end
+
 function BT.T(sec)
   sec = math.floor(sec or 0)
   if sec < 0 then sec = 0 end

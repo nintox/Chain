@@ -28,8 +28,8 @@ local function loadFile(name)
 end
 
 -- the .toc order
-for _, f in ipairs({ "Data.lua", "Stats.lua", "Decay.lua", "Core.lua", "Trade.lua",
-                     "PvP.lua", "Enemy.lua", "Roster.lua", "Bar.lua", "Minimap.lua", "Window.lua",
+for _, f in ipairs({ "Data.lua", "Stats.lua", "Decay.lua", "Core.lua", "Trade.lua", "Loot.lua",
+                     "PvP.lua", "Enemy.lua", "Roster.lua", "Meter.lua", "Bar.lua", "Minimap.lua", "Window.lua",
                      "Options.lua" }) do
   loadFile(f)
 end
@@ -873,8 +873,13 @@ do  -- ingenting skal stikke ut av ramma: det er slik knappane hamna utanfor
   ok(worst == nil, "alt held seg innanfor ramma (" .. tostring(worst)
      .. " endar på " .. math.floor(worstW) .. " av " .. frameW .. ")")
 
-  -- og ingenting skal liggje oppå noko anna: berre widgetar med ei kjend
-  -- breidde blir samanlikna, så tekstbreidder på slump ikkje lyg
+  -- Og ingenting skal liggje oppå noko anna. Sidene ligg med vilje på same
+  -- staden - berre éi er framme om gongen - så samanlikninga er per side, som
+  -- er nøyaktig det som kan vere på skjermen samtidig.
+  local pageOf = {}
+  for _, pg in ipairs(o.pages or {}) do
+    for _, w in ipairs(pg.widgets) do pageOf[w] = pg.key end
+  end
   local boxes = {}
   for _, child in ipairs(o.__children or {}) do
     local p = child.__points and child.__points[1]
@@ -885,7 +890,8 @@ do  -- ingenting skal stikke ut av ramma: det er slik knappane hamna utanfor
     if p and w and w > 0 and (p.point or ""):find("LEFT")
        and not (p.point or ""):find("RIGHT") then
       table.insert(boxes, { x = p.x or 0, y = p.y or 0, w = w,
-                            h = child.__h or 16, what = child.__kind })
+                            h = child.__h or 16, what = child.__kind,
+                            page = pageOf[child] })
     end
   end
   local clash
@@ -893,8 +899,11 @@ do  -- ingenting skal stikke ut av ramma: det er slik knappane hamna utanfor
     for j = i + 1, #boxes do
       local a, b = boxes[i], boxes[j]
       -- same row, not merely nearby: rows here are 20 pixels apart or more
-      if math.abs(a.y - b.y) < 8 and a.x < b.x + b.w and b.x < a.x + a.w then
-        clash = string.format("%s ved %d og %s ved %d", a.what, a.x, b.what, b.x)
+      local together = (a.page == b.page) or not a.page or not b.page
+      if together and math.abs(a.y - b.y) < 8
+         and a.x < b.x + b.w and b.x < a.x + a.w then
+        clash = string.format("%s ved %d og %s ved %d (side %s/%s)",
+          a.what, a.x, b.what, b.x, tostring(a.page), tostring(b.page))
       end
     end
   end
@@ -903,115 +912,94 @@ do  -- ingenting skal stikke ut av ramma: det er slik knappane hamna utanfor
      .. " endar på " .. math.floor(tallY) .. " av " .. frameH .. ")")
 end
 
-do  -- seksjonar som kan brettast saman: panelet var høgare enn mange skjermar
+do  -- Fanene i innstillingane: same form som det store vindauget, éi side om
+    -- gongen. Panelet var 508 breitt med seks blokker stabla nedover, og
+    -- kolonnane var smale nok til at ein etikett i den eine nådde inn i den
+    -- neste.
   local o = _G.ChainOptions
-  ok(o.sections and #o.sections >= 4, "panelet er delt i seksjonar")
-  ChainDB.optFold = {}
-  BT.RenderOptions()
-  local openH = o:GetHeight()
-  local sec = o.sections[2]
-  local widget = sec.widgets[1] and sec.widgets[1].w
-  ok(widget ~= nil, "seksjonen har noko i seg")
-  ok(widget and widget:IsShown(), "og det er framme når han er open")
+  ok(o.pages and #o.pages >= 5, "panelet er delt i sider")
+  eq(#o.tabs, #o.pages, "og det er ei fane per side")
+  ok(o.pages[1].key == "route", "instansane er fyrste sida")
 
-  -- brett saman, og panelet skal faktisk bli lågare - ikkje berre gøyme ting
-  ChainDB.optFold[sec.key] = true
-  BT.RenderOptions()
-  ok(not widget:IsShown(), "brettar du saman, forsvinn innhaldet")
-  ok(o:GetHeight() < openH, "og panelet blir lågare (" ..
-     math.floor(o:GetHeight()) .. " mot " .. math.floor(openH) .. ")")
-  ok(sec.head:IsShown(), "men overskrifta står att, så du finn han igjen")
-
-
-  -- alt under skal ha flytta seg opp, ikkje stått att med eit hol
-  local below = o.sections[#o.sections]
-  local bw = below.widgets[1] and below.widgets[1].w
-  if bw then
-    local _, _, _, _, foldedY = bw:GetPoint(1)
-    ChainDB.optFold[sec.key] = nil
-    BT.RenderOptions()
-    local _, _, _, _, openY = bw:GetPoint(1)
-    ok(foldedY > openY, "det som ligg under kjem opp (" ..
-       math.floor(foldedY) .. " mot " .. math.floor(openY) .. ")")
-  end
-
-  -- og opp igjen skal gje nøyaktig same høgd som før
-  ChainDB.optFold = {}
-  BT.RenderOptions()
-  near(o:GetHeight(), openH, "og opp igjen er akkurat som før", 0.5)
-
-  -- Ein avkryssingsboks ligg fire piksler over etiketten sin. Grensa mellom
-  -- to seksjonar var eit fast tal, og første rada sine boksar hamna seks
-  -- tidelar på feil side av det - så dei blei ståande igjen medan etikettane
-  -- flytta seg, og ein brettet seksjon la att boksane sine på skjermen.
-  do
-    ChainDB.optFold = {}
-    BT.RenderOptions()
-    local function whose(w)
-      for i, sec2 in ipairs(o.sections) do
-        for _, pp in ipairs(sec2.widgets) do if pp.w == w then return i end end
-      end
-      return nil
+  -- kvar einaste kontroll høyrer til nøyaktig éi side. Det er invarianten:
+  -- ein widget utan side blir aldri gøymd, og dukkar opp oppå den sida du
+  -- faktisk ser på.
+  local pageOf, twice = {}, 0
+  for _, pg in ipairs(o.pages) do
+    for _, w in ipairs(pg.widgets) do
+      if pageOf[w] then twice = twice + 1 end
+      pageOf[w] = pg.key
     end
-    -- kvar einaste kontroll skal høyre til ein seksjon, og boks og etikett
-    -- skal høyre til den SAME
-    local orphans, split = 0, 0
-    for _, name in ipairs({ "watch", "alertAll", "enemySound", "stealth",
-                            "announceKOS", "nearbyList", "sound", "announce",
-                            "banner", "nit", "ads", "signal", "snap", "groups",
-                            "announceLock", "minimap", "share", "showBar",
-                            "lock", "honorBar" }) do
-      local t = o[name]
-      if t then
-        local si = whose(t)
-        if not si then orphans = orphans + 1 end
-        if t.label then
-          local li = whose(t.label)
-          if si ~= li then split = split + 1 end
-        end
+  end
+  eq(twice, 0, "og ingen widget høyrer til to sider")
+
+  local orphans = {}
+  for _, name in ipairs({ "watch", "alertAll", "enemySound", "stealth",
+                          "announceKOS", "nearbyList", "sound", "announce",
+                          "banner", "nit", "ads", "signal", "snap", "groups",
+                          "loot", "announceLock", "minimap", "share",
+                          "showBar", "lock", "honorBar", "honorMode" }) do
+    local t = o[name]
+    if t then
+      if not pageOf[t] then orphans[#orphans + 1] = name .. " (boks)" end
+      if t.label and not pageOf[t.label] then
+        orphans[#orphans + 1] = name .. " (etikett)"
+      end
+      if t.label and pageOf[t] ~= pageOf[t.label] then
+        orphans[#orphans + 1] = name .. " (boks og etikett på kvar si side)"
       end
     end
-    eq(orphans, 0, "ingen kontroll fell utanfor alle seksjonar")
-    eq(split, 0, "og boks og etikett hamnar i same seksjon")
+  end
+  eq(#orphans, 0, "alt høyrer til ei side (" .. table.concat(orphans, ", ") .. ")")
 
-    -- og brettar du ein seksjon, skal boksane forsvinne med etikettane
-    ChainDB.optFold = { enemies = true }
-    BT.RenderOptions()
-    ok(not o.watch:IsShown(), "boksen forsvinn når seksjonen blir brettet")
-    ok(not o.watch.label:IsShown(), "og etiketten med han")
-    ChainDB.optFold = {}
-    BT.RenderOptions()
-    ok(o.watch:IsShown() and o.watch.label:IsShown(), "og begge kjem tilbake")
+  -- og å byte fane viser éi side og gøymer resten
+  BT.ShowOptionsPage("enemies")
+  ok(o.watch:IsShown(), "kontrollane på den valde sida er framme")
+  ok(o.watch.label:IsShown(), "med etikettane sine")
+  ok(not o.pack:IsShown(), "og dei på andre sider er borte")
+  ok(not o.rows[1]:IsShown(), "instans-tabellen òg")
+
+  BT.ShowOptionsPage("route")
+  ok(o.rows[1]:IsShown(), "og tilbake igjen")
+  ok(not o.watch:IsShown(), "medan den førre er gøymd")
+
+  -- Og ei heil oppteikning skal ikkje dra instans-tabellen fram igjen oppå
+  -- den sida du faktisk er på. Alt over sidevalet viser og gøymer rader av
+  -- seg sjølv, og instans-tabellen teiknar sine på nytt kvar gong.
+  BT.ShowOptionsPage("share")
+  BT.RenderOptions()
+  ok(not o.rows[1]:IsShown(),
+     "ei oppteikning hentar ikkje instans-tabellen tilbake")
+  ok(o.share:IsShown(), "medan sida du er på står")
+  BT.ShowOptionsPage("route")
+  BT.RenderOptions()
+  ok(o.rows[1]:IsShown(), "og på Instances er tabellen der")
+
+  -- fana som er vald skal syne det
+  BT.ShowOptionsPage("enemies")
+  for _, b in ipairs(o.tabs) do
+    if b.key == "enemies" then ok(b.active, "den valde fana er merkt")
+    else ok(not b.active, "og dei andre ikkje (" .. b.key .. ")") end
   end
 
-  -- Knapperada øvst opnar éin seksjon og brettar resten. Panelet hadde vakse
-  -- til seks blokker og lengda av ein skjerm, og nesten ingen vil ha to av
-  -- dei framme samtidig.
+  -- Begge vindauga opne samtidig: innstillingane skal liggje over, og vere
+  -- ugjennomsiktige. To kolonnar med tal som les svakt gjennom kvarandre er
+  -- verre enn begge kvar for seg.
   do
-    ChainDB.optFold = {}
-    BT.RenderOptions()
-    local tall = o:GetHeight()
-    ok(o.picker and #o.picker == #o.sections, "ein knapp per seksjon")
-    local pick = o.picker[3]
-    pick.__scripts.OnClick(pick)
-    ok(not (ChainDB.optFold or {})[pick.key], "den du klikka er open")
-    local others = 0
-    for _, sec2 in ipairs(o.sections) do
-      if sec2.key ~= pick.key and ChainDB.optFold[sec2.key] then others = others + 1 end
-    end
-    eq(others, #o.sections - 1, "og alle dei andre er brettet vekk")
-    ok(o:GetHeight() < tall, "så panelet blir mykje kortare")
-
-    -- og klikkar du den same igjen, opnar alt seg
-    pick.__scripts.OnClick(pick)
-    local anyFolded = false
-    for _, sec2 in ipairs(o.sections) do
-      if ChainDB.optFold[sec2.key] then anyFolded = true end
-    end
-    ok(not anyFolded, "eit klikk til opnar alt igjen")
-    ChainDB.optFold = {}
-    BT.RenderOptions()
+    local w = _G.ChainWindow
+    ok(o.__strata == "FULLSCREEN_DIALOG",
+       "innstillingane ligg over vindauget (" .. tostring(o.__strata) .. ")")
+    ok(w.__strata == "DIALOG", "og vindauget under")
+    eq(o.bg.__alpha, 1, "og bakgrunnen er heilt tett")
+    eq(w.bg.__alpha, 1, "på begge to")
   end
+
+  -- høgda skal ikkje endre seg når du byter: ei ramme som skiftar storleik
+  -- under peikaren er ei ramme der knappane flyttar seg
+  local h1 = o:GetHeight()
+  BT.ShowOptionsPage("share")
+  eq(o:GetHeight(), h1, "høgda står still når du byter fane")
+  BT.ShowOptionsPage("route")
 end
 
 do  -- og kva level spelet slepp deg inn på
@@ -2349,13 +2337,37 @@ do
   ok((sl.barLeft or ""):find("honor"), "baren tel honor")
   ok((sl.topLeft or ""):find("%%"), "og overskrifta er ranken din")
 
-  -- Fyllet går frå milepælen du har banka til den neste, for det er den
-  -- einaste strekninga der honoren du tener er verdt noko.
+  -- Fyllet går frå milepælen du har banka til den du siktar på denne veka,
+  -- for det er den einaste strekninga der honoren du tener er verdt noko.
+  local keepTarget = ChainCharDB.pvpTarget
+  ChainCharDB.pvpTarget = nil
+  BT.Touch()
+  sl = BT.BuildText()
   local p = BT.PvPState()
   local from = p.met and p.met.honor or 0
-  eq(sl.max, p.nextMilestone.honor - from, "nemnaren er spranget til neste")
+  eq(sl.max, p.nextMilestone.honor - from, "utan mål er nemnaren spranget til neste")
   eq(sl.cur, p.honor - from, "og teljaren kor langt inn i det du er")
-  ok((sl.barCenter or ""):find(" to "), "midten seier kor mykje som står att")
+  ok((sl.barCenter or ""):find("more this week"),
+     "midten seier kor mykje du manglar for denne veka")
+  ok((sl.barLeft or ""):find("%%"), "og venstre har ein prosent, som på xp-baren")
+
+  -- Har du sett eit mål, er det planen si veke 1 som gjeld - ikkje det
+  -- minste spranget. Å sikte på det vesle og stoppe der er korleis ein plan
+  -- på fjorten veker stille blir ein på tjue.
+  do
+    ChainCharDB.pvpTarget = 12
+    BT.Touch()
+    local goal, short = BT.WeekGoal()
+    local plan = BT.PlanToRank(12, p.rank, p.progress)
+    eq(goal.honor, plan.weeks[1].honor, "målet er planen si fyrste veke")
+    eq(short, goal.honor - p.honor, "og det som manglar er rekna mot det")
+    local sl2 = BT.BuildText()
+    eq(sl2.max, goal.honor - from, "og baren måler heile det spranget")
+    ok((sl2.topRight or ""):find("for "), "overskrifta seier kva det er for")
+  end
+  ChainCharDB.pvpTarget = keepTarget
+  BT.Touch()
+  sl = BT.BuildText()
 
   -- og den slanke andre-baren skal ikkje teikne det same om att
   BT.Refresh()
@@ -2376,6 +2388,295 @@ do
   S.level, ChainCharDB.run = keepLevel, keepRun
   S.weekKills = 40
   BT.Touch()
+end
+
+
+print("== loot-loggen ==")
+-- Kamploggen ber ingenting om loot. Chat-meldingane gjer det, og dei kjem for
+-- heile gruppa - difor er dette den einaste vegen til "kven fekk kva".
+--
+-- Mønstera blir bygde av klienten sine eigne setningar, ikkje av engelske ord
+-- skrivne inn her. Det er heile grunnen til at det virkar på ein klient på
+-- kva språk som helst.
+do
+  ChainDB.loot = {}
+  local LINK = "|cffa335ee|Hitem:12345::::::::60:::::|h[Krol Blade]|h|r"
+  local LINK2 = "|cff1eff00|Hitem:999::::::::60:::::|h[Grønt Sverd]|h|r"
+  S.items[12345] = { name = "Krol Blade", quality = 4, price = 15000 }
+  S.items[999] = { name = "Grønt Sverd", quality = 2, price = 500 }
+  local lf = BT.lootFrame
+
+  -- deg sjølv
+  S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK .. ".")
+  eq(#ChainDB.loot, 1, "ditt eige loot blir logga")
+  eq(ChainDB.loot[1].id, 12345, "med rett item")
+  eq(ChainDB.loot[1].n, 1, "og eitt av det")
+  ok(ChainDB.loot[1].mine, "og merkt som ditt")
+
+  -- og nokon andre i gruppa, som er heile poenget
+  S.Fire(lf, "CHAT_MSG_LOOT", "Kompis receives loot: " .. LINK2 .. ".")
+  eq(#ChainDB.loot, 2, "andre sitt loot blir òg logga")
+  eq(ChainDB.loot[2].who, "Kompis", "med kven som fekk det")
+  eq(ChainDB.loot[2].mine, nil, "og det er ikkje ditt")
+
+  -- fleire av same
+  S.Fire(lf, "CHAT_MSG_LOOT", "Kompis receives loot: " .. LINK2 .. "x4.")
+  eq(ChainDB.loot[3].n, 4, "talet blir lese når det står der")
+  -- og "x4"-varianten skal ikkje bli lesen som eit item som heiter noko x4:
+  -- det er difor dei fleirtalige mønstera blir prøvde fyrst
+  eq(ChainDB.loot[3].id, 999, "og itemet er framleis rett")
+
+  -- ting som ikkje er loot skal ikkje bli det
+  local before = #ChainDB.loot
+  S.Fire(lf, "CHAT_MSG_LOOT", "Kompis says something about loot")
+  eq(#ChainDB.loot, before, "ei linje utan item er ikkje loot")
+
+  -- mynt, med klienten sine eigne einingsord
+  S.Fire(lf, "CHAT_MSG_MONEY", "You loot 2 Gold 15 Silver 3 Copper")
+  eq(ChainDB.loot[#ChainDB.loot].copper, 2 * 10000 + 15 * 100 + 3,
+     "mynt blir rekna om til kopar")
+
+  -- verdi kjem frå klienten, og "ikkje lasta enno" skal seiast som ukjent og
+  -- ikkje som null - ein null i ein pengekolonne er ein påstand
+  eq(BT.LootValue(ChainDB.loot[1]), 15000, "verdien kjem frå klienten")
+  eq(BT.LootValue({ link = "|Hitem:4242|h[Ukjent]|h", n = 1 }), nil,
+     "eit item som ikkje er lasta er ukjent, ikkje gratis")
+  eq(BT.LootValue(ChainDB.loot[3]), 500 * 4, "og fleire tel med talet")
+
+  -- summane
+  local value, byWho, items, coins, unknown = BT.LootTotals()
+  eq(items, 6, "alle gjenstandane er talde (1 + 1 + 4)")
+  ok(coins > 0, "og myntane for seg")
+  ok(value > 0, "det blir ein sum av det")
+  ok(byWho[1] and byWho[1].who, "og ei liste over kven som fekk mest")
+
+  -- Kva det datt frå. Loot-meldinga seier det ikkje - ingenting i henne gjer
+  -- det - så dette er kjent for ditt eige loot og blankt for alle andre sitt.
+  -- Loot-vindauget namngjev liket som ein GUID, og den einaste staden den
+  -- GUID-en nokon gong fekk eit namn er kamploggen då tingen døydde.
+  do
+    BT.NoteCorpse("Creature-0-1-1-1-731-0001", "Defias Thug")
+    S.lootSlots = { "Creature-0-1-1-1-731-0001" }
+    BT.NoteLootSource()
+    S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK .. ".")
+    eq(ChainDB.loot[#ChainDB.loot].from, "Defias Thug", "kjelda blir med")
+
+    -- og andre sitt loot skal IKKJE få ei gjetta kjelde
+    S.Fire(lf, "CHAT_MSG_LOOT", "Kompis receives loot: " .. LINK2 .. ".")
+    eq(ChainDB.loot[#ChainDB.loot].from, nil,
+       "andre sitt loot har inga kjelde, og blir ikkje gjetta")
+
+    -- ein GUID vi aldri såg døy har vi ikkje noko namn på
+    S.lootSlots = { "Creature-0-1-1-1-999-9999" }
+    S.units["target"] = nil
+    BT.NoteLootSource()
+    S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK .. ".")
+    eq(ChainDB.loot[#ChainDB.loot].from, nil, "ukjend lik gjev ingen kjelde")
+
+    -- Mynt kjem av same liket som resten i det vindauget. Utan dette hamna
+    -- pengane og tøyet frå éin mob på to linjer som ikkje såg i slekt ut.
+    BT.NoteCorpse("Creature-0-1-1-1-731-0003", "Riverpaw Mystic")
+    S.lootSlots = { "Creature-0-1-1-1-731-0003" }
+    BT.NoteLootSource()
+    S.Fire(lf, "CHAT_MSG_MONEY", "You loot 16 Copper")
+    S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK2 .. "x3.")
+    local coinRow = ChainDB.loot[#ChainDB.loot - 1]
+    local itemRow = ChainDB.loot[#ChainDB.loot]
+    eq(coinRow.from, "Riverpaw Mystic", "myntane får kjelda si")
+    eq(itemRow.from, coinRow.from, "og same mob står på begge")
+
+    -- og ei gammal kjelde skal ikkje henge att på neste lik
+    BT.NoteCorpse("Creature-0-1-1-1-731-0002", "Defias Bandit")
+    S.lootSlots = { "Creature-0-1-1-1-731-0002" }
+    BT.NoteLootSource()
+    S.now = S.now + 60
+    S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK .. ".")
+    eq(ChainDB.loot[#ChainDB.loot].from, nil,
+       "ei gammal kjelde blir ikkje hengande att")
+    S.lootSlots = {}
+  end
+
+  -- Mynt skal ikkje runde seg vekk. Femten sølv kom ut som "0g", og ein
+  -- kolonne med nullar seier at loggen er øydelagd, ikkje at beløpa er små.
+  do
+    eq(BT.Coin(1503), "15s 3c", "småpengar blir sagt i sølv og kopar")
+    eq(BT.Coin(2 * 10000 + 1500), "2g 15s", "og store i gull og sølv")
+    eq(BT.Coin(0), "0c", "og null er null kopar, ikkje null gull")
+    eq(BT.Coin(10000), "1g", "eit reint gullbeløp har ingen hale")
+  end
+
+
+  -- Ei rad per lik. Loggen lagrar éi oppføring per ting, som er rett -
+  -- eksport og summar vil ha det slik - men ein mob som gav deg ei jakke,
+  -- tre tøy og trettifem kopar er éi hending, og å lese det som tre linjer
+  -- som tilfeldigvis står ved sida av kvarandre er å lese det feil.
+  do
+    ChainDB.loot = {}
+    BT.NoteCorpse("Creature-0-1-1-1-731-0007", "Riverpaw Taskmaster")
+    S.lootSlots = { "Creature-0-1-1-1-731-0007" }
+    BT.NoteLootSource()
+    S.Fire(lf, "CHAT_MSG_MONEY", "You loot 35 Copper")
+    S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK .. ".")
+    S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK2 .. "x3.")
+    eq(#ChainDB.loot, 3, "loggen har framleis tre oppføringar")
+
+    BT.ShowTab("loot")
+    local wg, rows = _G.ChainWindow, {}
+    for _, r in ipairs(wg.rows) do
+      if r:IsShown() then rows[#rows + 1] = r end
+    end
+    eq(#rows, 1, "men det blir éi rad")
+    local cell = (rows[1].cells[2]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    ok(cell:find("Krol Blade"), "med gjenstanden")
+    ok(cell:find("3x"), "og talet på dei det var fleire av")
+    ok(cell:find("35c"), "og myntane, sist")
+    eq((rows[1].cells[3]:GetText() or ""), "4", "og n er alt som fall (1 + 3)")
+    local worth = (rows[1].cells[6]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    -- 15000 + 3 * 500 + 35
+    eq(worth, BT.Coin(15000 + 1500 + 35), "og verdien er summen av heile liket")
+
+    -- eit anna lik skal ikkje slåast saman med det
+    S.now = S.now + 30
+    BT.NoteCorpse("Creature-0-1-1-1-731-0008", "Riverpaw Mystic")
+    S.lootSlots = { "Creature-0-1-1-1-731-0008" }
+    BT.NoteLootSource()
+    S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK2 .. ".")
+    BT.ShowTab("loot")
+    local n = 0
+    for _, r in ipairs(wg.rows) do if r:IsShown() then n = n + 1 end end
+    eq(n, 2, "eit anna lik er si eiga rad")
+
+    -- og eit anna menneske si loot heller ikkje, same kor nært i tid
+    S.Fire(lf, "CHAT_MSG_LOOT", "Kompis receives loot: " .. LINK2 .. ".")
+    BT.ShowTab("loot")
+    n = 0
+    for _, r in ipairs(wg.rows) do if r:IsShown() then n = n + 1 end end
+    eq(n, 3, "og ein annan spelar si loot er si eiga")
+    S.lootSlots = {}
+  end
+
+  -- fana
+  ChainDB.loot = {}
+  S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK .. ".")
+  S.now = S.now + 30
+  S.Fire(lf, "CHAT_MSG_LOOT", "Kompis receives loot: " .. LINK2 .. ".")
+  BT.ShowTab("loot")
+  local wl, seen = _G.ChainWindow, {}
+  for _, r in ipairs(wl.rows) do
+    if r:IsShown() then
+      seen[#seen + 1] = (r.cells[2]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    end
+  end
+  ok(table.concat(seen, " "):find("Krol Blade"), "fana viser det")
+  ok(table.concat(seen, " "):find("Grønt Sverd"), "og resten òg")
+
+  -- og han kan slåast av
+  ChainDB.logLoot = false
+  local n = #ChainDB.loot
+  S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK .. ".")
+  eq(#ChainDB.loot, n, "av er av")
+  ChainDB.logLoot = nil
+
+  BT.ForgetLoot()
+  eq(#ChainDB.loot, 0, "og han kan tømmast")
+  BT.ShowTab("runs")
+end
+
+
+print("== fps og ping ==")
+-- To tal i augekroken. Fargen er heile poenget: eit tal du må samanlikne med
+-- ein hugsa terskel er eit tal du les, eit tal som blir oransje er eit tal du
+-- legg merke til.
+do
+  local function plain(t)
+    return (t or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+  end
+  local function colourOf(t, which)
+    -- fargekoden rett før talet; eininga står i sin eigen dimma bit etterpå
+    for col, num in (t or ""):gmatch("(|c%x%x%x%x%x%x%x%x)(%d+)|r") do
+      local after = (t or ""):match("|r|c%x%x%x%x%x%x%x%x ?(%a+)|r",
+                                    (t or ""):find(col .. num .. "|r", 1, true))
+      if after == which then return col end
+    end
+    return ""
+  end
+
+  ChainDB.meter = false
+  eq(BT.ToggleMeter(), true, "han kan slåast på")
+  local m = BT.meterFrame()
+  ok(m and m:IsShown(), "og då står han på skjermen")
+
+  S.fps, S.msHome, S.msWorld = 60, 30, 30
+  BT.RefreshMeter()
+  local t = m.fs:GetText()
+  ok(plain(t):find("60 fps"), "framerata står der")
+  ok(plain(t):find("30 ms"), "og latensen")
+
+  -- fargane skal faktisk skifte, og kvar veg
+  local greenFps = colourOf(BT.MeterText(), "fps")
+  S.fps = 8
+  local redFps = colourOf(BT.MeterText(), "fps")
+  ok(greenFps ~= "" and greenFps ~= redFps,
+     "låg framerate får ein annan farge enn høg")
+
+  S.fps = 60
+  local greenMs = colourOf(BT.MeterText(), "ms")
+  S.msWorld, S.msHome = 800, 800
+  local redMs = colourOf(BT.MeterText(), "ms")
+  ok(greenMs ~= "" and greenMs ~= redMs, "og høg latens ein annan enn låg")
+  ok(greenFps ~= redMs, "dei to skalaene går kvar sin veg")
+
+  -- world er den som avgjer om ein spell går av; home er chat. Den største av
+  -- dei to er den du faktisk kjenner.
+  S.msHome, S.msWorld = 40, 300
+  local _, ms = BT.MeterStats()
+  eq(ms, 300, "den verste av dei to er den som blir vist")
+
+  -- kvar for seg av og på
+  ChainDB.meterFPS = false
+  ok(not plain(BT.MeterText()):find("fps"), "framerata kan skruast av åleine")
+  ok(plain(BT.MeterText()):find("ms"), "medan latensen står att")
+  ChainDB.meterFPS = nil
+
+  -- og heile greia av
+  eq(BT.ToggleMeter(), false, "han kan slåast av")
+  BT.RefreshMeter()
+  ok(not m:IsShown(), "og då er han borte")
+
+  -- Han skal henge under kartet til du seier noko anna, og han skal ikkje
+  -- hoppe medan du dreg: oppdateringa kvart sekund ankra han på nytt midt i
+  -- draget, som er nøyaktig det same som gjorde nærleik-lista umogleg å
+  -- plassere.
+  ChainDB.meter, ChainDB.meterPos = true, nil
+  ChainDB.meterLocked = nil
+  BT.RefreshMeter()
+  do
+    local pt = m.__points[#m.__points]
+    eq(pt.rel, _G.Minimap, "han heng under kartet som standard")
+    eq(pt.point, "TOP", "med toppen sin mot botnen av det")
+  end
+
+  m.__scripts.OnDragStart(m)
+  ok(BT.MeterDragging(), "han veit at han er i eit drag")
+  m.__left, m.__top = 300, 700
+  local before = #m.__points
+  S.fps = 12
+  BT.RefreshMeter()
+  eq(#m.__points, before, "oppdateringa ankrar han ikkje på nytt medan du held")
+  m.__scripts.OnDragStop(m)
+  ok(not BT.MeterDragging(), "draget er slutt")
+  eq(ChainDB.meterPos.x, 300 * m:GetScale(), "posisjonen er i skjermpikslar")
+
+  -- og låst er låst
+  ChainDB.meterLocked = true
+  m.__scripts.OnDragStart(m)
+  ok(not BT.MeterDragging(), "låst lar seg ikkje dra")
+  ChainDB.meterLocked = nil
+
+  ChainDB.meterPos = nil
+  ChainDB.meter = false
+  S.fps = 60
+  BT.RefreshMeter()
 end
 
 

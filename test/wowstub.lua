@@ -225,6 +225,37 @@ StaticPopupDialogs = {}
 -- who you are with, for anything that picks a chat channel
 -- in a guild by default: that is the ordinary case, and the share tests
 -- were written before anything asked
+-- The client owns the loot sentences; anything that reads them has to build
+-- its patterns from these rather than from English written out by hand.
+LOOT_ITEM_SELF = "You receive loot: %s."
+LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."
+LOOT_ITEM = "%s receives loot: %s."
+LOOT_ITEM_MULTIPLE = "%s receives loot: %sx%d."
+LOOT_ITEM_PUSHED_SELF = "You receive item: %s."
+LOOT_ITEM_PUSHED_SELF_MULTIPLE = "You receive item: %sx%d."
+LOOT_ITEM_CREATED_SELF = "You create: %s."
+LOOT_ITEM_CREATED_SELF_MULTIPLE = "You create: %sx%d."
+GOLD_AMOUNT, SILVER_AMOUNT, COPPER_AMOUNT = "%d Gold", "%d Silver", "%d Copper"
+YOU_LOOT_MONEY = "You loot %s"
+
+-- [id] = { name, quality, sellPrice }
+-- the loot window: which corpse each slot belongs to
+S.lootSlots = {}
+function GetNumLootItems() return #S.lootSlots end
+function GetLootSourceInfo(slot) return S.lootSlots[slot] end
+
+S.items = {}
+function GetItemInfo(link)
+  local id = tonumber(tostring(link):match("|Hitem:(%d+)")) or tonumber(link)
+  local it = id and S.items[id]
+  if not it then return nil end
+  return it.name, link, it.quality, 1, 1, "", "", 1, "", "", it.price
+end
+
+S.fps, S.msHome, S.msWorld = 60, 40, 40
+function GetFramerate() return S.fps end
+function GetNetStats() return 0, 0, S.msHome, S.msWorld end
+
 S.maxLevel = 60
 function GetMaxPlayerLevel() return S.maxLevel end
 
@@ -368,7 +399,11 @@ function frameMeta:GetPoint(i)
   return p.point, p.rel, p.relPoint or p.point, p.x or 0, p.y or 0
 end
 function frameMeta:SetText(v) self.__text = v end
-function frameMeta:SetTexture(v) self.__tex = v end
+function frameMeta:SetTexture(v, g, b, a)
+  if type(v) == "number" then self.__alpha = a else self.__tex = v end
+end
+function frameMeta:SetColorTexture(r, g, b, a) self.__alpha = a end
+function frameMeta:SetFrameStrata(v) self.__strata = v end
 function frameMeta:GetTexture() return self.__tex end
 function frameMeta:GetText() return self.__text or "" end
 -- rough but monotonic: enough for the layout to make the same decisions

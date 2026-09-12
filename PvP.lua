@@ -374,6 +374,34 @@ function BT.PvPState()
   }
 end
 
+-- What to aim at THIS week, and how much of it is still missing.
+--
+-- Not always the next milestone. If you have set a target rank, the plan says
+-- which one this week is supposed to be, and it is often a bigger jump than
+-- the next one up - aiming at the small one and stopping there is how a
+-- fourteen-week plan quietly becomes a twenty-week one.
+--
+-- Returns the milestone, the honour still needed for it, and the state.
+function BT.WeekGoal()
+  local s = BT.PvPState()
+  local goal
+  local target = ChainCharDB.pvpTarget
+  if target and target > (s.rank or 0) then
+    local plan = BT.PlanToRank(target, s.rank, s.progress)
+    local w1 = plan and plan.weeks and plan.weeks[1]
+    if w1 then
+      for _, m in ipairs(s.milestones or {}) do
+        if m.honor == w1.honor then goal = m end
+      end
+    end
+  end
+  -- already past the planned one, or no plan: whatever is next
+  if goal and (s.honor or 0) >= goal.honor then goal = s.nextMilestone end
+  goal = goal or s.nextMilestone
+  if not goal then return nil, 0, s end
+  return goal, math.max(0, goal.honor - (s.honor or 0)), s, (target ~= nil)
+end
+
 -- One line, for the bar
 function BT.PvPChunk()
   local s = BT.PvPState()
