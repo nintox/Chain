@@ -470,6 +470,29 @@ parts that are not.
   **now** in the when column and counts up. It is not saved, cannot be deleted
   and cannot be marked: it counts for nothing until you finish it.
 
+- **The bar tooltip says what is happening now, and stops.** It had grown to
+  two columns and thirty-odd lines: his price, experience per gold, what a
+  level costs here against what it costs at the end, the group's make-up, the
+  whole ledger with him, the rank table. All of it true, all of it already on
+  a tab, and none of it anything you act on while standing in a doorway. A
+  tooltip you have to *read* is a tooltip you stop opening.
+
+      Chain
+      Maraudon  42 > 50   step 2/2
+      left in this step        669,821 xp   20.4 runs
+      ding in                  ~18m
+      with Magecome            7/10
+      instances                2 of 5 this hour   +1 in 12s
+      this run                 24m   288 mobs   31,400 xp
+
+  Where you are, when you ding, what you have left with him, whether you can
+  go back in, and the run you are in. A reset waiting for you gets a line of
+  its own, and a run that will not count says so - that one you can still do
+  something about. The comparisons live on History, Boosters and Route, which
+  is where you go when you are deciding rather than doing. The second column
+  is gone; there is a test that fails if the tooltip ever grows past sixteen
+  lines or reaches for one.
+
 - **A step can be one you do yourself.** Nobody buys every level: you buy to
   42, quest to 45 because nothing sells that stretch at a price worth paying,
   then buy again. A plan that only knows about dungeons puts you on the next

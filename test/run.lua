@@ -50,56 +50,43 @@ local function near(a, b, msg, tol)
      .. ", venta " .. tostring(b) .. ")")
 end
 
--- Tooltipen på baren vaks ut av éin kolonne: på ein 1080 høg skjerm gjekk han
--- frå topp til botn, og då er det ikkje ein tooltip lenger, det er ei side.
--- Delinga går etter emne, ikkje etter linjetal: det du gjer til venstre, kven
--- du gjer det med og kvar du står til høgre.
-local function TwoColumns(what)
-  local tip = BT.SideTooltip and BT.SideTooltip()
-  ok(tip ~= nil, "det finst ein kolonne to")
-  if not tip then return end
-  -- tel linjene i kvar kolonne kvar for seg
-  local left, right = 0, 0
-  -- med ein run i gang, som er når tooltipen er på sitt lengste
+-- Tooltipen på baren voks ut av éin kolonne, og så ut av to. Tretti linjer
+-- med prisen hans, xp per gull, kva eit level kostar her mot i enden, kven
+-- som er i gruppa og heile rekneskapen - alt sant, alt saman noko som alt
+-- står på ei fane, og ingenting av det noko du gjer noko med medan du står i
+-- ei døropning. Ein tooltip du må lese er ein tooltip du sluttar å opne.
+--
+-- Så han er kort no, og testen held han kort.
+local TIP_MAX = 16
+local function ShortTip(what)
   local keepRun = ChainCharDB.run
   ChainCharDB.run = { zone = "The Stockade", map = 34, id = "stock",
                       start = S.now - 300, xp = 6000, k = 40, lvl = 23,
                       by = BT.CurrentBooster() }
-  tip.__lines = 0
-  local realAdd, realDouble = tip.AddLine, tip.AddDoubleLine
+  local side = BT.SideTooltip and BT.SideTooltip()
+  local left, right = 0, 0
   local gAdd, gDouble = GameTooltip.AddLine, GameTooltip.AddDoubleLine
-  local leftText, rightText = {}, {}
-  tip.AddLine = function(self, t, ...) right = right + 1
-    rightText[#rightText + 1] = tostring(t or "") return realAdd(self, t, ...) end
-  tip.AddDoubleLine = function(self, l, ...) right = right + 1
-    rightText[#rightText + 1] = tostring(l or "")
-    return realDouble(self, l, ...) end
+  local realAdd, realDouble
+  if side then realAdd, realDouble = side.AddLine, side.AddDoubleLine end
   GameTooltip.AddLine = function(self, t, ...) left = left + 1
-    leftText[#leftText + 1] = tostring(t or "") return gAdd(self, t, ...) end
+    return gAdd(self, t, ...) end
   GameTooltip.AddDoubleLine = function(self, l, ...) left = left + 1
-    leftText[#leftText + 1] = tostring(l or "")
     return gDouble(self, l, ...) end
-  BT.BarTooltip(GameTooltip)
-  tip.AddLine, tip.AddDoubleLine = realAdd, realDouble
-  GameTooltip.AddLine, GameTooltip.AddDoubleLine = gAdd, gDouble
-
-  ChainCharDB.run = keepRun
-  ok(right > 0, (what or "tooltipen") .. " brukar begge kolonnane")
-  -- og dei skal vere omtrent like høge: ein kolonne som er dobbelt så lang
-  -- som den andre les som ein tooltip som har sprukke, ikkje som eit oppsett
-  -- Kva kolonne eit avsnitt hamnar i er ei vurdering av avsnittet, ikkje av
-  -- kor mykje plass som er att: runen du står i høyrer saman med det du gjer,
-  -- ikkje med kven du gjer det med.
-  local function inColumn(list, needle)
-    for _, t in ipairs(list) do if t:find(needle, 1, true) then return true end end
-    return false
+  if side then
+    side.AddLine = function(self, t, ...) right = right + 1
+      return realAdd(self, t, ...) end
+    side.AddDoubleLine = function(self, l, ...) right = right + 1
+      return realDouble(self, l, ...) end
   end
-  ok(inColumn(leftText, "this run"), "runen du står i står i fyrste kolonne")
-  ok(inColumn(rightText, "xp per hour"), "og boosteren sine tal i den andre")
+  S.tip = {}
+  BT.BarTooltip(GameTooltip)
+  GameTooltip.AddLine, GameTooltip.AddDoubleLine = gAdd, gDouble
+  if side then side.AddLine, side.AddDoubleLine = realAdd, realDouble end
+  ChainCharDB.run = keepRun
 
-  local tall, short = math.max(left, right), math.min(left, right)
-  ok(short * 2 >= tall, (what or "tooltipen") .. " er skeiv: "
-     .. left .. " mot " .. right .. " linjer")
+  ok(left <= TIP_MAX, (what or "tooltipen") .. " er " .. left
+     .. " linjer - over " .. TIP_MAX .. " er det ei side, ikkje ein tooltip")
+  eq(right, 0, "og han treng ingen andre kolonne")
 end
 
 -- Dei to hjørna under baren er EI linje: ein fontstring festa i venstre enden
@@ -2043,9 +2030,10 @@ do
      "baren seier kor mange runs som står att")
   BT.BarTooltip(GameTooltip)
   local ctip = S.TipText()
-  ok(ctip:find("your account with Paidar"), "tooltipen viser heile rekninga")
-  ok(ctip:find("that buys"), "kva pengane kjøpte")
-  ok(ctip:find("runs since"), "kor mange runs du har hatt")
+  -- Tooltipen er for det som skjer no: kor mange du har att med han, ikkje
+  -- heile rekneskapen. Den ligg på Trade-fana.
+  ok(ctip:find("with Paidar"), "tooltipen seier kor mange du har att med han")
+  ok(not ctip:find("your account with"), "og ikkje heile rekneskapen")
 
   -- og i trade-loggen, ei rad per betaling med kva den kjøpte og kva som stod att
   BT.ToggleWindow()
@@ -2228,12 +2216,16 @@ S.zone, S.map, S.inInstance = "The Stockade", 34, true
 S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
 local bbody = table.concat(BT.AllLines(), "\n")
 -- Gullet høyrer ikkje heime på baren. Under baren står to ting - kor mange
--- runs du har att og kor lenge til du dinger - og kva steget har kosta står
--- på tooltipen, der det er plass til å seie kva det tyder.
+-- runs du har att og kor lenge til du dinger - og kva steget har kosta står på
+-- Trade-fana, som er dit du går når du skal rekne på noko.
 ok(not bbody:find("paid "), "baren pakkar ikkje gullet inn under seg")
 S.tip = {}
 BT.BarTooltip(GameTooltip)
-ok((S.TipText() or ""):find("paid"), "men tooltipen seier kva steget har kosta")
+ok(not (S.TipText() or ""):find("paid here"),
+   "og tooltipen gjer det heller ikkje - han er for det som skjer no")
+BT.ShowTab("gold")
+ok((_G.ChainWindow.summary:GetText() or ""):find("they owe you")
+   or #ChainDB.trades > 0, "Trade-fana har rekneskapen")
 for line in (bbody .. "\n"):gmatch("([^\n]*)\n") do
   local clean = (line:gsub("|c%x%x%x%x%x%x%x%x", "")); clean = (clean:gsub("|r", ""))
   if clean ~= "" then
@@ -2479,12 +2471,23 @@ ok(not vbody:find("Gammal"), "og ikkje namnet hans heller")
 ok(vbody:find("xp/h") or vbody:find("measuring") or vbody:find("no xp for"),
    "farta står der derimot")
 ok(not vbody:find("grp "), "gruppa heller ikkje")
-TwoColumns("med ein booster")
+ShortTip("med ein booster")
 BT.BarTooltip(GameTooltip)
 local vtip = S.TipText()
-ok(vtip:find("xp per gold"), "men verdien står på tooltipen")
-ok(vtip:find("xp per hour"), "saman med raten hans")
-ok(vtip:find("group"), "og gruppa")
+-- ...og ikkje på tooltipen heller. Verdien hans, raten hans og gruppa er
+-- samanlikningar, og samanlikningar høyrer heime på Boosters-fana, som er dit
+-- du går når du skal bestemme deg i staden for å gjere.
+ok(not vtip:find("xp per gold"), "verdien er ikkje på tooltipen")
+ok(not vtip:find("his time per run"), "og ikkje raten hans")
+ok(not vtip:find("group"), "og ikkje gruppa")
+BT.ShowTab("boosters")
+do
+  local seen = false
+  for _, r in ipairs((_G.ChainWindow.rows or {})) do
+    if r:IsShown() and (r.cells[10]:GetText() or "") ~= "" then seen = true end
+  end
+  ok(seen, "men Boosters-fana har dei")
+end
 for line in (vbody .. "\n"):gmatch("([^\n]*)\n") do
   local clean = (line:gsub("|c%x%x%x%x%x%x%x%x", "")); clean = (clean:gsub("|r", ""))
   if clean ~= "" then
@@ -2505,21 +2508,23 @@ do
   BT.Touch()
   S.tip = {}
   BT.BarTooltip(GameTooltip)
-  local body = ((S.TipText() or ""):gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
-  local packs, size = body:match("(%d+) x (%d+)")
-  ok(packs ~= nil, "tooltipen seier kor mange pakkar gullet er")
-  eq(size, "10", "og kor mange runs det er i ein")
-  -- talet skal vere det same som utrekninga faktisk brukar
+  -- Pakkerekninga er ei samanlikning, og ho står på Route-fana. Tooltipen er
+  -- for det som skjer no.
   local remain, _, curStep = select(3, BT.StageSpan()), nil, select(5, BT.StageSpan())
   local st = curStep and BT.StepStats(curStep)
   if remain and remain > 0 and st and (st.xp or 0) > 0 then
-    local _, want = BT.Cost(curStep, remain / st.xp, who)
-    eq(tonumber(packs), want, "og det er dei pakkane du betaler for")
+    local cost, want = BT.Cost(curStep, remain / st.xp, who)
+    ok(want and want > 0, "utrekninga veit kor mange pakkar det blir")
+    ok(cost and cost > 0, "og kva dei kostar")
   end
-  -- tooltipen skal seie kor mange runs du då har kjøpt
-  BT.BarTooltip(GameTooltip)
-  local tip = S.TipText()
-  ok(tip:find("you pay for"), "tooltipen seier kor mange runs pakkane dekker")
+  BT.ShowTab("route")
+  do
+    local gold = false
+    for _, r in ipairs((_G.ChainWindow.rows or {})) do
+      if r:IsShown() and (r.cells[7]:GetText() or ""):find("%d") then gold = true end
+    end
+    ok(gold, "og Route-fana seier kva steget kjem til å koste")
+  end
 
   -- ein pakke på éin run har ingenting å seie frå seg
   ChainDB.pack = 1
@@ -3332,20 +3337,23 @@ for line in (tip .. "\n"):gmatch("([^\n]*)\n") do
   elseif line ~= "" then print("   " .. line) end
 end
 ok(tip:find("Stockades", 1, true), "tooltipen namngjev instansen")
-ok(tip:find("good for levels", 1, true), "tooltipen seier kva level staden er for")
-ok(tip:find("22%-30"), "og viser spennet frå tabellen")
-ok(tip:find("xp per run", 1, true), "tooltipen har xp per run")
-ok(tip:find("instances", 1, true), "tooltipen har lockout")
+-- Kva level staden er for, og kva han gir per run, er ting du slår opp når du
+-- legg planen. Dei står på Route- og Boosters-fana. Tooltipen er for det som
+-- skjer no.
+ok(not tip:find("good for levels", 1, true),
+   "men ikkje kva level staden er for - det er ei oppslagsverk-opplysning")
+ok(not tip:find("xp per run", 1, true), "og ikkje xp per run")
+ok(tip:find("left in this step", 1, true), "han seier kva som står att")
+ok(tip:find("instances", 1, true), "og om du kan gå inn att")
 ok(tip:find("Right%-click"), "tooltipen har hjelpelinjene")
-do  -- utan rute skal han falle tilbake på det du sist køyrde
+do  -- utan rute skal han framleis teikne
   local saved = ChainDB.route
   ChainDB.route = {}
   BT.Touch()
   local okNoRoute = pcall(BT.BarTooltip, BT.bar)
   local t2 = S.TipText()
   ok(okNoRoute, "tooltipen teiknar utan rute")
-  ok(t2:find("good for levels", 1, true), "og viser framleis level-spennet")
-  ok(t2:find("not on it", 1, true), "og seier at staden ikkje er på ruta")
+  ok(t2 ~= "" , "og seier framleis noko")
   ChainDB.route = saved
   BT.Touch()
 end

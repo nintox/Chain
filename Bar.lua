@@ -1185,311 +1185,123 @@ function BT.BarTooltip(owner)
   GameTooltip:SetOwner(owner, "ANCHOR_BOTTOM")
   Tip():AddLine(BT.NAME)
 
+  -- What is happening now, and nothing else.
+  --
+  -- This used to be two columns and thirty-odd lines: his price, experience
+  -- per gold, what a level costs here against what it costs at the end, the
+  -- group's make-up, the whole ledger with him, the rank table. All of it
+  -- true, all of it already on a tab, and none of it anything you act on
+  -- while standing in a doorway. A tooltip you have to read is a tooltip you
+  -- stop opening.
+  --
+  -- So: where you are, when you ding, what you have left with him, and
+  -- whether you can go back in. The comparisons live on History and Boosters,
+  -- which is where you go when you are deciding rather than doing.
   local lvl = UnitLevel("player") or 1
-  local mx = UnitXPMax("player") or 0
   local _, routeStep = BT.Stage()
   local step = routeStep or (BT.FocusStep and BT.FocusStep())
 
-  if not step then
+  if BT.Mode() == "honor" then
+    local p = BT.HonorPlan and BT.HonorPlan()
+    Tip():AddLine("Honour", 1, 1, 1)
+    if p then
+      Pair("this week", BT.N(p.honor or 0) .. C.dim .. "  " .. (p.kills or 0)
+        .. " kills" .. C.off)
+      if (p.killsShort or 0) > 0 then
+        Pair("before any counts", C.bad .. p.killsShort .. " more kills" .. C.off)
+      end
+      if p.nextAt then
+        Pair("next milestone", BT.N(p.nextAt) .. C.dim .. "  "
+          .. BT.N(math.max(0, p.nextAt - (p.honor or 0))) .. " to go" .. C.off)
+      end
+    end
+    local hr = BT.HonorRate and BT.HonorRate()
+    if hr and hr > 0 then Pair("honor per hour", BT.N(hr)) end
+  elseif not step then
     Tip():AddLine("No route set - right-click to pick your instances",
       0.7, 0.7, 0.7)
   else
-    local lo, hi = BT.SpanOf(step)
-    Tip():AddLine(step.label, 1, 1, 1)
-    if lo then
-      -- the one thing nobody looks up: what this place is actually for
-      local note = (lvl > hi) and "  you have outgrown it"
-        or (lvl < lo) and "  too early" or ""
-      Pair("good for levels", BT.SpanChunk(step, lvl) .. C.dim .. note .. C.off)
-    end
-    -- and the harder rule underneath it: the game will not let you in at all
-    -- below this, however cheap the booster is
-    local min = BT.MinLevel(step)
-    if min then
-      Pair("you can enter at", BT.MinChunk(step, lvl)
-        .. ((lvl < min) and (C.bad .. "  " .. (min - lvl) .. " levels to go" .. C.off)
-            or ""))
-    end
+    -- where you are
+    local head = step.label
     if routeStep then
-      local done, total, remain, i = BT.StageSpan()
+      local _, _, _, i = BT.StageSpan()
       local plan = BT.Plan()
-      local txt = (step.from or lvl) .. " > " .. step.to
-      if i and i > 0 and #plan > 1 then txt = txt .. "  (step " .. i .. "/" .. #plan .. ")" end
-      Pair("your route", txt)
-      if remain then Pair("left in this step", BT.N(remain) .. " xp") end
-    else
-      Pair("your route", C.dim .. "not on it" .. C.off)
+      head = head .. "  " .. (step.from or lvl) .. " > " .. step.to
+      if i and i > 0 and #plan > 1 then
+        head = head .. C.dim .. "   step " .. i .. "/" .. #plan .. C.off
+      end
     end
-    -- what the place itself goes for, and how many runs that buys. A price
-    -- typed against a booster beats it while he is the one boosting you; this
-    -- is what everything falls back to, and the pack can differ per instance.
-    local stepGold = BT.GoldFor(step)
-    if stepGold > 0 then
-      local sp = BT.StepPack(step)
-      Pair("the going rate here", C.gold .. BT.G(stepGold) .. C.off .. C.dim
-        .. ((sp > 1) and (" / " .. sp .. " runs") or " / run") .. C.off)
-    end
+    Tip():AddLine(head, 1, 1, 1)
 
-    local st, borrowed, by = BT.StepStats(step)
-    Tip():AddLine(" ")
-    if st and (st.xp or 0) > 0 then
-      Pair("xp per run", BT.N(st.xp)
-        .. C.dim .. (by and ("  " .. by .. "'s own") or borrowed and "  estimated"
-            or ("  " .. (st.longN or 0) .. " runs")) .. C.off)
-      if (st.t or 0) > 0 then Pair("time per run", BT.T(st.t)) end
-      if (st.k or 0) > 0 then Pair("mobs per run", string.format("%.0f", st.k)) end
-      -- what it costs at this level, and what it will cost by the time you
-      -- are done with the place
-      local here = BT.CostPerLevel and BT.CostPerLevel(step, lvl, by or BT.CurrentBooster())
-      if here and here > 0 then
-        local txt = C.gold .. "~" .. BT.G(here) .. C.off
-        local last = step.to and BT.CostPerLevel(step, math.max(lvl, step.to - 1),
-          by or BT.CurrentBooster())
-        if last and last > here * 1.05 then
-          txt = txt .. C.dim .. "  ->  " .. BT.G(last) .. " by " .. step.to .. C.off
-        end
-        Pair("a level here", txt)
-      end
-      local runs = (mx > 0) and (mx / st.xp) or nil
-      if runs then Pair("runs per level", string.format("%.1f", runs)) end
-
-      -- What you actually buy, as opposed to what you actually need.
-      --
-      -- The gold has always been worked out in whole packs - you cannot buy
-      -- four fifths of a ten-run deal - but the bar only ever showed the runs
-      -- you need, so there was no way to tell from looking. The gap is worth
-      -- seeing in both directions: a pack bought for two runs of use is money
-      -- gone, and runs already paid for are runs you may as well take.
-      do
-        local need = select(3, BT.StageSpan())
-        local who = by or BT.CurrentBooster()
-        local pack = BT.PackFor(step, who)
-        if need and need > 0 and pack > 1 then
-          local left = need / st.xp
-          local cost, packs = BT.Cost(step, left, who)
-          if packs and packs > 0 then
-            local paid = packs * pack
-            Pair("you pay for", C.gold .. paid .. " runs" .. C.off
-              .. C.dim .. "   " .. packs .. " x " .. pack .. C.off)
-            local spare = paid - left
-            if spare >= 1 then
-              Tip():AddLine(string.format(
-                "the last pack covers %.1f runs past %d - they are bought either way",
-                spare, step.to), 0.6, 0.6, 0.6, true)
-            end
-          end
-        end
-      end
-
-      -- The running account with this booster, spelled out. The bar shows the
-      -- one number; this says where it came from, because "3.2 runs paid up"
-      -- is only trustworthy if you can see the arithmetic behind it.
-      do
-        local who = by or BT.CurrentBooster()
-        local credit = BT.BoosterCredit and BT.BoosterCredit(who) or nil
-        if credit then
-          Tip():AddLine(" ")
-          Tip():AddLine("your account with " .. who, 1, 0.82, 0)
-          Pair("paid him", C.gold .. BT.G(BT.Gold(credit.paid)) .. C.off
-            .. C.dim .. "   " .. credit.trades
-            .. ((credit.trades == 1) and " trade" or " trades") .. C.off)
-          Pair("that buys", string.format("%.1f runs", credit.runsPaid))
-          Pair("runs since", tostring(credit.runsDone))
-          if credit.hisOf then
-            Pair("his own count", C.gold .. credit.hisDone .. " of "
-              .. credit.hisOf .. C.off)
-          end
-          local v = credit.left
-          Pair(((v < -0.5) and "you owe him" or "he owes you"),
-            (((v >= 1) and C.good) or ((v > -0.5) and C.warn) or C.bad)
-            .. string.format("%.1f runs", math.abs(v)) .. C.off)
-          -- A run on credit is normal; a whole pack of them means money
-          -- changed hands and we did not see it. Trades to a bank alt do
-          -- that, and so does one the client never announced.
-          local pack = math.max(2, BT.PackFor and BT.PackFor(step, who) or 1)
-          if -v >= pack then
-            Tip():AddLine("that is a whole pack past what is logged - if you "
-              .. "paid and it was not picked up, /chain paid " .. who,
-              0.6, 0.6, 0.6, true)
-          end
-          if credit.guessed > 0 then
-            Tip():AddLine(credit.guessed .. " of those trades predate the "
-              .. "addon keeping the price, so they are priced at today's rate",
-              0.6, 0.6, 0.6, true)
-          end
-          Tip():AddLine("counted from your first payment to him, with two "
-            .. "hours of slack in front for a sitting paid at the end",
-            0.5, 0.5, 0.5, true)
-        end
-      end
-    else
-      Tip():AddLine("No runs recorded here yet", 0.7, 0.7, 0.7)
+    local remain = select(3, BT.StageSpan())
+    local st = BT.StepStats and BT.StepStats(step)
+    if remain and remain > 0 then
+      local runs = (st and (st.xp or 0) > 0) and (remain / st.xp) or nil
+      Pair("left in this step", BT.N(remain) .. " xp"
+        .. (runs and (C.dim .. "   " .. string.format("%.1f", runs)
+                      .. " runs" .. C.off) or ""))
     end
 
-    -- the booster, in full: the bar only has room for the headline
-    local b = BT.BoosterRating(step.id)
-    if b then
-      Column2()
-      Tip():AddLine(b.by, 1, 0.82, 0)
-      Pair("xp per hour", string.format("%.0fk", b.rate / 1000))
-      if (b.timePerRun or 0) > 0 then Pair("his time per run", BT.T(b.timePerRun)) end
-      if (b.mobs or 0) > 0 then Pair("his mobs per run", string.format("%.0f", b.mobs)) end
-      local quoted, source = BT.QuotedPrice(b.by, step.id)
-      local info = BT.BoosterInfo(b.by)
-      if info and (info.price or 0) > 0 then
-        local pack = BT.PackFor(step, b.by)
-        Pair("his price", C.gold .. BT.G(info.price) .. C.off
-          .. ((pack > 1) and (" / " .. pack .. " runs") or " / run"))
-      elseif quoted and quoted > 0 then
-        Pair("his price", C.dim .. BT.G(quoted) .. "/run  " .. (source or "") .. C.off)
+    -- when you ding
+    local rate = BT.Rate and BT.Rate()
+    local toNext = (UnitXPMax("player") or 0) - (UnitXP("player") or 0)
+    if rate and rate > 0 and toNext > 0 then
+      Pair("ding in", "~" .. BT.T(toNext / rate * 3600))
+    end
+
+    -- what you have left with him
+    local who = BT.CurrentBooster and BT.CurrentBooster()
+    local credit = who and BT.BoosterCredit and BT.BoosterCredit(who) or nil
+    if credit then
+      local v = (credit.hisLeft ~= nil) and credit.hisLeft or credit.left
+      local col = (v >= 2) and C.good or ((v > -0.5) and C.warn or C.bad)
+      local txt
+      if credit.hisLeft ~= nil then
+        txt = credit.hisDone .. "/" .. credit.hisOf
+      elseif v < -0.5 then
+        txt = string.format("%.1f", -v) .. " runs owed"
+      elseif credit.ofPack and credit.ofPack >= 1 and v > 0 then
+        local total = math.floor(credit.ofPack + 0.5)
+        txt = math.max(0, math.min(total, math.floor(credit.ofPack - v + 0.5)))
+          .. "/" .. total
       else
-        Pair("his price", C.dim .. "not typed in yet" .. C.off)
+        txt = string.format("%.1f", v) .. " runs left"
       end
-      local perRunGold = BT.PricePerRun(step, b.by)
-      if perRunGold > 0 and (b.perRun or 0) > 0 and mx > 0 then
-        Pair("a level with him", C.gold .. "~" .. BT.G(perRunGold * (mx / b.perRun)) .. C.off)
-      end
-      local _, best = BT.RatedBoosters(step)
-      local value = BT.XPPerGold(step, b.by, b.perRun)
-      if value then
-        local col, word = BT.Grade(value, best.value)
-        Pair("xp per gold", col .. BT.N(value) .. (word and ("  " .. word) or "") .. C.off)
-      end
-      if b.vsBest then
-        local col = (b.vsBest <= -0.15) and C.bad
-          or (b.vsBest >= -0.05) and C.good or C.alert
-        Pair("against the best", col .. string.format("%+.0f%% vs %s",
-          b.vsBest * 100, b.bestOther.by) .. C.off)
-      elseif b.form then
-        local col = (b.form <= -0.15) and C.bad or (b.form >= 0.15) and C.good or C.dim
-        Pair("this run vs his average",
-          col .. string.format("%+.0f%%", b.form * 100) .. C.off)
-      end
+      Pair("with " .. who, col .. txt .. C.off)
     end
 
-    local switch = BT.SwitchLine and BT.SwitchLine(step, BT.CurrentBooster())
-    if switch then
-      Tip():AddLine(" ")
-      Tip():AddLine(switch)
+    -- whether you can go back in
+    local count, freeOne = BT.Lockout()
+    local limit = ChainDB.limit or K.LIMIT
+    local lockTxt = count .. " of " .. limit .. " this hour"
+    if count >= limit then
+      lockTxt = C.bad .. lockTxt .. C.off
+        .. (freeOne and (C.dim .. "   free in " .. BT.T(freeOne) .. C.off) or "")
+    elseif freeOne then
+      lockTxt = lockTxt .. C.dim .. "   +1 in " .. BT.T(freeOne) .. C.off
     end
-  end
+    Pair("instances", lockTxt)
 
-  -- what is true wherever you are
-  -- The run you are in. Back in the first column: it is part of what you are
-  -- doing, not part of who you are doing it with, and it evens the two halves
-  -- out - a pair of columns one of which is twice the height of the other
-  -- reads as one tooltip that burst rather than as a layout.
-  Column1()
-  do
+    -- and the run you are in, while you are in it
     local r = ChainCharDB.run
-    if r and ((r.xp or 0) > 0 or (r.k or 0) > 0
-              or (time() - (r.start or time())) >= 30) then
-      Tip():AddLine(" ")
-      local st2 = select(1, BT.StepStats(step))
-      local elapsed = time() - (r.start or time())
-      Pair("this run", C.gold .. BT.N(r.xp or 0) .. " xp" .. C.off
-        .. ((r.k or 0) > 0 and (C.dim .. "   " .. r.k .. " mobs" .. C.off) or "")
-        .. C.dim .. "   " .. BT.T(elapsed) .. C.off)
-
-      local dev, over = BT.RunDeviation(st2)
-      if dev and not r.partial then
-        local col = (dev <= -0.15) and C.bad or (dev >= 0.15) and C.good or C.dim
-        Pair("against the usual here",
-             col .. string.format("%+.0f%%", dev * 100) .. C.off)
-      end
-      if over and over > 30 then
-        Pair("longer than usual", C.alert .. "+" .. BT.T(over) .. C.off)
-      end
-      -- why it will or will not count, said in words rather than as a tag
+    if r and r.zone then
+      Pair("this run", BT.T(math.max(0, time() - (r.start or time())))
+        .. C.dim .. "   " .. (r.k or 0) .. " mobs   "
+        .. BT.N(r.xp or 0) .. " xp" .. C.off)
+      -- and whether it is going to count, which you can still do something
+      -- about: walk out and come back in properly
       if r.partial then
-        Tip():AddLine("you were part way in when this started, so it is "
-          .. "left out of the averages", 0.6, 0.6, 0.6, true)
-      elseif r.reentry then
-        Tip():AddLine("the same instance again rather than a fresh one",
-                            0.6, 0.6, 0.6, true)
+        Tip():AddLine("you were part way in when this started, so it is left "
+          .. "out of the averages", 0.6, 0.6, 0.6, true)
       end
     end
-  end
 
-  Column2Again()
-  Tip():AddLine(" ")
-  local avg, n, ratio = BT.GroupInfo()
-  if avg then
-    Pair("group", string.format("%.1f average, %d in it", avg, n)
-      .. ((ratio and ratio < 0.99)
-          and (C.dim .. string.format("  %+.0f%% xp", (ratio - 1) * 100) .. C.off) or ""))
-  end
-  local rested = GetXPExhaustion and GetXPExhaustion() or nil
-  local mxNow = UnitXPMax("player") or 0
-  if rested and rested > 0 and mxNow > 0 and rested / mxNow >= 0.01 then
-    Pair("rested", C.rested .. BT.Pct(rested / mxNow) .. C.off)
-  end
-  local count, freeOne, freeAll, fromNIT, daily = BT.Lockout()
-  local limit = ChainDB.limit or K.LIMIT
-  local lockTxt = count .. " of " .. limit .. " this hour"
-  if freeOne then lockTxt = lockTxt .. C.dim .. ", +1 in " .. BT.T(freeOne) .. C.off end
-  if freeAll and count > 1 then
-    lockTxt = lockTxt .. C.dim .. ", all in " .. BT.T(freeAll) .. C.off
-  end
-  Pair("instances", lockTxt)
-  if daily and daily > 0 then
-    Pair("today", daily .. " entered" .. (fromNIT and (C.dim .. "  via NIT" .. C.off) or ""))
-  end
-  if BT.Spent then
-    local paid = step and BT.Spent({ id = step.id }) or 0
-    local perLevel, spent = BT.SpentPerLevel()
-    if paid > 0 then Pair("paid here", C.gold .. BT.G(BT.Gold(paid)) .. C.off) end
-    -- only worth a second line when there is more to it than this step
-    if spent and spent > 0 and spent > paid + 1 then
-      Pair("paid in total", C.gold .. BT.G(BT.Gold(spent)) .. C.off
-        .. (perLevel and (C.dim .. "  " .. BT.G(BT.Gold(perLevel)) .. "/lvl" .. C.off) or ""))
-    end
-  end
-  local _, _, complete, routeGold = BT.Forecast()
-  if routeGold and routeGold > 0 then
-    Pair("the rest of the route", C.gold .. "~" .. BT.G(routeGold) .. C.off
-      .. (complete and "" or (C.dim .. "  partly estimated" .. C.off)))
-  end
-
-  -- Honour, but only once there is any. A rank block on a character who has
-  -- never killed anybody is six lines of nothing.
-  if BT.PvPState then
-    local p = BT.PvPState()
-    if (p.honor or 0) > 0 or (p.rank or 0) > 0 then
+    -- the one thing you have to act on
+    local zone, age, by, inside = BT.ResetReady and BT.ResetReady()
+    if zone then
       Tip():AddLine(" ")
-      Pair("rank", p.rankName .. C.dim .. "  " .. BT.Pct(p.progress or 0) .. C.off)
-      Pair("honor this week", BT.N(p.honor)
-        .. C.dim .. "  " .. (p.kills or 0) .. " kills" .. C.off)
-      if not p.enoughKills then
-        Pair("before any of it counts", C.bad .. p.killsShort .. " more kills" .. C.off)
-      end
-      -- where the week ends if you stopped now, and what the next number is.
-      -- Both, because the gap between them is the whole game: honour in
-      -- between is worth exactly nothing.
-      Pair("stopping now", (p.met and C.good or C.dim)
-        .. (p.met and (p.newRankName .. "  " .. BT.Pct(p.newProgress))
-            or "no progress") .. C.off)
-      local goal, short = BT.WeekGoal()
-      if goal then
-        Pair("still needed this week", C.warn .. BT.N(short) .. C.off
-          .. C.dim .. "  of " .. BT.N(goal.honor) .. "  ->  "
-          .. BT.RankName(goal.rank) .. C.off)
-      end
-      if p.nextMilestone then
-        Pair("next milestone", C.warn .. BT.N(p.nextMilestone.honor) .. C.off
-          .. C.dim .. "  " .. BT.N(p.short) .. " to go  ->  "
-          .. BT.RankName(p.nextMilestone.rank) .. C.off)
-      else
-        Pair("next milestone", C.dim .. "none - this week is spent" .. C.off)
-      end
-      if p.rate and p.rate > 0 then
-        Pair("honor per hour", BT.N(p.rate)
-          .. (p.short and p.rate > 0
-              and (C.dim .. "  " .. BT.T(p.short / p.rate * 3600) .. " to the next"
-                   .. C.off) or ""))
-      end
-      Tip():AddLine("honor between two milestones is worth nothing",
-                          0.5, 0.5, 0.5)
+      Tip():AddLine(inside and "reset called - get out" or "reset done - go in",
+        0.4, 1, 0.4)
     end
   end
 
