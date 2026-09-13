@@ -496,6 +496,15 @@ parts that are not.
   thing to read past, and it turned up in every line that quoted a round number
   of hours.
 
+- **Only the leader can call a reset, so only the leader is believed.** One
+  person typing "reset" in raid chat set the alarm off for the whole group.
+  Only the group leader can actually reset an instance - everybody else typing
+  the word is asking for one, complaining about one, or repeating what the
+  leader just said - so the sender is checked against the group now, and a
+  question mark rules the line out either way. The game's own *The Stockade has
+  been reset* is unaffected: that one is the client telling you, and it needs
+  nobody to vouch for it.
+
 - **The runs are counted the way the pack is sold: `7/10`.** That is how both
   of you are thinking about it - it says how far through you are and how much
   is left in the same breath, where `3 runs left` is a number you have to hold

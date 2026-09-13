@@ -926,10 +926,41 @@ ChainCharDB.resetAt = S.now
 ChainCharDB.resetZone = "The Stockade"
 ChainDB.soundRepeat = 1
 S.sounds = 1
--- NIT si party-melding rett etter skal ikkje gje lyd nummer to
+-- NIT si party-melding rett etter skal ikkje gje lyd nummer to.
+-- Berre leiaren kan resette, så berre leiaren blir trudd.
+S.party[1] = S.party[1] or { name = "Boostar-Testrealm", lvl = 60 }
+S.party[1].name, S.party[1].lead = "Boostar-Testrealm", true
 S.Fire(frame, "CHAT_MSG_PARTY", "Instances reset!", "Boostar-Testrealm")
 eq(S.sounds, 1, "ingen dobbel lyd")
 eq(select(3, BT.ResetReady()), "Boostar", "kven som resetta")
+
+-- Ein tilfeldig i raidet som skriv "reset" er ikkje eit reset. Berre leiaren
+-- kan resette, så berre leiaren som seier det tyder noko; alle andre som
+-- skriv ordet spør om eitt, klagar over eitt, eller gjentek det leiaren sa.
+do
+  local wasParty = S.party
+  S.party = { { name = "Boostar-Testrealm", lvl = 60, lead = true },
+              { name = "Sharpishxdd-Ashbringer", lvl = 60 } }
+  ChainCharDB.resetAt, ChainCharDB.resetZone = nil, nil
+  ChainCharDB.lastZone = "The Stockade"
+
+  S.Fire(frame, "CHAT_MSG_RAID", "reset", "Sharpishxdd-Ashbringer")
+  eq(ChainCharDB.resetAt, nil, "ein tilfeldig som skriv 'reset' tel ikkje")
+
+  S.Fire(frame, "CHAT_MSG_RAID", "can you reset?", "Boostar-Testrealm")
+  eq(ChainCharDB.resetAt, nil, "og eit spørsmål er ikkje ei kunngjering")
+
+  S.Fire(frame, "CHAT_MSG_RAID", "reset", "Boostar-Testrealm")
+  ok(ChainCharDB.resetAt ~= nil, "men leiaren blir trudd")
+
+  -- og klienten si eiga melding treng ingen som går god for henne
+  ChainCharDB.resetAt = nil
+  S.Fire(frame, "CHAT_MSG_SYSTEM", "The Stockade has been reset.")
+  ok(ChainCharDB.resetAt ~= nil, "spelet si eiga melding gjeld uansett")
+
+  ChainCharDB.resetAt, ChainCharDB.resetZone = nil, nil
+  S.party = wasParty
+end
 
 -- to ulike lydar: inne tyder "ut", ute tyder "inn", og du skal høyre skilnaden
 do

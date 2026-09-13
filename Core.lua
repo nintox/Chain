@@ -1212,9 +1212,47 @@ function BT.DoReset()
   ResetInstances()
 end
 
+-- Is this person the one who can actually reset?
+--
+-- Only the group leader can, so only the group leader saying it means
+-- anything. Everybody else typing the word is somebody asking for one,
+-- complaining about one, or repeating what the leader just said.
+function BT.IsLeader(name)
+  if not name then return false end
+  if type(UnitIsGroupLeader) ~= "function" then return true end
+  local short = BT.ShortName and BT.ShortName(name) or name
+  local me = UnitName and UnitName("player")
+  if me and (BT.ShortName and BT.ShortName(me) or me) == short then
+    return UnitIsGroupLeader("player") and true or false
+  end
+  local prefix = (IsInRaid and IsInRaid()) and "raid" or "party"
+  for i = 1, 40 do
+    local u = prefix .. i
+    if UnitExists and UnitExists(u) then
+      local n = UnitName and UnitName(u)
+      if n and (BT.ShortName and BT.ShortName(n) or n) == short then
+        return UnitIsGroupLeader(u) and true or false
+      end
+    end
+  end
+  return false
+end
+
+-- Somebody in the group saying the instance has been reset.
+--
+-- It used to believe anyone who typed the word, and one person typing "reset"
+-- in raid chat set the alarm off for everybody. Only the leader can reset, so
+-- only the leader saying it counts - and a question is somebody asking for
+-- one, not announcing it.
+--
+-- The game's own "The Stockade has been reset" is unaffected: that one is the
+-- client telling you, and it needs no vouching for.
 function BT.NoteResetChat(msg, sender)
   if type(msg) ~= "string" then return end
-  if not msg:lower():find("reset", 1, true) then return end
+  local low = msg:lower()
+  if not low:find("%f[%a]reset") then return end
+  if low:find("?", 1, true) then return end
+  if sender and not BT.IsLeader(sender) then return end
   BT.FlagReset(ChainCharDB.lastZone, sender)
 end
 
