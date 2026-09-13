@@ -344,10 +344,13 @@ local function BoostText()
           -- many of those you have had
           local total = math.floor(credit.ofPack + 0.5)
           local done = math.max(0, credit.donePack or 0)
-          local leftInPack = total - done
-          local col = (leftInPack >= 2) and C.good
-            or ((leftInPack > 0) and C.warn or C.bad)
-          runsLeft = col .. done .. "/" .. total .. C.off .. Tail(leftInPack)
+          -- The run you are standing in is counted in 'done', so what is
+          -- still coming is one more than what is left after it. Colour and
+          -- the "last run" warning both go on that, or being inside the
+          -- fifth of five would read as red and finished.
+          local toGo = total - done + (credit.livePack and 1 or 0)
+          local col = (toGo >= 2) and C.good or ((toGo > 0) and C.warn or C.bad)
+          runsLeft = col .. done .. "/" .. total .. C.off .. Tail(toGo)
         else
           local v = credit.left
           local col = (v >= 1) and C.good or ((v > -0.5) and C.warn or C.bad)
@@ -1282,8 +1285,11 @@ function BT.BarTooltip(owner)
         txt = string.format("%.1f", -v) .. " owed"
       elseif credit.ofPack and credit.ofPack >= 1
          and (credit.donePack or 0) <= credit.ofPack then
-        txt = math.max(0, credit.donePack or 0) .. "/"
-          .. math.floor(credit.ofPack + 0.5)
+        local total = math.floor(credit.ofPack + 0.5)
+        local done = math.max(0, credit.donePack or 0)
+        txt = done .. "/" .. total
+        local toGo = total - done + (credit.livePack and 1 or 0)
+        col = (toGo >= 2) and C.good or ((toGo > 0) and C.warn or C.bad)
       else
         txt = string.format("%.1f", v) .. " to come"
       end

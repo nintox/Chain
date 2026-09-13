@@ -287,6 +287,72 @@ function BT.ForgetEnemies()
   if BT.RenderWindow then BT.RenderWindow() end
 end
 
+-- What we already know about one player, whatever list his name turned up in.
+function BT.Know(name)
+  local key = BT.KOSKey and BT.KOSKey(name) or nil
+  if not key then return nil end
+  return (ChainDB.enemies or {})[key]
+end
+
+-- The same answer everywhere.
+--
+-- A name in a column is not a person you can decide anything about: an LFM
+-- post says "Boostar" and nothing else, and the thing you want to know is
+-- whether that is the man who did nine runs for you or the rogue who camped
+-- you at the meeting stone. So every list hands its name to this, and
+-- hovering it says the same in all of them.
+function BT.PersonCard(name)
+  if not name or name == "" then return nil end
+  local out = { name }
+  local e = BT.Know(name)
+
+  local who = {}
+  if e and e.level and e.level > 0 then
+    who[#who + 1] = "Level " .. e.level .. (e.levelGuess and "+" or "")
+  end
+  if e and e.race then who[#who + 1] = e.race end
+  if e and e.class then who[#who + 1] = BT.ClassLabel(e.class) end
+  if e and e.guild then who[#who + 1] = "<" .. e.guild .. ">" end
+  out[#out + 1] = (#who > 0) and table.concat(who, " ") or "never seen him yet"
+
+  if e and (e.at or 0) > 0 then
+    out[#out + 1] = "seen " .. (e.n or 1) .. " time"
+      .. ((e.n or 1) == 1 and "" or "s")
+      .. ", last " .. BT.T(time() - e.at) .. " ago"
+      .. (e.zone and (" in " .. e.zone) or "")
+  end
+  if e and ((e.wins or 0) > 0 or (e.losses or 0) > 0) then
+    out[#out + 1] = "you " .. (e.wins or 0) .. " - " .. (e.losses or 0) .. " him"
+  end
+
+  -- The booster half. Runs first: it is the figure he is judged on.
+  local runs = BT.Runs and BT.Runs({ by = name }) or {}
+  if #runs > 0 then
+    local agg = BT.Aggregate and BT.Aggregate(runs, ChainDB.window or 5) or nil
+    local rate = (agg and (agg.t or 0) > 0) and (agg.xp / agg.t * 3600) or 0
+    out[#out + 1] = #runs .. " run" .. (#runs == 1 and "" or "s") .. " with him"
+      .. ((rate > 0) and (", " .. BT.N(rate) .. " xp/h") or "")
+  end
+  local credit = BT.BoosterCredit and BT.BoosterCredit(name) or nil
+  if credit and credit.left and math.abs(credit.left) >= 0.05 then
+    out[#out + 1] = (credit.left > 0)
+      and (string.format("%.1f", credit.left) .. " runs still owed you")
+      or (string.format("%.1f", -credit.left) .. " runs past what you paid for")
+  end
+
+  local why, note = BT.IsKOS and BT.IsKOS(name, e and e.guild or nil) or nil
+  if why then
+    out[#out + 1] = (why == "guild")
+      and "marked through his guild - raises the alarm"
+      or "marked by name - raises the alarm"
+  end
+  note = note or (BT.EnemyNote and BT.EnemyNote(name) or nil)
+  if note and note ~= "" then out[#out + 1] = "your note: " .. note end
+
+  out[#out + 1] = "double-click the line to whisper him"
+  return out
+end
+
 --------------------------------------------------------------------------
 -- Saying so
 --------------------------------------------------------------------------

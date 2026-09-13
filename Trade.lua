@@ -404,7 +404,7 @@ function BT.BoosterCredit(who)
   -- He says "run 1 of 5" because five is what you just bought, and the two
   -- from before are a separate conversation, which is what "to come" and the
   -- Trade tab are for.
-  local ofPack, donePack, packAt
+  local ofPack, donePack, packAt, livePack
   do
     local led = BT.CreditLedger and BT.CreditLedger() or nil
     for i = #list, 1, -1 do
@@ -418,13 +418,22 @@ function BT.BoosterCredit(who)
     end
     if ofPack and packAt then
       donePack = #BT.Runs({ by = who, since = packAt + 1 })
+      -- The one you are standing in counts. Nobody halfway through the second
+      -- run calls it one: the number is which run this is, not how many are
+      -- finished. Before the first one starts it is still 0 of 5, which is
+      -- what you want to see the moment you have paid.
+      local live = ChainCharDB and ChainCharDB.run
+      if live and live.by == who and (live.start or 0) > packAt
+         and donePack < ofPack then
+        donePack, livePack = donePack + 1, true
+      end
     end
   end
 
   return {
     who = who, paid = paid, trades = n, since = since,
     hisDone = hisN, hisOf = hisOf,
-    ofPack = ofPack, donePack = donePack,
+    ofPack = ofPack, donePack = donePack, livePack = livePack,
     hisLeft = (hisN and hisOf) and (hisOf - hisN) or nil,
     setAt = (baseIdx > 0) and baseAt or nil,
     setTo = (baseIdx > 0) and base or nil,

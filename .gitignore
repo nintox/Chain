@@ -11,3 +11,6 @@ push/*.log
 # could drop at the root, and a place for anything that is only yours
 /github-workflow-*.yml
 local/
+
+# a folder written to the wrong place; delete it when you see it
+_to_delete/

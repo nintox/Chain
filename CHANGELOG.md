@@ -990,6 +990,27 @@ parts that are not.
 
 **Smaller things**
 
+- **The run you are standing in is counted.** The pack line under the bar read
+  `1/5` while you were halfway through the second run, because it counted what
+  was finished. Nobody counts that way: the booster says "second run" when he
+  is in it. It counts the live run now, so it is `0/5` the moment you pay,
+  `1/5` from the first pull, and `5/5` while you are in the last one - which
+  still says *last run* in amber rather than going red as though the pack were
+  spent.
+- **Any line can be marked, and double-clicked.** Sixteen rows of numbers look
+  alike while you are counting your way down them, so a click colours the line
+  you are on. On History it is the same mark that *say in party* reads, so
+  ticking a run and arguing about it are one gesture. A double-click anywhere
+  on a line opens a whisper to whoever it is about - the poster, the booster,
+  the man you traded.
+- **Hovering a name says who he is**, and says the same thing in every list.
+  The tracker knows his level, class and guild; the run log knows how many
+  runs he has done for you and at what rate; the ledger knows what he still
+  owes you. A name in a column was none of that.
+- **Groups: the level column is the one the game enforces.** It said what the
+  poster asked for, which is his opinion. It now says the level the instance
+  lets you in at, green once you are there, so a post you cannot use is
+  obvious at a glance. What he asked for is still on the row's tooltip.
 - **The bar's tooltip is two columns now.** It had grown to a page: on a tall
   screen it ran from the top of the display to the bottom, which is not a
   tooltip any more. A second one sits alongside the first and the split is by

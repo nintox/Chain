@@ -2274,6 +2274,17 @@ do
        "ni av ti er gjort (" .. Plain(s5.bottomLeft) .. ")")
     ok(Plain(s5.bottomLeft):find("last run"),
        "og den siste blir sagt høgt")
+
+    -- og står du i den siste, er du i den tiande - ikkje ferdig med ni
+    local keepRun = ChainCharDB.run
+    ChainCharDB.run = { start = paidAt + 700, zone = "The Stockade",
+                        by = who, xp = 0, k = 0 }
+    local s6 = BT.BuildText() or {}
+    ok(Plain(s6.bottomLeft):find("10/10"),
+       "runden du står i er den tiande (" .. Plain(s6.bottomLeft) .. ")")
+    ok(Plain(s6.bottomLeft):find("last run"),
+       "og ho er framleis den siste, ikkje ei overskriding")
+    ChainCharDB.run = keepRun
   end
   ok(not Plain(s2.bottomLeft):find("xp/run")
      and not Plain(s2.bottomRight):find("xp/run"),
@@ -2604,6 +2615,43 @@ do
   near(c2.ofPack or 0, 5, "pakken er den du nettopp kjøpte - fem", 0.01)
   eq(c2.donePack, 0, "og ingen av dei er tekne enno")
   near(c2.left or 0, 7, "sjølv om saldoen er sju med dei to frå før", 0.01)
+
+  -- Runden du står i tel. Ingen midt i den andre runden kallar det éin.
+  do
+    local keepRun = ChainCharDB.run
+    -- fyrst ei ferdig runde etter betalinga
+    table.insert(ChainDB.runs, { at = S.now - 30, t = 300,
+      zone = "Maraudon", id = "mara", by = "Femar", xp = 9000, k = 60,
+      lvl = 20 })
+    BT.Touch()
+    local c3 = BT.BoosterCredit("Femar")
+    eq(c3.donePack, 1, "ei ferdig runde er éi")
+    ok(not c3.livePack, "og ingen står i noka runde")
+
+    -- og så står du i den neste
+    ChainCharDB.run = { start = S.now - 10, zone = "Maraudon", by = "Femar",
+                        xp = 0, k = 0 }
+    local c4 = BT.BoosterCredit("Femar")
+    eq(c4.donePack, 2, "står du i den andre er du på 2 av 5")
+    ok(c4.livePack, "og det er fordi du står i ei")
+
+    -- ei runde med ein annan booster er ikkje hans
+    ChainCharDB.run = { start = S.now - 10, zone = "Maraudon", by = "Annan",
+                        xp = 0, k = 0 }
+    eq(BT.BoosterCredit("Femar").donePack, 1, "ei runde med ein annan tel ikkje")
+
+    -- og ho kan ikkje ta deg forbi pakken
+    for i = 1, 4 do
+      table.insert(ChainDB.runs, { at = S.now - 20 + i, t = 300,
+        zone = "Maraudon", id = "mara", by = "Femar", xp = 9000, k = 60,
+        lvl = 20 })
+    end
+    BT.Touch()
+    ChainCharDB.run = { start = S.now - 10, zone = "Maraudon", by = "Femar",
+                        xp = 0, k = 0 }
+    eq(BT.BoosterCredit("Femar").donePack, 5, "fem av fem er taket")
+    ChainCharDB.run = keepRun
+  end
 
   ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
   BT.Touch() BT.TouchTrades()
@@ -3667,6 +3715,117 @@ do
     if r:IsShown() and r.whisper and r.whisper:IsShown() then whispered = true end
   end
   ok(whispered, "og ein kvisk-knapp på kvar")
+end
+
+-- Level-kolonnen skal vere den eine levelen som ikkje er ei meining: den
+-- spelet slepp deg inn på. Kva plakaten sjølv ber om står i tooltipen.
+do
+  local head
+  for _, h in ipairs(_G.ChainWindow.headers or {}) do
+    if h:IsShown() and (h.fs:GetText() or ""):find("enter at") then head = h end
+  end
+  ok(head ~= nil, "kolonnen heiter 'enter at'")
+
+  ChainDB.groups = {}
+  grp("LFM Stockades need dps lvl 25+", "Stockar-Testrealm")
+  local was = S.level
+  S.level = 12
+  BT.ShowTab("groups")
+  local row
+  for _, r in ipairs(_G.ChainWindow.rows or {}) do
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Stockar") then row = r end
+  end
+  ok(row ~= nil, "rada er der")
+  local cell = row and (row.cells[6]:GetText() or "") or ""
+  ok(cell:find("15", 1, true), "og syner minstelevelen for Stockades (" .. cell .. ")")
+  ok(cell:find(BT.COL.bad:sub(3), 1, true) ~= nil,
+     "raud så lenge du er for lav")
+  row.__scripts.OnEnter(row)
+  ok(S.TipText():find("cannot enter", 1, true), "tooltipen seier det rett ut")
+
+  S.level = 30
+  BT.ShowTab("groups")
+  for _, r in ipairs(_G.ChainWindow.rows or {}) do
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Stockar") then row = r end
+  end
+  cell = row and (row.cells[6]:GetText() or "") or ""
+  ok(cell:find(BT.COL.good:sub(3), 1, true) ~= nil, "grøn når du kan gå inn")
+  row.__scripts.OnEnter(row)
+  ok(S.TipText():find("you can enter", 1, true), "og tooltipen snur")
+  -- det plakaten sjølv bad om er ikkje borte, det er berre ikkje kolonnen
+  ok(S.TipText():find("25+", 1, true), "det han sjølv bad om står i tooltipen")
+  S.level = was
+end
+
+--------------------------------------------------------------------------
+print("== merke ei linje, og snakke med han ==")
+-- Seksten rader med tal ser like ut medan du tel deg gjennom dei. Eit klikk
+-- fargar linja; to klikk opnar eit kvisk til han som står på henne.
+do
+  ChainDB.groups = {}
+  grp("LFM ZF need 2 dps", "Merkar-Testrealm")
+  BT.ShowTab("groups")
+  local row
+  for _, r in ipairs(_G.ChainWindow.rows or {}) do
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Merkar") then row = r end
+  end
+  ok(row ~= nil, "rada er der")
+  ok(not row.mark:IsShown(), "umerka til å byrje med")
+  row.__scripts.OnMouseUp(row, "LeftButton")
+  ok(row.mark:IsShown(), "eitt klikk fargar linja")
+  S.uptime = S.uptime + 5
+  row.__scripts.OnMouseUp(row, "LeftButton")
+  ok(not row.mark:IsShown(), "og eit til tek fargen av igjen")
+
+  -- to raske klikk er noko anna enn to klikk
+  S.whispered = {}
+  S.uptime = S.uptime + 5
+  row.__scripts.OnMouseUp(row, "LeftButton")
+  S.uptime = S.uptime + 0.2
+  row.__scripts.OnMouseUp(row, "LeftButton")
+  eq(S.whispered[1], "Merkar", "dobbeltklikk opnar kvisk til rett person")
+
+  -- høgreklikk skal ikkje gjere nokon av delane
+  local before = row.mark:IsShown()
+  row.__scripts.OnMouseUp(row, "RightButton")
+  eq(row.mark:IsShown(), before, "høgreklikk let linja vere")
+end
+
+-- Namnet skal seie kven han er, same kva liste du fann han i.
+do
+  ChainDB.watchEnemies = true
+  BT.NoteEnemy("Merkar", { level = 41, class = "MAGE", guild = "Sveitte Nerdar",
+                           zone = "Tanaris" })
+  BT.ShowTab("groups")
+  local row
+  for _, r in ipairs(_G.ChainWindow.rows or {}) do
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Merkar") then row = r end
+  end
+  ok(row and row.who:IsShown(), "namnekolonnen kan haldast over")
+  row.who.__scripts.OnEnter(row.who)
+  local card = S.TipText()
+  ok(card:find("Merkar", 1, true), "kortet namngjev han")
+  ok(card:find("41", 1, true), "med level")
+  ok(card:find("Sveitte Nerdar", 1, true), "og gildet")
+  ok(card:find("Tanaris", 1, true), "og kvar han sist blei sett")
+  ok(card:find("double%-click"), "og seier kva dobbeltklikket gjer")
+
+  -- ein me aldri har sett skal ikkje gje eit tomt kort
+  ChainDB.groups = {}
+  grp("LFM BRD need tank", "Ukjend-Testrealm")
+  BT.ShowTab("groups")
+  local row2
+  for _, r in ipairs(_G.ChainWindow.rows or {}) do
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Ukjend") then row2 = r end
+  end
+  row2.who.__scripts.OnEnter(row2.who)
+  ok(S.TipText():find("never seen him yet", 1, true),
+     "og ein ukjend seier at han er ukjend")
+
+  -- klikk gjennom namnekolonnen skal òg merke linja
+  ok(not row2.mark:IsShown(), "umerka")
+  row2.who.__scripts.OnMouseUp(row2.who, "LeftButton")
+  ok(row2.mark:IsShown(), "klikk på namnet merkar linja som alle andre klikk")
 end
 
 --------------------------------------------------------------------------

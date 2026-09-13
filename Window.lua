@@ -291,7 +291,12 @@ local LAYOUTS = {
       { "what",     64, "kind" },
       { "instance", 86, "zone" },
       { "needs",    78, "needs" },
-      { "levels",   52, "levels" },
+      -- What he typed is "lvl 25+ pst", which is his problem, not yours. The
+      -- number you are actually looking for is the one the game enforces: the
+      -- level it lets you walk in at. Green once you are there.
+      { "enter at", 58, "min", "the level the game lets you into that "
+        .. "instance at, green once you are there. What the poster himself "
+        .. "asked for is on the row tooltip." },
       { "heard in", 88, "from" },
       { "what he said", 240, nil },
       { "",         64, nil }        -- the whisper button
@@ -389,10 +394,47 @@ local function Rate(value, avg, higherIsBetter)
   return C.warn
 end
 
--- Which runs you have marked, keyed by the record itself. Not saved: it is a
--- thing you do for ten seconds to settle an argument, and a mark surviving a
--- logout would only ever be a surprise.
+-- Which rows you have marked, keyed by the record itself where there is one.
+-- Not saved: it is a thing you do for ten seconds to settle an argument or to
+-- keep your place in a long list, and a mark surviving a logout would only
+-- ever be a surprise.
 local picked = {}
+
+-- Some lists are built out of tables we keep (a run, a trade, an enemy) and
+-- some out of tables built fresh on every draw. The first kind can be marked
+-- by identity; the second needs a name that survives the next redraw.
+local function MarkKey(d)
+  if not d then return nil end
+  if d.rec then return d.rec end
+  local who = d.by or d.who or d.name or d.kosName or d.whisper
+  local at = d.at or d.t or d.id
+  if not who and not at then return nil end
+  return tostring(mode) .. "|" .. tostring(who or "") .. "|"
+    .. tostring(d.zone or "") .. "|" .. tostring(at or "")
+end
+
+-- Which column of a row is a person, and who that person is. Every list that
+-- has one gets the same hover and the same double-click.
+local PERSON_KEY = {
+  by = true, who = true, name = true, kosName = true, with = true
+}
+
+local function RowPerson(d)
+  if not d then return nil end
+  return d.whisper or d.kosName or d.name or d.by or d.who or d.with
+end
+
+local function Whisper(name)
+  if not name or name == "" then return false end
+  if ChatFrame_SendTell then
+    ChatFrame_SendTell(name, SELECTED_DOCK_FRAME or DEFAULT_CHAT_FRAME)
+  elseif ChatFrame_OpenChat then
+    ChatFrame_OpenChat("/w " .. name .. " ")
+  else
+    return false
+  end
+  return true
+end
 
 local function RunRows()
   local out = {}
@@ -795,9 +837,9 @@ local function GroupRows()
     local here = mine and g.id == mine.id
     out[#out + 1] = {
       at = g.at, by = g.by, kind = g.kind, needs = g.needs or "",
-      levels = g.levels or "", from = g.from,
+      levels = g.levels or "", from = g.from, min = d and d.min or nil,
       zone = d and d.label or (g.id or ""),
-      whisper = g.by,
+      whisper = g.by, rec = g,
       cells = {
         BT.T(age) .. " ago" .. ((g.n or 1) > 1
           and (C.dim .. " x" .. g.n .. C.off) or ""),
@@ -806,7 +848,8 @@ local function GroupRows()
         d and ((here and C.good or "") .. d.label .. (here and C.off or ""))
           or (C.dim .. "-" .. C.off),
         g.needs and (C.info .. g.needs .. C.off) or (C.dim .. "-" .. C.off),
-        g.levels or (C.dim .. "-" .. C.off),
+        (d and BT.MinChunk(d)) or (g.levels and (C.dim .. g.levels .. C.off))
+          or (C.dim .. "-" .. C.off),
         C.dim .. tostring(g.from or ""):gsub("^channel:", "") .. C.off,
         C.dim .. (g.text or "") .. C.off,
         ""
@@ -820,7 +863,12 @@ local function GroupRows()
         g.text or "",
         (KIND_WORD[g.kind] or g.kind)
           .. (g.needs and (", " .. g.needs) or "")
-          .. (g.levels and (", levels " .. g.levels) or "") .. "."
+          .. (g.levels and (", he asks for levels " .. g.levels) or "") .. ".",
+        -- the one level that is not a matter of opinion
+        d and d.min and (((UnitLevel and UnitLevel("player") or 1) >= d.min)
+          and ("you can enter " .. d.label .. " - it opens at " .. d.min)
+          or ("you cannot enter " .. d.label .. " yet - it opens at " .. d.min))
+          or nil
       )
     }
   end
@@ -1815,6 +1863,7 @@ local function Render()
       row.tip = d.tip
       row.link = d.link
       local rx = 0
+      local whoX, whoW = nil, nil
       for ci, col in ipairs(layout.cols) do
         local fs = row.cells[ci]
         if not fs then break end
@@ -1823,9 +1872,25 @@ local function Render()
         fs:SetWidth(col[2] - 4)
         fs:SetText(d.cells[ci] or "")
         fs:Show()
+        if not whoX and PERSON_KEY[col[3] or ""] then whoX, whoW = rx, col[2] end
         rx = rx + col[2]
       end
       for ci = #layout.cols + 1, #row.cells do row.cells[ci]:Hide() end
+
+      -- marked, and who the line is about
+      row.markKey = MarkKey(d)
+      row.mark:SetShown((row.markKey and picked[row.markKey]) and true or false)
+      row.person = RowPerson(d)
+      if row.person and whoX then
+        row.who.person = row.person
+        row.who:ClearAllPoints()
+        row.who:SetPoint("LEFT", row, "LEFT", whoX, 0)
+        row.who:SetWidth(math.max(20, whoW - 4))
+        row.who:Show()
+      else
+        row.who.person = nil
+        row.who:Hide()
+      end
       -- the x removes a run from the averages on History, and on Boosters it
       -- removes somebody you put in the list yourself. It never appears on a
       -- booster you have actually run with: that is measured history.
@@ -2022,8 +2087,10 @@ local function Render()
       row:Show()
     else
       row.tip, row.link = nil, nil
+      row.markKey, row.person, row.who.person = nil, nil, nil
       row.price:Hide() row.pack:Hide() row.kos:Hide() row.left:Hide()
       row.note:Hide() row.del:Hide() row.whisper:Hide() row.pick:Hide()
+      row.mark:Hide() row.who:Hide()
       row:Hide()
     end
   end
@@ -2211,6 +2278,12 @@ local function Build()
       row.stripe = Tex(row, "BACKGROUND", 1, 1, 1, 0.03)
       row.stripe:SetAllPoints()
     end
+    -- Clicking a line colours it. Sixteen rows of numbers all look alike
+    -- while you are scrolling between them and counting, and on History the
+    -- same mark is the one "say in party" reads.
+    row.mark = Tex(row, "BACKGROUND", 0.25, 0.50, 0.85, 0.28)
+    row.mark:SetAllPoints()
+    row.mark:Hide()
     -- A row that can be hovered: the advert text is longer than any column,
     -- and a line you can only half read is a line you have to go and find in
     -- the chat window instead.
@@ -2244,10 +2317,29 @@ local function Build()
     -- and shift-click drops the link into whatever you are typing, the way it
     -- works everywhere else in the game
     row:SetScript("OnMouseUp", function(self, button)
-      if button ~= "LeftButton" or not self.link then return end
-      if IsModifiedClick and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then
+      if button ~= "LeftButton" then return end
+      if self.link and IsModifiedClick and IsModifiedClick("CHATLINK")
+         and ChatEdit_InsertLink then
         ChatEdit_InsertLink(self.link)
+        return
       end
+      -- The name is right there and the thing you nearly always want to do
+      -- with it is talk to him. A button per row for that would be another
+      -- column; a double-click is free.
+      --
+      -- Counted here rather than hung on OnDoubleClick: that handler is a
+      -- Button's, and setting a script a frame does not have throws on the
+      -- spot rather than politely doing nothing.
+      local now = (GetTime and GetTime()) or 0
+      if self.person and self.lastClick and (now - self.lastClick) <= 0.4 then
+        self.lastClick = nil
+        Whisper(self.person)
+        return
+      end
+      self.lastClick = now
+      if not self.markKey then return end
+      picked[self.markKey] = (not picked[self.markKey]) or nil
+      Render()
     end)
 
     row.cells = {}
@@ -2262,6 +2354,32 @@ local function Build()
       fs:SetPoint("LEFT", row, "LEFT", 0, 0)
       row.cells[c] = fs
     end
+
+    -- The name column, made hoverable on its own. The row tooltip says what
+    -- the row is; this says who he is, and it says the same whether you found
+    -- him in the tracker, in an LFM post or in the booster table.
+    row.who = CreateFrame("Frame", nil, row)
+    row.who:SetHeight(17)
+    row.who:EnableMouse(true)
+    row.who:SetScript("OnEnter", function(self)
+      if not self.person then return end
+      local card = BT.PersonCard and BT.PersonCard(self.person) or nil
+      if not card or #card == 0 then return end
+      GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+      for i, line in ipairs(card) do
+        if i == 1 then GameTooltip:AddLine(line, 1, 0.82, 0)
+        else GameTooltip:AddLine(line, 1, 1, 1, true) end
+      end
+      GameTooltip:Show()
+    end)
+    row.who:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- it sits on top of the row, so the row's own clicks have to come
+    -- through it rather than stop at it
+    row.who:SetScript("OnMouseUp", function(self, button)
+      local f = row:GetScript("OnMouseUp")
+      if f then f(row, button) end
+    end)
+    row.who:Hide()
     -- the boosters tab needs real controls, not just text
     row.price = CreateFrame("EditBox", nil, row)
     row.price:SetSize(52, 16)
