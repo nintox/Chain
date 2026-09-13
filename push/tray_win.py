@@ -32,9 +32,82 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-import chainpush as engine                                  # noqa: E402
-
 APP_TITLE = "Chain Push"
+
+
+# ------------------------------------------------------ surviving pythonw
+# pythonw.exe runs without a console, and with no console Python sets
+# sys.stdout and sys.stderr to None rather than to somewhere harmless. Every
+# print() in the engine then raises AttributeError: 'NoneType' object has no
+# attribute 'write' - and with no console there is nowhere for that to be
+# printed either. The program starts, dies on its first line of output, and
+# shows you nothing at all: a window that opens and shuts.
+#
+# So the streams are given somewhere to go before anything else runs, and
+# anything that still goes wrong is written down and put on the screen. A
+# background program is allowed to be quiet; it is not allowed to vanish.
+def _support_dir():
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or HERE
+    d = os.path.join(base, "ChainPush")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        return HERE
+    return d
+
+
+def _support_file(name):
+    return os.path.join(_support_dir(), name)
+
+
+if sys.stdout is None or sys.stderr is None:
+    try:
+        _console = open(_support_file("console.log"), "a",
+                        encoding="utf-8", errors="replace", buffering=1)
+    except OSError:
+        import io
+        _console = io.StringIO()
+    if sys.stdout is None:
+        sys.stdout = _console
+    if sys.stderr is None:
+        sys.stderr = _console
+
+
+def _died(exc):
+    """Say what went wrong, on the screen and on disk. Without this the only
+    symptom is that nothing happens."""
+    import traceback
+    text = "".join(traceback.format_exception(type(exc), exc,
+                                              exc.__traceback__))
+    path = _support_file("crash.log")
+    try:
+        with open(path, "a", encoding="utf-8", errors="replace") as fh:
+            fh.write(time.strftime("%Y-%m-%d %H:%M:%S") + "\n" + text + "\n")
+    except OSError:
+        path = "(could not be written)"
+    try:
+        sys.stderr.write(text)
+    except Exception:
+        pass
+    try:
+        last = [ln for ln in text.strip().splitlines() if ln.strip()]
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            "Chain Push could not start.\n\n"
+            + (last[-1] if last else "Unknown error")
+            + "\n\nThe whole of it is in:\n" + path
+            + "\n\nRun ChainPush.bat debug in a command window to watch it "
+              "start with the messages showing.",
+            APP_TITLE, 0x10)
+    except Exception:
+        pass
+
+
+try:
+    import chainpush as engine                              # noqa: E402
+except BaseException as _exc:                               # noqa: BLE001
+    _died(_exc)
+    raise SystemExit(1)
 
 # ------------------------------------------------------------- the Win32 bits
 
@@ -296,4 +369,10 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException as _exc:                           # noqa: BLE001
+        _died(_exc)
+        sys.exit(1)

@@ -207,6 +207,25 @@ your WoW install.
 
 ---
 
+## If the tray icon does not appear on Windows
+
+The window opens and shuts and nothing is in the tray. That means the program
+started and stopped, and `pythonw` - which is what keeps a console window from
+sitting behind the game - has nowhere to print the reason.
+
+It now tells you anyway: a message box with what went wrong, and the whole of
+it in `crash.log` under `%LOCALAPPDATA%\ChainPush`. To watch it start with
+everything on screen:
+
+```
+ChainPush.bat debug
+```
+
+That runs it in the command window rather than behind it, so whatever it says
+stays where you can read it.
+
+---
+
 ## If you would rather not use the icon
 
 | | |

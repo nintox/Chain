@@ -463,6 +463,18 @@ parts that are not.
   only part that is news. Levelling says it the same way: the right-hand end
   reads `ding in ~41m` rather than `~41m to 32`.
 
+- **The Windows tray program opened and shut without a word.** `pythonw.exe`
+  runs with no console - which is the point, since nobody wants a black window
+  behind the game - and with no console Python sets `sys.stdout` and
+  `sys.stderr` to `None` rather than to somewhere harmless. The first `print()`
+  anywhere in the watcher then raises `AttributeError: 'NoneType' object has no
+  attribute 'write'`, and there is nowhere for *that* to appear either. So the
+  streams are given somewhere to go before anything else runs, and anything
+  that still goes wrong gets a message box and a `crash.log` under
+  `%LOCALAPPDATA%\ChainPush`. `ChainPush.bat debug` runs it in the command
+  window with everything on screen. A background program is allowed to be
+  quiet; it is not allowed to vanish.
+
 - **The Adverts tab is the Sellers tab, and it only lists people who are
   actually selling.** "Adverts" named the mechanism; what you want off that tab
   is a person to whisper. And an advert is somebody standing in a city saying
