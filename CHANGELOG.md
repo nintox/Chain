@@ -1053,6 +1053,23 @@ parts that are not.
   it afterwards. The tooltip answers the two questions you have while he is
   there: who he is, and whether you have beaten him before. The faction line
   went too; the race above it already says which side he is on.
+- **"this level 19h 32m" when the game said two and a half hours.** Ours was
+  wall-clock since we last saw you level up, and that is wrong twice over. It
+  counted the hours you were asleep, so a level started last night read as
+  nineteen this morning. And it knew nothing about a level gained on another
+  computer, because the figure lived in that machine's saved variables and
+  nowhere else — which is exactly how a two-hour level became a nineteen-hour
+  one. The server knows: `/played` answers with time *played* on this level,
+  so Chain asks at login and counts forward from the answer. Asking prints two
+  lines in your chat, which is nobody's idea of a greeting, so the pair is
+  swallowed when the request was ours — the filter lifts the moment it has
+  eaten one set, so your own `/played` still prints as normal.
+- **Two things on the bar that were not about now.** "spent 250g (42g/lvl)" is
+  a total: it does not move while you play, there is nothing to do about it,
+  and it is on the Trade tab with the rest of the money. And a step heading
+  with nothing after it — `Maraudon > 52` and a full stop — is a label, not a
+  line; it says something you set yourself and can read off the Route tab. The
+  line earns its place when it carries a figure.
 - **A forecast for an instance you have never been in.** `Maraudon > 52
   boost ~87 runs ~12h 15m est` on a character that had never set foot in
   Maraudon: the figure was borrowed from somewhere else and dressed in the

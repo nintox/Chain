@@ -104,6 +104,38 @@ INSTANCE_RESET_SUCCESS = "%s has been reset."
 INSTANCE_RESET_FAILED = "Cannot reset %s.  There are players still inside the instance."
 INSTANCE_RESET_FAILED_ZONING = "Cannot reset %s.  There are players in your party attempting to zone into an instance."
 INSTANCE_RESET_FAILED_OFFLINE = "Cannot reset %s.  There are players offline in your party."
+-- /played, which is where "this level" actually comes from. The server is
+-- asked and answers with an event; the two lines it prints are what the
+-- filter below is for.
+TIME_PLAYED_TOTAL = "Total time played: %s"
+TIME_PLAYED_LEVEL = "Time played this level: %s"
+S.playedAsked = 0
+S.playedTotal, S.playedLevel = 200000, 9000
+function RequestTimePlayed()
+  S.playedAsked = S.playedAsked + 1
+  -- the answer comes back as an event, exactly as the server sends it
+  if S.playedTarget then
+    S.Fire(S.playedTarget, "TIME_PLAYED_MSG", S.playedTotal, S.playedLevel)
+  end
+end
+S.chatFilters = {}
+function ChatFrame_AddMessageEventFilter(event, fn)
+  S.chatFilters[event] = S.chatFilters[event] or {}
+  table.insert(S.chatFilters[event], fn)
+end
+function ChatFrame_RemoveMessageEventFilter(event, fn)
+  for i, f in ipairs(S.chatFilters[event] or {}) do
+    if f == fn then table.remove(S.chatFilters[event], i) return end
+  end
+end
+-- true when every filter would have let the line through
+function S.ChatAllows(event, msg)
+  for _, f in ipairs(S.chatFilters[event] or {}) do
+    if f(nil, event, msg) then return false end
+  end
+  return true
+end
+
 S.said = {}
 function SendChatMessage(msg, ch, _, target)
   table.insert(S.said, ch .. (target and (" " .. target) or "") .. ": " .. msg)

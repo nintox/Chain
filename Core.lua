@@ -16,6 +16,7 @@ BT.CHAR_DEFAULTS = {
   lastEnd = nil,
   lastGain = nil,
   levelAt = nil,      -- when this level started, for "this level 15m"
+  played = nil,       -- { level = seconds, at = when the server said so }
   resetAt = nil, resetZone = nil, resetBy = nil
 }
 
@@ -136,6 +137,73 @@ function BT.CurrentBoost()
   if c.run then return c.run.by ~= nil end
   if IsInGroup and IsInGroup() then return BT.Booster() ~= nil end
   return true
+end
+
+--------------------------------------------------------------------------
+-- How long you have been on this level
+--------------------------------------------------------------------------
+-- Ours was wall-clock since we last saw you level up, and it was wrong twice
+-- over. It counted the hours you were asleep - a level you started last night
+-- read as nineteen hours this morning - and it knew nothing about a level you
+-- gained on another computer, because the number lives in that machine's
+-- saved variables and nowhere else.
+--
+-- The server knows. RequestTimePlayed answers with the same two figures
+-- /played prints, and the second one is exactly this: time played on this
+-- level. So we ask, and then count forward from the answer.
+--
+-- Asking prints those two lines in your chat, which is nobody's idea of a
+-- greeting, so the pair is swallowed when the request was ours. Somebody
+-- typing /played still sees them: the filter lifts the moment it has eaten
+-- one set.
+local eatPlayed = false
+
+local function PlayedFilter(_, _, msg)
+  if not eatPlayed then return false end
+  if type(msg) ~= "string" then return false end
+  local total = _G.TIME_PLAYED_TOTAL or "Total time played: %s"
+  local lvl = _G.TIME_PLAYED_LEVEL or "Time played this level: %s"
+  local function shape(fmt)
+    return "^" .. fmt:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+                     :gsub("%%%%s", ".*") .. "$"
+  end
+  if msg:match(shape(total)) then return true end
+  if msg:match(shape(lvl)) then
+    eatPlayed = false
+    return true
+  end
+  return false
+end
+
+function BT.AskPlayed(quiet)
+  if type(RequestTimePlayed) ~= "function" then return false end
+  if quiet ~= false then
+    eatPlayed = true
+    if ChatFrame_AddMessageEventFilter then
+      ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", PlayedFilter)
+    end
+  end
+  RequestTimePlayed()
+  return true
+end
+
+function BT.NotePlayed(total, level)
+  level = tonumber(level)
+  if not level or level < 0 then return nil end
+  ChainCharDB.played = { level = level, at = time() }
+  if tonumber(total) then ChainCharDB.playedTotal = tonumber(total) end
+  return level
+end
+
+-- Seconds on this level, the server's figure carried forward, or ours if the
+-- server has not answered yet.
+function BT.LevelTime()
+  local p = ChainCharDB.played
+  if p and p.level and p.at then
+    return math.max(0, p.level + (time() - p.at))
+  end
+  if ChainCharDB.levelAt then return math.max(0, time() - ChainCharDB.levelAt) end
+  return nil
 end
 
 -- Which step a run here belongs to. Several steps can share one instance
@@ -1728,7 +1796,7 @@ end
 local EVENTS = {
   "PLAYER_LOGIN",
   "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED",
-  "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "UPDATE_EXHAUSTION",
+  "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "UPDATE_EXHAUSTION", "TIME_PLAYED_MSG",
   "COMBAT_LOG_EVENT_UNFILTERED", "CHAT_MSG_COMBAT_XP_GAIN",
   "CHAT_MSG_SYSTEM", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER",
   "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER",
@@ -1922,6 +1990,10 @@ function BT.OnEvent(_, event, ...)
     end
     -- first run on a character: the level has to have started sometime
     ChainCharDB.levelAt = ChainCharDB.levelAt or time()
+    -- and ask the server what it actually is, a moment later so the login
+    -- flood is over first
+    if C_Timer and C_Timer.After then C_Timer.After(6, function() BT.AskPlayed() end)
+    else BT.AskPlayed() end
     for _, e in ipairs(EVENTS) do frame:RegisterEvent(e) end
     if BT.InitUI then BT.InitUI() end
     if BT.InitOptions then BT.InitOptions() end
@@ -2000,8 +2072,17 @@ function BT.OnEvent(_, event, ...)
       BT.Sync()
     end
     BT.ScanQuests()
+  elseif event == "TIME_PLAYED_MSG" then
+    BT.NotePlayed(...)
   elseif event == "PLAYER_LEVEL_UP" or event == "PLAYER_XP_UPDATE" then
-    if event == "PLAYER_LEVEL_UP" then ChainCharDB.levelAt = time() end
+    if event == "PLAYER_LEVEL_UP" then
+      ChainCharDB.levelAt = time()
+      -- the server's count restarts too; ask rather than assume zero, since
+      -- rested and the like mean the two can differ by seconds
+      ChainCharDB.played = { level = 0, at = time() }
+      if C_Timer and C_Timer.After then C_Timer.After(3, function() BT.AskPlayed() end)
+      else BT.AskPlayed() end
+    end
     -- both fire on a level; Delta() reads the bar so the second one is a
     -- no-op rather than a double count
     BT.LearnXP()

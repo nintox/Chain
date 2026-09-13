@@ -569,8 +569,9 @@ local function LevelText(soloStep)
     or (BT.N(remain) .. " xp")
 
   -- how long you have been at it, in the two top corners
-  if c.levelAt then
-    S.topLeft = C.dim .. "this level " .. BT.T(time() - c.levelAt) .. C.off
+  local onLevel = BT.LevelTime and BT.LevelTime() or nil
+  if onLevel then
+    S.topLeft = C.dim .. "this level " .. BT.T(onLevel) .. C.off
   end
   -- ...unless this stretch is a step of your own, in which case the heading
   -- is the step, the same as it would be for an instance. You are on the plan
@@ -629,14 +630,10 @@ local function LevelText(soloStep)
     elseif rate then q = q .. " -> ~" .. BT.T((remain - qxp) / rate * 3600) end
     table.insert(more, q .. C.off)
   end
-  if BT.Spent then
-    local perLevel, spent = BT.SpentPerLevel()
-    if spent and spent > 0 then
-      local txt = "spent " .. BT.G(BT.Gold(spent))
-      if perLevel then txt = txt .. " (" .. BT.G(BT.Gold(perLevel)) .. "/lvl)" end
-      table.insert(more, C.gold .. txt .. C.off)
-    end
-  end
+  -- What you have spent altogether used to sit here. It is a total: it does
+  -- not move while you play, there is nothing to do about it, and a bar is
+  -- for what is happening now. It is on the Trade tab, where the rest of the
+  -- money is, and that is where you go when you want to know.
   local grp = GroupChunk()
   if grp then table.insert(more, grp) end
   local lock, lockN, dayLock = LockoutChunk()
@@ -683,7 +680,13 @@ local function LevelText(soloStep)
     if rate and rate > 0 then
       table.insert(plan, "solo ~" .. BT.T(need / rate * 3600))
     end
-    table.insert(lines, C.info .. table.concat(plan, "  ") .. C.off)
+    -- A heading with nothing after it is a label, not a line. "Maraudon > 52"
+    -- on its own tells you something you set yourself and can read off the
+    -- route; the line earns its place when it carries a figure - what the
+    -- boost would take, or how long it is on your own.
+    if #plan > 1 then
+      table.insert(lines, C.info .. table.concat(plan, "  ") .. C.off)
+    end
   end
 
   S.extra = table.concat(lines, "\n")

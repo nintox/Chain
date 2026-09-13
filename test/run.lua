@@ -2512,7 +2512,10 @@ S.party = {}
 S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
 ChainCharDB.lastEnd = nil
 local lbody = table.concat(BT.AllLines(), "\n")
-ok(lbody:find("spent "), "leveling-modus viser totalen")
+-- Totalen stod her ein gong. Han rører seg ikkje medan du speler, det er
+-- ingenting å gjere med han, og ein bar er for det som skjer no. Han ligg på
+-- Trade-fana saman med resten av pengane.
+ok(not lbody:find("spent "), "totalen står ikkje på baren")
 for line in (lbody .. "\n"):gmatch("([^\n]*)\n") do
   local clean = (line:gsub("|c%x%x%x%x%x%x%x%x", "")); clean = (clean:gsub("|r", ""))
   if clean ~= "" then
@@ -2665,19 +2668,11 @@ do
      "og talet finst, men er lånt frå North")
 
   local body = table.concat(BT.AllLines(), "\n")
-  ok(body:find("DM West"), "steget står på baren")
+
   ok(not body:find("boost ~"),
      "men ingen prognose bygd på ein annan instans ("
      .. body:gsub("\n", " | ") .. ")")
   ok(not body:find(" est"), "og ikkje ordet 'est' heller")
-
-  -- ei runde i West sjølv, og då er det noko å seie
-  table.insert(ChainDB.runs, { at = S.now - 600, t = 1200, zone = "Dire Maul",
-    id = "dmw", by = "Nokon", xp = 40000, k = 200, lvl = 52 })
-  BT.Touch()
-  eq(select(2, BT.StepStats(step)), false, "no er talet vårt eige")
-  body = table.concat(BT.AllLines(), "\n")
-  ok(body:find("boost ~"), "og prognosen kjem (" .. body:gsub("\n", " | ") .. ")")
 
   -- Og "measuring xp/h" var ein påstand: han sa at noko var i gang når
   -- sanninga var at ingenting hadde hendt enno. To minutt etter innlogging er
@@ -2690,14 +2685,85 @@ do
     local quiet = table.concat(BT.AllLines(), "\n")
     ok(not quiet:find("measuring"),
        "ingen påstand om at noko blir målt (" .. quiet:gsub("\n", " | ") .. ")")
+    -- og utan fart og utan eigne målingar har steg-linja ingen tal att. Ei
+    -- overskrift utan noko etter seg er ei etikett, ikkje ei linje.
+    ok(not quiet:find("DM West >"),
+       "ei overskrift utan tal står ikkje åleine (" .. quiet:gsub("\n", " | ") .. ")")
     ChainCharDB.buckets, ChainCharDB.session, ChainCharDB.lastGain = kb, ks, kg
   end
+
+  -- ei runde i West sjølv, og då er det noko å seie
+  table.insert(ChainDB.runs, { at = S.now - 600, t = 1200, zone = "Dire Maul",
+    id = "dmw", by = "Nokon", xp = 40000, k = 200, lvl = 52 })
+  BT.Touch()
+  eq(select(2, BT.StepStats(step)), false, "no er talet vårt eige")
+  body = table.concat(BT.AllLines(), "\n")
+  ok(body:find("boost ~"), "og prognosen kjem (" .. body:gsub("\n", " | ") .. ")")
 
   S.level, S.xp, S.xpMax = wasLvl, wasXp, wasMax
   ChainDB.runs, ChainDB.route = keepRuns, keepRoute
   S.party, ChainCharDB.run = keepParty, keepRun
   S.zone, S.inInstance = keepZone, keepIn
   BT.Touch()
+end
+
+--------------------------------------------------------------------------
+print("== kor lenge du har vore på dette levelet ==")
+-- Vår eiga teljing var veggklokke sidan sist vi såg deg gå opp, og ho var
+-- feil på to måtar. Ho talde timane du sov - eit level du byrja på i går kveld
+-- stod som nitten timar om morgonen - og ho visste ingenting om eit level du
+-- tok på ei anna maskin, fordi talet ligg i den maskina sine saved variables
+-- og ingen annan stad.
+do
+  local keepPlayed, keepAt = ChainCharDB.played, ChainCharDB.levelAt
+  S.playedTarget = frame
+
+  -- utan svar frå tenaren fell vi tilbake på vårt eige, som før
+  ChainCharDB.played = nil
+  ChainCharDB.levelAt = S.now - 3600
+  near(BT.LevelTime(), 3600, "utan svar brukar vi vår eiga teljing", 2)
+
+  -- tenaren svarar, og då er det han som gjeld
+  S.playedTotal, S.playedLevel = 2 * 24 * 3600, 2 * 3600 + 32 * 60
+  BT.AskPlayed()
+  eq(S.playedAsked > 0, true, "vi spør tenaren")
+  near(BT.LevelTime(), 2 * 3600 + 32 * 60,
+       "og svaret hans slår vår eiga veggklokke", 2)
+
+  -- og det tel framover medan du speler
+  S.now = S.now + 600
+  near(BT.LevelTime(), 2 * 3600 + 32 * 60 + 600,
+       "og går vidare medan du speler", 2)
+  S.now = S.now - 600
+
+  -- eit level på ei anna maskin: vår eiga teljing er gammal, tenaren sin er
+  -- ikkje. Dette er nøyaktig feilen - 19t 32m mot spelet sine 2t 32m.
+  ChainCharDB.levelAt = S.now - 19 * 3600 - 32 * 60
+  near(BT.LevelTime(), 2 * 3600 + 32 * 60,
+       "ein ding på ei anna maskin gjer ikkje talet feil", 2)
+  -- og det er talet som står på baren, ikkje vårt eige
+  local lvlBody = table.concat(BT.AllLines(), "\n")
+  ok(lvlBody:find("this level 2h 32m", 1, true),
+     "baren seier tenaren sitt tal (" .. (lvlBody:match("this level [^|\n]*") or "?")
+     .. ")")
+  ok(not lvlBody:find("this level 19h", 1, true), "og ikkje veggklokka vår")
+
+  -- Å spørje skriv to linjer i chatten din, og det er ingen si idé om ei
+  -- helsing. Paret blir svelgd når det var vi som spurde.
+  S.chatFilters = {}
+  BT.AskPlayed()
+  ok(not S.ChatAllows("CHAT_MSG_SYSTEM", "Total time played: 2 days"),
+     "totalen blir svelgd")
+  ok(not S.ChatAllows("CHAT_MSG_SYSTEM", "Time played this level: 2 hours"),
+     "og level-linja")
+  -- men filteret lettar med ein gong, så /played-en din står som før
+  ok(S.ChatAllows("CHAT_MSG_SYSTEM", "Total time played: 2 days"),
+     "og så slepp det taket, så din eigen /played står som før")
+  ok(S.ChatAllows("CHAT_MSG_SYSTEM", "You are now Rank 3"),
+     "andre systemlinjer blir aldri rørte")
+
+  ChainCharDB.played, ChainCharDB.levelAt = keepPlayed, keepAt
+  S.playedTarget = nil
 end
 
 -- og ein pris frå den gamle bugen blir reparert ved innlasting
