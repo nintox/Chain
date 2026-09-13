@@ -1040,6 +1040,25 @@ parts that are not.
 
 **Smaller things**
 
+- **The phone-notification folder is four folders now, not eighteen files in a
+  heap.** `mac/` and `windows/` hold the two or three files that machine
+  actually uses and one short page each; `engine/` is the code both of them
+  run and `icons/` the pictures, sitting beside them rather than copied into
+  both. The page at the top no longer explains two platforms at once - it
+  points at the folder for your computer, and that folder says what to
+  double-click.
+- **The tracker's tooltip was a page of history over a man standing behind
+  you.** Last seen, seen how often, first met, where, what spotted him - all
+  of that is on the Enemies tab in sortable columns, which is where you read
+  it afterwards. The tooltip answers the two questions you have while he is
+  there: who he is, and whether you have beaten him before. The faction line
+  went too; the race above it already says which side he is on.
+- **The names in the tracker had a dark bar down either side and were cut
+  short.** The row was twelve pixels narrower than the box it sits in, so the
+  class stripe stopped short of both edges; and the right-hand column reserved
+  room for "45 Warlock" whether or not it was showing "?? Rogue". The stripe
+  reaches the edges now, and the name takes every pixel the right-hand side is
+  not actually using - measured, rather than assumed.
 - **Your own reset is announced to the group, and it is on.** Nobody else is
   told an instance has been reset: the client says it to whoever pressed the
   button and to no one else, so four people stand at the stone waiting for
