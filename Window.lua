@@ -165,6 +165,10 @@ local LAYOUTS = {
         .. "here instead, with the runs it bought." },
       { "xp",       55, "xp", "experience you gained in there. Coloured "
         .. "against what this instance usually gives you." },
+      { "% lvl",    46, "pct", "the same run as a share of the level you "
+        .. "were on. Experience on its own means nothing across levels - "
+        .. "20,000 is most of a level at 22 and nothing at 58 - and this is "
+        .. "the number you can hold five of in your head." },
       { "time",     45, "t", "door to door. Less is better, so the colours "
         .. "run the other way." },
       { "mobs",     40, "k", "how many things died. A short run with the "
@@ -442,6 +446,13 @@ local function Whisper(name)
   return true
 end
 
+-- "8%" of a level, or nothing when the run gave none.
+local function PctText(r)
+  local p = BT.RunPct and BT.RunPct(r) or nil
+  if not p then return C.dim .. "-" .. C.off end
+  return string.format((p < 10) and "%.1f%%" or "%.0f%%", p)
+end
+
 local function RunRows()
   local out = {}
   -- one average per instance, worked out once rather than per row
@@ -473,6 +484,7 @@ local function RunRows()
       at = live.start, zone = live.zone, xp = live.xp or 0, t = t,
       k = live.k or 0, rate = rate, by = live.by, lvl = live.lvl,
       grpAvg = live.grpAvg, coin = live.coin or 0,
+      pct = BT.RunPct({ xp = live.xp or 0, lvl = live.lvl }),
       tip = Lines(
         BT.Short(live.zone, live.map) or "?",
         "the run you are in, still going",
@@ -484,6 +496,7 @@ local function RunRows()
         C.good .. "now" .. C.off,
         BT.Short(live.zone, live.map) or "?",
         BT.N(live.xp or 0),
+        PctText({ xp = live.xp or 0, lvl = live.lvl }),
         BT.T(t),
         tostring(live.k or 0),
         (rate > 0) and string.format("%.0fk", rate / 1000) or "-",
@@ -505,6 +518,7 @@ local function RunRows()
       at = r.at, zone = r.zone, xp = r.xp, t = r.t, k = r.k,
       rate = ((r.t or 0) > 0) and (r.xp / r.t * 3600) or 0,
       by = r.by, lvl = r.lvl, grpAvg = r.grpAvg, coin = r.coin or 0,
+      pct = BT.RunPct(r),
       tip = Lines(
         BT.Short(r.zone, r.map) or "?",
         date("%A %d %B, %H:%M", r.at or time()),
@@ -520,6 +534,7 @@ local function RunRows()
         BT.T(time() - (r.at or time())) .. " ago",
         BT.Short(r.zone, r.map) or "?",
         Rate(r.xp, a and a.long, true) .. BT.N(r.xp) .. C.off,
+        PctText(r),
         -- less time is better
         Rate(r.t, a and a.longT, false) .. BT.T(r.t) .. C.off,
         Rate(r.k, a and a.longK, true) .. tostring(r.k or 0) .. C.off,
@@ -564,6 +579,7 @@ local function RunRows()
                 or ""),
           C.dim .. "-" .. C.off, C.dim .. "-" .. C.off,
           C.dim .. "-" .. C.off, C.dim .. "-" .. C.off,
+          C.dim .. "-" .. C.off,
           C.gold .. BT.G(BT.Gold(math.abs(net))) .. C.off,
           t.with or (C.dim .. "?" .. C.off),
           tostring(t.lvl or "-"),
@@ -2675,12 +2691,8 @@ local function Build()
 
   -- How much of a level a run gave, at the level you were when you took it.
   local function Pct(r)
-    local lvl = tonumber(r and r.lvl)
-    local xp = tonumber(r and r.xp)
-    if not lvl or not xp or xp <= 0 then return nil end
-    local span = BT.Span and BT.Span(lvl, lvl + 1)
-    if not span or span <= 0 then return nil end
-    return string.format("%.0f%%", xp / span * 100)
+    local p = BT.RunPct and BT.RunPct(r) or nil
+    return p and string.format("%.0f%%", p) or nil
   end
 
   local function SayLines()

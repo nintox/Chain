@@ -122,6 +122,21 @@ function BT.Span(a, b)
   return total
 end
 
+-- What one run was worth as a fraction of the level you were on.
+--
+-- Experience on its own does not tell you how the chain is going: 20,000 is
+-- most of a level at 22 and a rounding error at 58. The share of a level is
+-- the figure that means the same thing at every level, and it is the one you
+-- can hold five of in your head and know where you will be.
+function BT.RunPct(r)
+  local lvl = tonumber(r and r.lvl)
+  local xp = tonumber(r and r.xp)
+  if not lvl or not xp or xp <= 0 then return nil end
+  local span = BT.Span(lvl, lvl + 1)
+  if not span or span <= 0 then return nil end
+  return xp / span * 100
+end
+
 -- The level span an instance is meant for, as written in the table rather
 -- than as you happened to set your route. Not everybody knows that the
 -- Stockades stop being worth anything at 30, and the number is no use kept

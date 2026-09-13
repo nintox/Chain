@@ -3053,10 +3053,47 @@ do
     if row:IsShown() and what:find("^paid") then tr = row break end
   end
   if tr then
-    ok((tr.cells[7]:GetText() or ""):find("400"), "med summen i gull-kolonnen")
-    ok((tr.cells[8]:GetText() or ""):find("Blandar"), "og kven som fekk dei")
+    -- kolonnen blir slegen opp på overskrifta si, ikkje talt på fingrane:
+    -- ein ny kolonne midt i lista skal ikkje velte testen
+    local function Col(label)
+      for i, h in ipairs(wm.headers or {}) do
+        local t = ((h.fs:GetText() or ""):gsub(" [v^]$", ""))
+        if h:IsShown() and t == label then return i end
+      end
+      return 0
+    end
+    ok((tr.cells[Col("gold")]:GetText() or ""):find("400"),
+       "med summen i gull-kolonnen")
+    ok((tr.cells[Col("booster")]:GetText() or ""):find("Blandar"),
+       "og kven som fekk dei")
     ok(tr.del:IsShown(), "og ho kan strykast herifrå òg")
     ok(not tr.pick:IsShown(), "men ikkje hakkast av - det er runar ein tel")
+
+    -- Kor mykje av eit level runden var verd. 20.000 xp er mesteparten av eit
+    -- level på 22 og ingenting på 58, så xp åleine seier ikkje kor det ber.
+    local pc = Col("% lvl")
+    ok(pc > 0, "History har ein %-kolonne")
+    local rr
+    for _, row in ipairs(wm.rows or {}) do
+      local what = ((row.cells[2]:GetText() or "")
+        :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+      if row:IsShown() and not what:find("^paid") and what ~= "" then
+        rr = row break
+      end
+    end
+    ok(rr and (rr.cells[pc]:GetText() or ""):find("%%"),
+       "og runden seier kor mykje av eit level han var ("
+       .. tostring(rr and rr.cells[pc]:GetText()) .. ")")
+    ok((tr.cells[pc]:GetText() or ""):find("-"),
+       "ei betaling har ingen prosent")
+  end
+
+  -- og rekninga bak talet: heile levelen, ikkje det du hadde att av han
+  do
+    local span = BT.Span(20, 21)
+    near(BT.RunPct({ xp = span / 4, lvl = 20 }), 25, "ein firedels level er 25%", 0.01)
+    eq(BT.RunPct({ xp = 0, lvl = 20 }), nil, "ingen xp er ingen prosent")
+    eq(BT.RunPct({ xp = 500 }), nil, "og utan level veit vi det ikkje")
   end
 
   ChainDB.trades, ChainDB.runs = keepT, keepR
