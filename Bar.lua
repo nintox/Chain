@@ -535,7 +535,7 @@ local function HonorText()
 end
 
 -- Regular levelling
-local function LevelText()
+local function LevelText(soloStep)
   local c = ChainCharDB
   local lvl = UnitLevel("player") or 1
   local xp, mx = UnitXP("player") or 0, UnitXPMax("player") or 0
@@ -556,6 +556,18 @@ local function LevelText()
   -- how long you have been at it, in the two top corners
   if c.levelAt then
     S.topLeft = C.dim .. "this level " .. BT.T(time() - c.levelAt) .. C.off
+  end
+  -- ...unless this stretch is a step of your own, in which case the heading
+  -- is the step, the same as it would be for an instance. You are on the plan
+  -- either way; this part of it just has nobody to pay.
+  if soloStep then
+    local plan = BT.Plan()
+    local at
+    for i, e in ipairs(plan) do if e == soloStep then at = i end end
+    S.topLeft = soloStep.label .. "  " .. (soloStep.from or lvl)
+      .. " > " .. soloStep.to
+      .. (at and (C.dim .. "  step " .. at .. "/" .. #plan .. C.off) or "")
+    S.cur, S.max = BT.StepProgress()
   end
 
   -- say why there is no rate rather than claiming to still be measuring one
@@ -692,6 +704,11 @@ function BT.BuildText()
   local mode = BT.Mode()
   if mode == "honor" then return HonorText() end
   if #BT.Plan() == 0 then return LevelText() end
+  -- A stretch you are doing yourself has no booster, no price and no runs, so
+  -- the boost bar has nothing to put in any of its slots. It is a levelling
+  -- bar with the step's name on it.
+  local _, here = BT.Stage()
+  if here and here.solo then return LevelText(here) end
   if mode == "boost" then return BoostText() end
   return LevelText()
 end

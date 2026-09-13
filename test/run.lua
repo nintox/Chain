@@ -2732,6 +2732,74 @@ do
   BT.Touch() BT.TouchTrades()
 end
 
+-- Ingen kjøper kvart level. Du kjøper til 42, questar til 45 fordi ingenting
+-- sel den strekninga til ein pris verd å betale, og kjøper så att - og ein
+-- plan som berre kjenner instansar set deg på neste instans i tre level du
+-- eigentleg soloar, med runs, gull og summoning stone.
+do
+  local keepOwn, keepRoute = ChainDB.ownSteps, ChainDB.route
+  ChainDB.ownSteps = {}
+  BT.ShowTab("route")
+  local wr2 = _G.ChainWindow
+  ok(wr2.ownAdd ~= nil and wr2.ownAdd:IsShown(), "Route-fana har eit felt for det")
+
+  -- eit steg utan levels blir ikkje lagt til
+  wr2.ownName:SetText("Questing")
+  wr2.ownFrom:SetText("45") wr2.ownTo:SetText("45")
+  wr2.ownAdd.__scripts.OnClick(wr2.ownAdd)
+  eq(#ChainDB.ownSteps, 0, "eit steg utan spenn blir ikkje lagt til")
+  ok((wr2.ownLabel:GetText() or ""):find("higher"), "og det står kvifor")
+
+  wr2.ownName:SetText("Questing")
+  wr2.ownFrom:SetText("42") wr2.ownTo:SetText("45")
+  wr2.ownAdd.__scripts.OnClick(wr2.ownAdd)
+  eq(#ChainDB.ownSteps, 1, "og eit med spenn blir det")
+  eq(ChainDB.ownSteps[1].label, "Questing", "med namnet du gav det")
+
+  -- det er med i planen, sortert på level
+  local inPlan
+  for _, e in ipairs(BT.Plan()) do if e.solo then inPlan = e end end
+  ok(inPlan ~= nil, "det er med i planen")
+  eq(inPlan.from, 42, "frå 42")
+  eq(inPlan.to, 45, "til 45")
+
+  -- og medan du er på det, er baren ein levling-bar med namnet på steget
+  local wasLvl, wasXp, wasMax = S.level, S.xp, S.xpMax
+  S.level, S.xp, S.xpMax = 43, 1000, 100000
+  ChainDB.route = {}
+  BT.Touch()
+  local sl3 = BT.BuildText() or {}
+  local top = ((tostring(sl3.topLeft or ""):gsub("|c%x%x%x%x%x%x%x%x", ""))):gsub("|r", "")
+  ok(top:find("Questing"), "baren har namnet på steget (" .. top .. ")")
+  ok(top:find("42 > 45"), "og spennet")
+  ok(not (tostring(sl3.bottomLeft or "")):find("runs"),
+     "og ingen runs-teljing - det er ingen å betale")
+
+  -- og x-en tek det ut att, etter å ha spurt
+  BT.ShowTab("route")
+  local delOwn
+  for _, r in ipairs(wr2.rows or {}) do
+    if r:IsShown() and r.del and r.del:IsShown() and r.del.own then
+      delOwn = r.del
+    end
+  end
+  ok(delOwn ~= nil, "rada har ein x")
+  if delOwn then
+    S.popup = nil
+    delOwn.__scripts.OnClick(delOwn)
+    eq(#ChainDB.ownSteps, 1, "eitt trykk fjernar ingenting")
+    ok((S.popup and S.popup.text or ""):find("Questing"),
+       "spørsmålet namngir strekninga")
+    S.PopupAccept()
+    eq(#ChainDB.ownSteps, 0, "og ja tek det ut")
+  end
+
+  ChainDB.ownSteps, ChainDB.route = keepOwn, keepRoute
+  S.level, S.xp, S.xpMax = wasLvl, wasXp, wasMax
+  BT.Touch()
+  BT.ShowTab("runs")
+end
+
 -- Elleve faner på tvers av toppen var ein vegg av ord å lese seg gjennom før
 -- ein kunne byrje. Tre av dei er same emnet frå tre vinklar, så dei ligg under
 -- éi overskrift og du vel vinkelen når du fyrst er der.

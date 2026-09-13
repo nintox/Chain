@@ -294,6 +294,7 @@ end
 -- it and give it a level span and a price, exactly like the old options.
 BT.DEFAULTS = {
   version = 1,
+  ownSteps = {},       -- stretches you do the yourself: label, from, to
   groups = {},         -- LFM/LFG/WTB posts read from chat, oldest first
   readGroups = true,   -- read them at all; the channels are the same ones
   route = {},          -- [id] = { on = bool, from = n, to = n, gold = n,

@@ -470,6 +470,19 @@ parts that are not.
   **now** in the when column and counts up. It is not saved, cannot be deleted
   and cannot be marked: it counts for nothing until you finish it.
 
+- **A step can be one you do yourself.** Nobody buys every level: you buy to
+  42, quest to 45 because nothing sells that stretch at a price worth paying,
+  then buy again. A plan that only knows about dungeons puts you on the next
+  instance for three levels you are actually soloing - with its runs, its gold
+  and its summoning stone - and every figure on the bar is then about a place
+  you are not going to.
+  On the Route tab: a name, a from and a to, and it is in the plan, sorted in
+  among the instances by level. It costs nothing, borrows no instance's
+  numbers, and while you are on it the bar goes back to being a levelling bar
+  with the step's name on it: **Questing  42 > 45   step 2/3**. The row says
+  how long the stretch takes at your own rate and nothing else, because
+  nothing else about it is true. The x takes it back out, after asking.
+
 - **Boosters, Sellers and Reported are one tab now: Boosting.** Eleven
   headings across the top was a wall of words to read before you could start,
   and those three are the same subject from three angles - who sells the step

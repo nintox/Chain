@@ -354,8 +354,8 @@ local LAYOUTS = {
     }
   },
   route = {
-    title = "The plan from here. 'g/lvl now' and 'at the end' are what a "
-      .. "level costs there today, and by the time you leave it.",
+    title = "The plan from here, instances and stretches you do yourself. "
+      .. "'g/lvl now' and 'at the end' are what a level costs there.",
     cols = {
       { "step",       86, nil },
       { "enter",      40, nil },
@@ -1283,6 +1283,34 @@ local function RouteRows()
     local xp = BT.Span(seg.from, seg.to)
     if idx == 1 then xp = xp - consumed end
     if xp < 0 then xp = 0 end
+
+    -- A stretch you do yourself has no runs, no price and nobody to pay. The
+    -- only figures it can honestly carry are the levels and the experience,
+    -- and how long that takes is your own rate rather than any instance's.
+    if seg.e.solo then
+      local rate = BT.Rate and BT.Rate()
+      table.insert(out, {
+        own = seg.e.own,
+        tip = Lines(
+          seg.e.label,
+          "levels " .. seg.from .. " to " .. seg.to,
+          "a stretch you do yourself - no runs, no gold, nobody to pay",
+          rate and ("at your rate of " .. BT.N(rate) .. " xp/h that is about "
+                    .. BT.T(xp / rate * 3600)) or nil,
+          "the x removes it from the plan"
+        ),
+        cells = {
+          C.info .. seg.e.label .. C.off,
+          "-", "-",
+          seg.from .. " > " .. seg.to,
+          "-",
+          (rate and rate > 0) and BT.T(xp / rate * 3600) or "-",
+          C.dim .. "-" .. C.off, C.dim .. "-" .. C.off, C.dim .. "-" .. C.off,
+          C.dim .. "on your own" .. C.off
+        }
+      })
+    else
+
     local st, borrowed, by = BT.StepStats(seg.e)
     -- StepStats answers for the step you are on; for later steps ask directly
     if idx > 1 then
@@ -1352,6 +1380,7 @@ local function RouteRows()
         source
       }
     })
+    end
   end
   return out
 end
@@ -1695,6 +1724,13 @@ local function Render()
     end
   end
 
+  -- and the own-step row belongs to the Route tab
+  local routing = (mode == "route")
+  for _, w in ipairs({ win.ownLabel, win.ownName, win.ownFrom, win.ownTo,
+                       win.ownAdd, win.ownNote }) do
+    if w then w:SetShown(routing) end
+  end
+
   -- and the rank box belongs to the Rank tab, on the same line
   local planning = (mode == "pvp")
   for _, w in ipairs({ win.targetLabel, win.targetBox, win.targetUp,
@@ -1782,7 +1818,7 @@ local function Render()
       else
         row.pick:Hide()
       end
-      row.del.rec, row.del.name, row.del.trade = nil, nil, nil
+      row.del.rec, row.del.name, row.del.trade, row.del.own = nil, nil, nil, nil
       -- the first two cells describe the row well enough to name it in the
       -- question: "2h 39m ago   paid  10 runs"
       row.del.what = ((tostring(d.cells and d.cells[1] or "")
@@ -1804,6 +1840,10 @@ local function Render()
         row.del.hint = "remove somebody you added by hand. A booster you "
           .. "have actually run with cannot be removed - that is measured "
           .. "history."
+        row.del:Show()
+      elseif mode == "route" and d.own then
+        row.del.own = d.own
+        row.del.hint = "take this stretch out of the plan"
         row.del:Show()
       elseif mode == "gold" and d.rec then
         -- Every trade row, not only the ones you typed. Detection is now an
@@ -2358,7 +2398,20 @@ local function Build()
     row.del = Button(row, "x", 16, 14, function(self)
       -- what is about to go, named. "Are you sure?" is not a question you can
       -- answer without being told what you are being asked about.
-      local trade, name, rec = self.trade, self.name, self.rec
+      local trade, name, rec, own = self.trade, self.name, self.rec, self.own
+      if own then
+        local step = ChainDB.ownSteps and ChainDB.ownSteps[own]
+        Confirm("Take this out of the plan?\n\n"
+          .. ((step and step.label) or "this stretch") .. "  "
+          .. ((step and step.from) or "?") .. " > "
+          .. ((step and step.to) or "?"), function()
+            if ChainDB.ownSteps then table.remove(ChainDB.ownSteps, own) end
+            BT.Touch()
+            Render()
+            if BT.Refresh then BT.Refresh() end
+          end)
+        return
+      end
       if trade then
         Confirm("Remove this trade?\n\n" .. (self.what or "")
           .. "\n\nWhat it bought stops counting with it.", function()
@@ -2700,6 +2753,71 @@ local function Build()
   win.payNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.payNote:SetPoint("TOPLEFT", 636, addY)
   win.payNote:SetText(C.dim .. "the tally starts again from there" .. C.off)
+
+  -- A step of your own, on the Route tab.
+  --
+  -- Nobody buys every level. You buy to 42, quest to 45 because nothing sells
+  -- that stretch at a price worth paying, then buy again - and a plan that
+  -- only knows about dungeons puts you on the next instance for three levels
+  -- you are actually soloing, with its runs, its gold and its summoning
+  -- stone. A label and two levels is all it takes to say otherwise.
+  win.ownLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.ownLabel:SetPoint("TOPLEFT", 12, addY)
+  win.ownLabel:SetText("a stretch of your own")
+
+  local function OwnBox(width, x, hint, letters)
+    local e = CreateFrame("EditBox", nil, win)
+    e:SetSize(width, 18)
+    e:SetAutoFocus(false)
+    e:SetFontObject("ChainFontHighlightSmall")
+    e:SetMaxLetters(letters or 20)
+    e.bg = Tex(e, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
+    e.bg:SetAllPoints()
+    e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    e:SetPoint("TOPLEFT", x, addY + 3)
+    e.hintText = hint
+    return e
+  end
+
+  win.ownName = OwnBox(150, 150, "questing", 24)
+  win.ownFrom = OwnBox(34, 310, "from", 2)
+  win.ownTo = OwnBox(34, 352, "to", 2)
+
+  win.ownAdd = Button(win, "Add", 50, 18, function()
+    local from = tonumber(win.ownFrom:GetText())
+    local to = tonumber(win.ownTo:GetText())
+    if not from or not to or to <= from then
+      win.ownLabel:SetText(C.bad .. "from and to, and to has to be higher"
+        .. C.off)
+      return
+    end
+    ChainDB.ownSteps = ChainDB.ownSteps or {}
+    table.insert(ChainDB.ownSteps, {
+      label = (win.ownName:GetText() ~= "" and win.ownName:GetText())
+        or "on your own",
+      from = math.floor(from), to = math.floor(to), on = true })
+    win.ownName:SetText("") win.ownFrom:SetText("") win.ownTo:SetText("")
+    win.ownName:ClearFocus() win.ownFrom:ClearFocus() win.ownTo:ClearFocus()
+    win.ownLabel:SetText("a stretch of your own")
+    BT.Touch()
+    Render()
+    if BT.Refresh then BT.Refresh() end
+  end)
+  Hint(win.ownAdd, "put a stretch you do yourself into the plan - questing, "
+    .. "a dungeon you run with friends, anything you are not paying for. It "
+    .. "costs nothing and borrows no instance's numbers, and while you are on "
+    .. "it the bar goes back to being a levelling bar.")
+  win.ownAdd:SetPoint("TOPLEFT", 394, addY + 3)
+  win.ownFrom:SetScript("OnEnterPressed", function()
+    win.ownAdd:GetScript("OnClick")(win.ownAdd)
+  end)
+  win.ownTo:SetScript("OnEnterPressed", function()
+    win.ownAdd:GetScript("OnClick")(win.ownAdd)
+  end)
+  win.ownNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.ownNote:SetPoint("TOPLEFT", 454, addY)
+  win.ownNote:SetText(C.dim .. "no runs, no gold, no booster - just levels"
+    .. C.off)
 
   -- The rank you are aiming at, on the same line and in the same place as the
   -- add-someone row, because only one of the two is ever on screen.

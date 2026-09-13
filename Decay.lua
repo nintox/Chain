@@ -136,7 +136,9 @@ end
 local function Candidates()
   local seen, out = {}, {}
   for _, e in ipairs(BT.Plan()) do
-    if not seen[e.id] then
+    -- a stretch you do yourself is not somewhere you can be told to move to,
+    -- and it has no id to key on either
+    if e.id and not seen[e.id] then
       seen[e.id] = true
       -- the route says when you meant to start there; do not suggest a place
       -- before the level you set for it
@@ -198,7 +200,7 @@ local lineCache, lineKey = nil, nil
 function BT.SwitchLine(step, booster)
   if not step then return nil end
   local key = table.concat({ BT.dirty, #ChainDB.runs, UnitLevel("player") or 0,
-    step.id, tostring(booster), math.floor(time()) }, "|")
+    tostring(step.id), tostring(booster), math.floor(time()) }, "|")
   if key == lineKey then return lineCache end
   lineKey = key
   lineCache = BT.ComputeSwitchLine(step, booster)

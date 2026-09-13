@@ -171,6 +171,29 @@ end
 -- Ticked instances, in level order. A step ends at its "to" level; the step
 -- effectively starts at whichever is later, its own "from" or where the
 -- previous step left off.
+-- Steps of your own: the stretches you do not buy.
+--
+-- A chain is almost never boost all the way. You buy to 42, quest to 45
+-- because nobody sells that stretch cheaply, then buy again - and a plan that
+-- only knows about dungeons says you are on the Maraudon step for three
+-- levels you are actually soloing. It gets the runs wrong, the gold wrong and
+-- the time wrong, and it tells you to go and stand at a summoning stone.
+--
+-- So a step can be one you wrote yourself: a label and a level span, and
+-- nothing else. It costs nothing, it borrows no instance's numbers, and while
+-- you are on it the bar goes back to being a levelling bar.
+function BT.OwnSteps()
+  local out = {}
+  for i, r in ipairs(ChainDB.ownSteps or {}) do
+    if r.on ~= false and (tonumber(r.to) or 0) > (tonumber(r.from) or 0) then
+      table.insert(out, { own = i, solo = true,
+                          label = (r.label ~= "" and r.label) or "on your own",
+                          from = tonumber(r.from), to = tonumber(r.to) })
+    end
+  end
+  return out
+end
+
 function BT.Plan()
   local db = ChainDB
   local plan = {}
@@ -182,6 +205,7 @@ function BT.Plan()
                            gold = r.gold or 0 })
     end
   end
+  for _, e in ipairs(BT.OwnSteps()) do table.insert(plan, e) end
   table.sort(plan, function(a, b)
     if a.from ~= b.from then return a.from < b.from end
     return a.to < b.to
