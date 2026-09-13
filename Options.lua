@@ -10,6 +10,9 @@ local PER_PAGE = 11
 -- six folding blocks stacked down it, and the columns were narrow enough that
 -- a label in one reached into the next.
 local WIDTH = 880
+-- Where the note under the tab row sits, and what one line of it costs. Both
+-- are read in two places and were written out as numbers in both.
+local NOTE_TOP, LINE = -53, 13
 local opt, exportFrame, optPage = nil, nil, 1
 
 local function Tex(parent, layer, r, g, b, a)
@@ -182,6 +185,34 @@ local WHY = {
     "Frames and latency in the corner of your eye. It rides on the enemy tracker unless you drag it off. A run that suddenly feels heavy is usually one of those two numbers.",
 }
 
+-- One line under the tab row saying what the page you are on is for. They live
+-- here rather than at the six places the pages are built, because how much
+-- room the wordiest of them needs decides where everything under them starts,
+-- and that has to be known before the first row is placed. It was not: the
+-- note was given a single line's worth of space, the instance page's note is
+-- three, and it came down across the column headings.
+local NOTES = {
+  route = "Tick the instances you plan to run, give each one the levels you "
+    .. "will do it between, and the price a booster charges - that is your "
+    .. "route, and everything the bar says is worked out from it.\n"
+    .. "'enter' is the level the game lets you in at; 'levels' is what the "
+    .. "place is worth doing at; 'runs' is how many runs that price buys here.",
+  runs = "How a price is counted and how many runs an average is worked out "
+    .. "from. Nothing here changes what happens in the game - only how it is "
+    .. "added up afterwards.",
+  resets = "A reset means the opposite thing depending on which side of the "
+    .. "portal you are on, so it gets two sounds. What is said to the group, "
+    .. "and how loudly you are told, is here.",
+  chat = "Boosters advertise in chat and people look for groups there. Which "
+    .. "channels are read, and what is done with what they say.",
+  enemies = "Who is out there, how long a sighting counts for, and how loudly "
+    .. "you are told. Your notes on people are yours and are never shared.",
+  share = "What the bar looks like and where it sits, and whether "
+    .. "measurements are swapped with other people running Chain. Only "
+    .. "numbers are ever sent - never a note, never an opinion.",
+}
+BT.OPTION_NOTES = NOTES
+
 --------------------------------------------------------------------------
 local function BuildOptions()
   opt = CreateFrame("Frame", "ChainOptions", UIParent)
@@ -236,11 +267,24 @@ local function BuildOptions()
   opt:SetScale(ChainDB.optScale or 1)
 
   opt.help = opt:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
-  opt.help:SetPoint("TOPLEFT", 16, -53)
+  opt.help:SetPoint("TOPLEFT", 16, NOTE_TOP)
   opt.help:SetJustifyH("LEFT")
   -- bounded and wrapping: written out in full it ran off the right edge
   opt.help:SetWidth(WIDTH - 20)
   -- the text is set per page from here on; this is only what it starts as
+
+  -- How far down the page proper starts: measured off the wordiest note
+  -- rather than guessed at. Guessed at, it was one line, and the page with
+  -- three lines of note wrote them over the top of the table.
+  local noteH = LINE
+  for _, text in pairs(NOTES) do
+    opt.help:SetText(text)
+    local h = opt.help.GetStringHeight and opt.help:GetStringHeight() or 0
+    if h and h > noteH then noteH = h end
+  end
+  opt.help:SetText("")
+  local HEAD_Y = NOTE_TOP - noteH - 8   -- the instance table's headings
+  local ROW_TOP = HEAD_Y - 16           -- and its first row
 
   -- column headings for the route table
   -- 'gold' is the price of a pack and 'runs' is how many runs that pack is,
@@ -253,7 +297,7 @@ local function BuildOptions()
   opt.routeHeads = {}
   for _, h in ipairs(heads) do
     local fs = opt:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
-    fs:SetPoint("TOPLEFT", hx, -76)
+    fs:SetPoint("TOPLEFT", hx, HEAD_Y)
     fs:SetText(h[1])
     table.insert(opt.routeHeads, fs)
     hx = hx + h[2]
@@ -288,7 +332,7 @@ local function BuildOptions()
   for i = 1, PER_PAGE do
     local row = CreateFrame("Frame", nil, opt)
     row:SetSize(476, 22)
-    row:SetPoint("TOPLEFT", 16, -92 - (i - 1) * 24)
+    row:SetPoint("TOPLEFT", 16, ROW_TOP - (i - 1) * 24)
     if i % 2 == 0 then
       row.stripe = Tex(row, "BACKGROUND", 1, 1, 1, 0.03)
       row.stripe:SetAllPoints()
@@ -341,7 +385,7 @@ local function BuildOptions()
     opt.rows[i] = row
   end
 
-  local y = -92 - PER_PAGE * 24 - 6
+  local y = ROW_TOP - PER_PAGE * 24 - 6
   opt.pageText = opt:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   opt.pageText:SetPoint("TOPLEFT", 16, y)
   opt.prevPage = Button(opt, "< prev", 56, 18, function()
@@ -383,10 +427,10 @@ local function BuildOptions()
   -- without.
   opt.pageNote = opt.help
 
-  local PAGE_TOP = -70          -- under the tab row and that line
-  local function Page(title, key, note)
+  local PAGE_TOP = HEAD_Y + 6   -- under the tab row and whatever the note took
+  local function Page(title, key)
     Claim()                     -- everything built since the last one
-    local p = { key = key, title = title, widgets = {}, note = note }
+    local p = { key = key, title = title, widgets = {}, note = NOTES[key] }
     curPage = p
     table.insert(opt.pages, p)
 
@@ -429,12 +473,7 @@ local function BuildOptions()
   -- was the length of a screen.
   do
     local p = { key = "route", title = "Instances", widgets = {},
-      note = "Tick the instances you plan to run, give each one the levels "
-        .. "you will do it between, and the price a booster charges - that is "
-        .. "your route, and everything the bar says is worked out from it.\n"
-        .. "'enter' is the level the game lets you in at; 'levels' is what "
-        .. "the place is worth doing at; 'runs' is how many runs that price "
-        .. "buys here." }
+                note = NOTES.route }
     table.insert(opt.pages, 1, p)
     for _, w in ipairs({ opt.pageText, opt.prevPage, opt.nextPage }) do
       if w then claimed[w] = true table.insert(p.widgets, w) end
@@ -460,10 +499,7 @@ local function BuildOptions()
     claimed[b] = true
   end
 
-  Page("Runs & prices", "runs",
-    "How a price is counted and how many runs an average is worked out from. "
-      .. "Nothing here changes what happens in the game - only how it is "
-      .. "added up afterwards.")
+  Page("Runs & prices", "runs")
   opt.pack = Field(1, "Runs per price", 40, function() return ChainDB.pack end,
     -- the fallback only: the 'runs' column above beats it per instance, and a
     -- pack typed against a booster beats them both while he is boosting you
@@ -474,10 +510,7 @@ local function BuildOptions()
     function(v) ChainDB.limit = math.max(1, math.floor(v or 5)) end)
   NextRow()
 
-  Page("Resets & sounds", "resets",
-    "A reset means the opposite thing depending on which side of the portal "
-      .. "you are on, so it gets two sounds. What is said to the group, and "
-      .. "how loudly you are told, is here.")
+  Page("Resets & sounds", "resets")
   opt.sound = Toggle(1, "Sound on reset", function(v) ChainDB.sound = v end)
   do
     local x, ly = At(1)
@@ -532,9 +565,7 @@ local function BuildOptions()
   end
   NextRow()
 
-  Page("Chat", "chat",
-    "Boosters advertise in chat and people look for groups there. Which "
-      .. "channels are read, and what is done with what they say.")
+  Page("Chat", "chat")
   -- Its history is taken into our own log on every login whether this is on
   -- or off. This only decides whether its live count is trusted over ours.
   opt.nit = Toggle(1, "Read NIT's count",
@@ -578,9 +609,7 @@ local function BuildOptions()
   end
   NextRow()
 
-  Page("Enemies", "enemies",
-    "Who is out there, how long a sighting counts for, and how loudly you "
-      .. "are told. Your notes on people are yours and are never shared.")
+  Page("Enemies", "enemies")
   opt.watch = Toggle(1, "Watch for enemies", function(v)
     ChainDB.watchEnemies = v
   end)
@@ -679,10 +708,7 @@ local function BuildOptions()
   end)
   NextRow()
 
-  Page("Bar & sharing", "share",
-    "What the bar looks like and where it sits, and whether measurements are "
-      .. "swapped with other people running Chain. Only numbers are ever "
-      .. "sent - never a note, never an opinion.")
+  Page("Bar & sharing", "share")
   opt.announceLock = Toggle(1, "Tell the group your lockout",
     function(v) ChainDB.announceLock = v end)
   -- The count moves twice on the way in - up when you zone, back down when

@@ -152,7 +152,9 @@ BT.ALIAS = {
   wc = "wc", wailing = "wc",
   sfk = "sfk", shadowfang = "sfk",
   bfd = "bfd", blackfathom = "bfd",
-  stocks = "stock", stockade = "stock", stockades = "stock",
+  -- "stock boost" is how it is written far more often than "Stockades", and
+  -- it was the one spelling the table did not have
+  stock = "stock", stocks = "stock", stockade = "stock", stockades = "stock",
   gnomer = "gnomer", gnome = "gnomer", gnomeregan = "gnomer",
   rfk = "rfk", kraul = "rfk",
   sm = "sm", monastery = "sm", cath = "sm", cathedral = "sm", armory = "sm",

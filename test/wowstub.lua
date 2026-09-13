@@ -561,12 +561,24 @@ function frameMeta:GetPoint(i)
   return p.point, p.rel, p.relPoint or p.point, p.x or 0, p.y or 0
 end
 function frameMeta:SetText(v) self.__text = v end
+-- The colour of the letters, not only of the box behind them: a tab that is
+-- marked by its label colour is marked by nothing at all if this is a no-op.
+function frameMeta:SetTextColor(r, g, b, a)
+  self.__r, self.__g, self.__b = r, g, b
+end
+function frameMeta:GetTextColor()
+  return self.__r or 1, self.__g or 1, self.__b or 1
+end
 function frameMeta:SetWordWrap(v) self.__wrap = v and true or false end
 function frameMeta:SetMaxLines(n) self.__maxLines = n end
 function frameMeta:SetTexture(v, g, b, a)
   if type(v) == "number" then self.__alpha = a else self.__tex = v end
 end
-function frameMeta:SetColorTexture(r, g, b, a) self.__alpha = a end
+-- The colour itself, not only how solid it is. A button that says which one it
+-- is by its colour says nothing at all if the colour is thrown away here.
+function frameMeta:SetColorTexture(r, g, b, a)
+  self.__r, self.__g, self.__b, self.__alpha = r, g, b, a
+end
 function frameMeta:SetFrameStrata(v) self.__strata = v end
 function frameMeta:GetTexture() return self.__tex end
 function frameMeta:GetText() return self.__text or "" end
@@ -577,6 +589,25 @@ S.charW = 6
 function frameMeta:GetStringWidth()
   local t = tostring(self.__text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
   return #t * (S.charW or 6)
+end
+-- Rough, pessimistic and wrapping: a panel that works out where its first row
+-- goes from how tall its heading text is makes that decision here too, and
+-- with a no-op it made it from zero. S.charW is a little wider than the real
+-- font, so the test asks for slightly more room than the game needs - which is
+-- the safe direction for a measurement that decides what sits on top of what.
+S.lineH = 13
+function frameMeta:GetStringHeight()
+  local t = tostring(self.__text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+  if t == "" then return 0 end
+  local w, lines = self.__w, 0
+  for seg in (t .. "\n"):gmatch("(.-)\n") do
+    local n = 1
+    if w and w > 0 then n = math.max(1, math.ceil(#seg * (S.charW or 6) / w)) end
+    if self.__wrap == false then n = 1 end
+    if self.__maxLines and n > self.__maxLines then n = self.__maxLines end
+    lines = lines + n
+  end
+  return lines * (S.lineH or 13)
 end
 function frameMeta:SetShown(v) self.__shown = v and true or false end
 function frameMeta:SetChecked(v) self.__checked = v end

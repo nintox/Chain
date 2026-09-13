@@ -113,9 +113,34 @@ function BT.AdPrice(msg)
   return gold, runs
 end
 
--- Does this read like somebody selling boosts? The caller has already
--- established that the message names an instance and a price, so this only
--- has to separate a sale from a group looking for members.
+-- Selling something is not selling a boost. Trade chat is mostly people
+-- selling things - dust, a formula, an [Edgemaster's Handguards], a summon, a
+-- port, a raid loot run - and "WTS" is the only thing any of them have in
+-- common with the man selling Stockade runs. WTS on its own used to be enough
+-- to get on the list, and the list filled up with the other trade.
+local function SaysBoost(low)
+  return low:find("boost", 1, true) or low:find("carry", 1, true)
+    or low:find("powerlevel", 1, true) or low:find("power level", 1, true)
+    or low:find("power lvl", 1, true) or low:find("%f[%a]pl%f[%A]") ~= nil
+end
+
+-- A raid loot run says "runs" and a price exactly like a boost does, so the
+-- only thing that separates them is the name of the place. These are not
+-- levelling, whatever they cost, and this addon counts levels.
+local RAID_SALE = { "loot run", "lootrun", "gdkp", "naxx", "aq20", "aq40",
+                    "%f[%a]aq%f[%A]", "%f[%a]bwl%f[%A]", "onyxia",
+                    "%f[%a]ony%f[%A]", "molten core", "%f[%a]mc%f[%A]",
+                    "%f[%a]zg%f[%A]", "%f[%a]aq40%f[%A]" }
+local function RaidSale(low)
+  for _, w in ipairs(RAID_SALE) do
+    if low:find(w) then return true end
+  end
+  return false
+end
+
+-- Does this read like somebody selling boosts? Two questions, and both have to
+-- answer yes: is it a sale rather than a request, and is what is being sold a
+-- boost rather than anything else a person sells in the same channel.
 function BT.LooksLikeAd(msg)
   local low = msg:lower()
   local sells = low:find("wts", 1, true) or low:find("selling", 1, true)
@@ -128,12 +153,16 @@ function BT.LooksLikeAd(msg)
       return false
     end
   end
-  if sells then return true end
-  if low:find("boost", 1, true) or low:find("carry", 1, true) then return true end
-  -- "Stockades 5 runs 200g" - an instance and a number of runs is a sale
-  -- whatever words are around it
-  if low:find("%f[%w]runs?%f[%W]") then return true end
-  return false
+  local id = BT.AdZone(msg)
+  -- "Stockades 5 runs 200g" - a named instance and a number of runs is a boost
+  -- whatever words are around it. Runs on their own are not: a loot run is
+  -- runs too.
+  local runs = low:find("%f[%w]runs?%f[%W]") ~= nil
+  if not SaysBoost(low) and not (id and runs) then return false end
+  -- and a raid is a raid even when it says boost, unless it also names an
+  -- instance we level in - "SM boost" in a line that mentions MC is still SM.
+  if not id and RaidSale(low) then return false end
+  return true
 end
 
 --------------------------------------------------------------------------
@@ -384,6 +413,39 @@ function BT.NoteAd(msg, sender, source)
   BT.TouchRoster()
   -- the window is usually open while you are shopping
   if BT.RenderWindow then BT.RenderWindow() end
+end
+
+-- Sweeping up after the filter that used to be too wide. Everybody who typed
+-- WTS anything went on the list, and what they were selling was dust and
+-- enchant formulas. The adverts themselves fall off the tab after half an
+-- hour, but the name stayed on the books for ever.
+--
+-- Only the ones that are nothing but an old advert go: no runs with him, no
+-- price, no note of yours, nothing anybody told you about him, and no
+-- instance named in what he said. Anything you know is knowledge, and
+-- knowledge is not swept up.
+function BT.ForgetStaleAds(age)
+  if type(ChainDB.boosters) ~= "table" then return 0 end
+  age = age or (7 * 24 * 3600)
+  local known = {}
+  for _, r in ipairs(ChainDB.runs or {}) do if r.by then known[r.by] = true end end
+  for _, t in ipairs(ChainDB.trades or {}) do
+    if t.with then known[t.with] = true end
+    if t.by then known[t.by] = true end
+  end
+  local gone = 0
+  for name, info in pairs(ChainDB.boosters) do
+    if type(info) == "table" and not known[name] and not info.mine
+       and not info.shared and not info.note and not info.adZone
+       and not info.zones and (info.price or 0) <= 0
+       and (info.adPrice or 0) <= 0
+       and (info.adAt or 0) > 0 and (time() - info.adAt) > age then
+      ChainDB.boosters[name] = nil
+      gone = gone + 1
+    end
+  end
+  if gone > 0 then BT.TouchRoster() end
+  return gone
 end
 
 -- How much each source has actually produced, and the last few adverts in

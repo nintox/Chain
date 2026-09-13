@@ -1780,6 +1780,36 @@ do  -- Fanene i innstillingane: same form som det store vindauget, éi side om
     BT.ShowOptionsPage("route")
   end
 
+  -- ... og forklaringa skal ha plass til å stå. Ho fekk ei linje, og sida med
+  -- tre linjer skreiv dei tvers over kolonneoverskriftene i instans-tabellen.
+  -- Dette er den eine plassen i panelet der høgda på ein tekst avgjer kor alt
+  -- anna startar, så ho blir målt her på same måten som i spelet.
+  do
+    local worst, worstBy
+    for _, pg in ipairs(o.pages or {}) do
+      BT.ShowOptionsPage(pg.key)
+      local h = o.pageNote:GetStringHeight() or 0
+      local _, _, _, _, noteY = o.pageNote:GetPoint(1)
+      local bottom = (noteY or 0) - h
+      -- kva som ligg øvst på denne sida
+      local top
+      for _, wdg in ipairs(pg.widgets or {}) do
+        if wdg ~= o.pageNote and wdg.GetPoint then
+          local point, _, _, _, wy = wdg:GetPoint(1)
+          if wy and (point or ""):find("TOP") and (not top or wy > top) then
+            top = wy
+          end
+        end
+      end
+      if top and bottom < top and (not worst or (top - bottom) > worstBy) then
+        worst, worstBy = pg.key, top - bottom
+      end
+    end
+    ok(worst == nil, "forklaringa ligg ikkje oppå sida si (" ..
+       tostring(worst) .. ", " .. math.floor(worstBy or 0) .. " px)")
+    BT.ShowOptionsPage("route")
+  end
+
   -- og kvar einaste brytar og boks seier kva han gjer
   do
     local dumb = {}
@@ -4208,6 +4238,62 @@ eq(ChainDB.boosters["Cath"] and ChainDB.boosters["Cath"].adZone,
 ad("LF small group for questing", "Quest-Testrealm")
 eq(ChainDB.boosters["Quest"], nil, "'small' skal ikkje matche SM")
 
+-- Handelskanalen er stort sett folk som sel ting, og WTS er alt dei har felles
+-- med han som sel Stockade-runs. Lista fyltest opp med det andre. Desse
+-- linjene er ordrett frå trade og LookingForGroup.
+do
+  local junk = {
+    { "Imadude",     "WTS Magic Dust :)" },
+    { "Hardhammer",  "WTS [Edgemaster's Handguards]" },
+    { "Enchfourbis", "wts Formula: Enchant Chest - Greater Stats" },
+    { "Neverisa",    "WTS PORT SERVICE" },
+    { "Xiaomiwcbme", "WTS next <Rend priest mc+summ> inv if ready" },
+    { "Hojsel",      "WTS HOJ [Hand of Justice] , [Ironfoe] + MC & ONYX Attune Servi" },
+    { "Poppar",      "WTS HoH pop" },
+    { "Nestux",      "{star}WTS NAXX/AQ40/BWL/MC LOOTRUNS{star}Get all loot you need!" },
+    { "Guildar",     "{star}[NAXX/AQ/BWL] Fresh Guild Loot Run Clears! Open VIP Slots" },
+    { "Silverhand",  "WTS Rend PriestMC+Summon SAFE SPOTS 250g rend in 40mins" },
+  }
+  for _, j in ipairs(junk) do
+    ad(j[2], j[1] .. "-Testrealm")
+    eq(ChainDB.boosters[j[1]], nil, "ikkje ein booster: " .. j[2]:sub(1, 34))
+  end
+
+  -- og desse, like ordrett, skal framleis inn
+  local real = {
+    { "Gooni",   "Cheap stock boost 15-30 90+ mobs 6-8 min 40g 5 run 1/4", "stock" },
+    { "Palali",  "WTS Nonstop Dire Maul West+North Boost {purple} Very Cheap", "dmw" },
+    { "Darksum", "WTS{blue}{blue}SM BOOST{purple}{purple}ARM CATH", "sm" },
+    { "Zenhar",  "WTS {star}(SM){star}boost cath+boss+arms level20-42 155-16", "sm" },
+    { "Dirmaulbosts", "WTS AFK Dire maul XP BOOST Giga pull solo Mage t2/Zanza", "dmw" },
+  }
+  for _, r in ipairs(real) do
+    ad(r[2], r[1] .. "-Testrealm")
+    ok(ChainDB.boosters[r[1]] ~= nil, "ein booster: " .. r[2]:sub(1, 34))
+    eq(ChainDB.boosters[r[1]] and ChainDB.boosters[r[1]].adZone, r[3],
+       "og instansen: " .. r[2]:sub(1, 20))
+  end
+
+  -- ein boost i ei linje som også nemner ein raid er framleis ein boost:
+  -- instansen avgjer, ikkje ordet
+  ad("WTS SM boost, also doing MC next week", "Bade-Testrealm")
+  ok(ChainDB.boosters["Bade"] ~= nil, "SM-boost i ei linje som nemner MC")
+
+  -- og dei som alt står i boka frå den gamle, for vide lesinga skal ut igjen
+  ChainDB.boosters["Dustsel"] = { adAny = true, adAt = time() - 8 * 24 * 3600,
+                                  adText = "WTS Magic Dust" }
+  ChainDB.boosters["Gamalkjent"] = { adAny = true, note = "grei kar",
+                                     adAt = time() - 8 * 24 * 3600 }
+  ChainDB.boosters["Gamalpris"] = { adAny = true, price = 40,
+                                    adAt = time() - 8 * 24 * 3600 }
+  ChainDB.boosters["Ferskdust"] = { adAny = true, adAt = time() - 60 }
+  eq(BT.ForgetStaleAds(), 1, "ein gamal annonse utan noko i seg blir rydda")
+  eq(ChainDB.boosters["Dustsel"], nil, "og det var den rette")
+  ok(ChainDB.boosters["Gamalkjent"], "notatet ditt blir verande")
+  ok(ChainDB.boosters["Gamalpris"], "og ein pris er kunnskap, ikkje ein annonse")
+  ok(ChainDB.boosters["Ferskdust"], "og ein fersk blir ikkje rørt")
+end
+
 -- annonsar skal lesast frå kva kanal som helst, og frå kvisk
 do
   ChainDB.boosters = {}
@@ -4886,6 +4972,47 @@ do
   ok(not w.addName:IsShown(), "og legg-til-boksen er det ikkje")
   BT.ShowTab("boosters")
   ok(w.addName:IsShown(), "på Boosters er det omvendt")
+
+  -- Fana du står på skal seie det på tre måtar - eigen farge, gul tekst og ei
+  -- gul strek under - slik som i innstillingane. Ni faner i grått, og den eine
+  -- som var 0.25 grå i staden for 0.15, er ikkje noko du ser over eit skjerm
+  -- med raid-rammer på.
+  do
+    local function tabOf(key)
+      for _, b in ipairs(w.tabs or {}) do if b.key == key then return b end end
+    end
+    BT.ShowTab("gold")
+    local on, off = tabOf("gold"), tabOf("runs")
+    ok(on and on.active, "fana du står på er merka")
+    ok(on and on.mark and on.mark:IsShown(), "med gul strek under")
+    ok(off and not (off.mark and off.mark:IsShown()),
+       "og dei andre har henne ikkje")
+    local r, g, b = on.fs:GetTextColor()
+    ok(r > 0.9 and g > 0.8 and b < 0.7, "teksten er gull")
+    local r2, g2, b2 = off.fs:GetTextColor()
+    ok(math.abs(r2 - g2) < 0.05 and math.abs(g2 - b2) < 0.05,
+       "og grå på dei andre")
+
+    -- og ho skal halde seg merka etter at musa har vore innom: å peike på fana
+    -- du alt står på og gå vidare gjorde henne grå igjen
+    on:GetScript("OnEnter")(on)
+    on:GetScript("OnLeave")(on)
+    ok(on.active and on.mark:IsShown(), "merket overlever ei mus innom")
+    -- fargen med: den lyse fana er blåleg, ei grå fane er like mykje av kvar
+    ok((on.bg.__b or 0) - (on.bg.__r or 0) > 0.1,
+       "og fana er framleis lys etterpå, ikkje grå")
+    ok(math.abs((off.bg.__b or 0) - (off.bg.__r or 0)) < 0.05,
+       "medan ei fane du ikkje står på er grå")
+
+    -- underfanene under Boosting er faner på same vilkår
+    BT.ShowTab("wtb")
+    local sub
+    for _, b in ipairs(w.subtabs or {}) do if b.key == "wtb" then sub = b end end
+    ok(sub and sub.active and sub.mark and sub.mark:IsShown(),
+       "underfana er merka på same måten")
+    ok(tabOf("boosting") and tabOf("boosting").mark:IsShown(),
+       "og overskrifta hennar står lyst")
+  end
   ok(not w.targetBox:IsShown(), "og målboksen er borte")
   BT.ShowTab("runs")
 end

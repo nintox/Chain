@@ -27,6 +27,36 @@ local function Tex(parent, layer, r, g, b, a)
   return t
 end
 
+-- A tab you can find without looking twice. The row is nine wide, and the
+-- difference between 0.15 grey and 0.25 grey is not a difference you see
+-- across a screen with a raid frame on it - so the tab you are on says so
+-- three ways: its own colour, a gold label, and a gold line under it. The
+-- settings panel is marked exactly like this, and the two are the same window
+-- to look at, so they had better be the same window to read.
+local function Mark(b)
+  b.mark = Tex(b, "OVERLAY", 1, 0.82, 0, 1)
+  b.mark:SetHeight(2)
+  b.mark:SetPoint("BOTTOMLEFT", 0, 0)
+  b.mark:SetPoint("BOTTOMRIGHT", 0, 0)
+  b.mark:Hide()
+  return b
+end
+
+local function LitTab(b, on)
+  if not b then return b end
+  on = on and true or false
+  b.active = on
+  b.bg:SetColorTexture(on and 0.26 or 0.15, on and 0.30 or 0.15,
+                       on and 0.45 or 0.15, on and 1 or 0.9)
+  if b.fs and b.fs.SetTextColor then
+    b.fs:SetTextColor(on and 1 or 0.7, on and 0.92 or 0.7, on and 0.6 or 0.7)
+  end
+  if b.mark then
+    if on then b.mark:Show() else b.mark:Hide() end
+  end
+  return b
+end
+
 local function Button(parent, label, w, h, onClick)
   local b = CreateFrame("Button", nil, parent)
   b:SetSize(w, h)
@@ -46,8 +76,11 @@ local function Button(parent, label, w, h, onClick)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function(self)
-    self.bg:SetColorTexture(self.active and 0.25 or 0.15, self.active and 0.25 or 0.15,
-                            self.active and 0.35 or 0.15, 0.9)
+    -- a tab goes back to being marked, not to being grey: hovering the tab you
+    -- were already on and moving away used to leave it looking like a tab you
+    -- were not on
+    if self.mark then LitTab(self, self.active)
+    else self.bg:SetColorTexture(0.15, 0.15, 0.15, 0.9) end
     GameTooltip:Hide()
   end)
   b:SetScript("OnClick", onClick)
@@ -2442,18 +2475,14 @@ local function SetMode(m)
   for key, b in pairs(tabs) do
     -- the kill-on-sight list lives under Enemies, so that tab stays lit, and
     -- the heading stays lit for whichever of its own tabs you are on
-    b.active = (key == m) or (key == "enemies" and m == "koslist")
-      or (key == GROUP[m])
-    b.bg:SetColorTexture(b.active and 0.25 or 0.15, b.active and 0.25 or 0.15,
-                         b.active and 0.35 or 0.15, 0.9)
+    LitTab(b, (key == m) or (key == "enemies" and m == "koslist")
+      or (key == GROUP[m]))
   end
   if win and win.subtabs then
     local shown = GROUP[m] ~= nil
     for _, b in ipairs(win.subtabs) do
       b:SetShown(shown)
-      b.active = (b.key == m)
-      b.bg:SetColorTexture(b.active and 0.25 or 0.15, b.active and 0.25 or 0.15,
-                           b.active and 0.35 or 0.15, 0.9)
+      LitTab(b, b.key == m)
     end
     -- the subtitle steps aside for them rather than being drawn underneath
     win.subtitle:ClearAllPoints()
@@ -2509,9 +2538,10 @@ local function Build()
                          { "route", "Route" } }) do
     -- ten of them now, so they are measured rather than spaced by hand:
     -- one more tab used to push the last one off the right-hand edge
-    local b = Hint(Button(win, def[2], 74, 20, function() SetMode(def[1]) end),
-      TAB_HINT[def[1]] or "")
+    local b = Mark(Hint(Button(win, def[2], 74, 20, function() SetMode(def[1]) end),
+      TAB_HINT[def[1]] or ""))
     b:SetPoint("TOPLEFT", tx, -28)
+    b.key = def[1]
     tabs[def[1]] = b
     win.tabs = win.tabs or {}
     table.insert(win.tabs, b)
@@ -2525,8 +2555,8 @@ local function Build()
   do
     local sx = 10
     for _, def in ipairs(SUBTABS.boosting) do
-      local b = Hint(Button(win, def[2], 62, 16, function() SetMode(def[1]) end),
-        TAB_HINT[def[1]] or "")
+      local b = Mark(Hint(Button(win, def[2], 62, 16, function() SetMode(def[1]) end),
+        TAB_HINT[def[1]] or ""))
       b:SetPoint("TOPLEFT", sx, -52)
       b.key = def[1]
       table.insert(win.subtabs, b)

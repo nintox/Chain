@@ -1056,6 +1056,36 @@ parts that are not.
   otherwise have to find out by trying it. The text lives beside the label
   rather than at the call, so a switch nobody explained fails a test instead
   of reaching somebody's screen.
+- **And the explanation stopped landing on top of the page.** It was given one
+  line's worth of room; the instance page's runs to three, and they came down
+  across the column headings. Where the page starts is measured off the
+  wordiest of them now instead of guessed at, so a longer sentence moves the
+  table rather than covering it.
+
+**The main window**
+
+- **The tab you are on is marked the same way as in the settings** - its own
+  colour, a gold label, a gold line underneath. Nine tabs in grey with one of
+  them a shade lighter is not a difference you see across a screen with raid
+  frames on it. The sub-tabs under Boosting are marked the same, and the
+  heading they sit under stays lit.
+
+**Who is actually selling a boost**
+
+- **Trade chat is mostly people selling things, and all of them were going on
+  the Sellers list.** Magic Dust, an Edgemaster's Handguards, an enchant
+  formula, a summon, a port, a Naxxramas loot run - "WTS" was the only thing
+  any of them had in common with the man selling Stockade runs, and "WTS" was
+  all it took. An advert has to be about a boost now: it says boost, carry or
+  powerlevel, or it names an instance and a number of runs. A raid is a raid
+  even when it says boost, unless the line also names somewhere you level.
+- **The names the old reading let in are swept up** at login - but only the
+  ones that are nothing but a stale advert. A price, a note of yours, a run
+  you did with him, anything anyone told you about him, and he stays. That is
+  knowledge, and knowledge does not get tidied away.
+- **"stock boost" is Stockades.** The table had stocks, stockade and stockades
+  and not the one spelling people actually type, so half the Stockade adverts
+  went up with a dash where the instance should be.
 
 **Your screen, your character**
 

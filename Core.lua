@@ -1925,6 +1925,9 @@ function BT.OnEvent(_, event, ...)
     -- Coin used to get a row of its own in the loot log, which is how a night
     -- of Scarlet Monastery turned into four hundred lines of "3s 95c" with
     -- the greens somewhere inside them. It belongs to the run now.
+    -- the names the old advert filter let in, which were most of trade chat
+    if BT.ForgetStaleAds then BT.ForgetStaleAds() end
+
     if BT.FoldCoins and not ChainDB.coinFolded then
       local moved, loose = BT.FoldCoins()
       if (moved or 0) + (loose or 0) > 0 then
