@@ -478,6 +478,20 @@ parts that are not.
   with it.* "Are you sure?" is not a question you can answer without being
   told what you are being asked about.
 
+- **A trade row shows its working.** `you bought 3, that leaves 5` reads as
+  bad arithmetic until you are told about the two that were left over from the
+  pack before, so it says: **3.0 bought + 2.0 he still owed you = 5.0**, and
+  underneath, how many runs were recorded between this payment and the one
+  before it. That second figure is the one worth checking - the sum is only as
+  right as the run log, and a run that never got logged is exactly how this
+  goes wrong.
+
+- **Tooltips were losing every line after an absent one.** The tables are
+  written as `{ a, b, c or nil, d }` - put this line in only when there is one
+  - and `ipairs` stops dead at the first `nil`. A trade with no zone recorded
+  lost its arithmetic and its balance; a run with no coin lost the group line.
+  Eleven of them, all silently truncated, for as long as they have existed.
+
 - **The runs are counted the way the pack is sold: `7/10`.** That is how both
   of you are thinking about it - it says how far through you are and how much
   is left in the same breath, where `3 runs left` is a number you have to hold

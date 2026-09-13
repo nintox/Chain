@@ -2538,6 +2538,62 @@ do
   ChainCharDB.run = keepRun
 end
 
+-- "Du kjøpte 3, det gir 5" ser ut som feil rekning heilt til du får vite om
+-- dei to som stod att frå pakken før. Så rada viser utrekninga.
+do
+  local keepT, keepR, keepB = ChainDB.trades, ChainDB.runs, ChainDB.boosters
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainDB.boosters = { Reknar = { price = 100, pack = 10 } }
+  -- fyrst ein pakke på fem, så tre runder, så ein pakke på tre
+  table.insert(ChainDB.trades, { at = S.now - 9000, with = "Reknar",
+    gave = 50 * 10000, got = 0, id = "sm", perRun = 10, char = "Tester" })
+  for i = 1, 3 do
+    table.insert(ChainDB.runs, { at = S.now - 8000 + i * 600, t = 300,
+      zone = "The Stockade", id = "sm", by = "Reknar", xp = 9000, k = 60,
+      lvl = 20 })
+  end
+  local second = { at = S.now - 3000, with = "Reknar", gave = 30 * 10000,
+                   got = 0, id = "sm", perRun = 10, char = "Tester" }
+  table.insert(ChainDB.trades, second)
+  BT.Touch() BT.TouchTrades()
+
+  local led = BT.CreditLedger()[second]
+  ok(led ~= nil, "den andre betalinga er i boka")
+  near(led.bought or 0, 3, "han kjøpte tre", 0.01)
+  near(led.carried or 0, 2, "og to stod att frå før", 0.01)
+  near(led.left or 0, 5, "som til saman er fem", 0.01)
+  eq(led.ran, 3, "med tre runder mellom dei to betalingane")
+
+  BT.ShowTab("gold")
+  local wg, rowTip = _G.ChainWindow, nil
+  for _, r in ipairs(wg.rows or {}) do
+    if r:IsShown() and r.tip then
+      for _, line in ipairs(r.tip) do
+        if type(line) == "string" and line:find("he still owed you") then
+          rowTip = line
+        end
+      end
+    end
+  end
+  ok(rowTip ~= nil, "og rada viser utrekninga (" .. tostring(rowTip) .. ")")
+
+  -- Desse tabellane er skrivne som { a, b, c or nil, d } - "ta med denne
+  -- linja berre når det finst ei" - og ipairs stoppar på fyrste nil. Alt
+  -- etter ei linje som ikkje var der forsvann i stillheit.
+  for _, r in ipairs(wg.rows or {}) do
+    if r:IsShown() and r.tip then
+      for i = 1, #r.tip do
+        ok(r.tip[i] ~= nil, "ingen hol i tooltip-lista")
+      end
+    end
+  end
+  ok(rowTip and rowTip:find("3.0 bought"), "kva som blei kjøpt")
+  ok(rowTip and rowTip:find("2.0"), "og kva som blei med frå før")
+
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
+  BT.Touch() BT.TouchTrades()
+end
+
 -- Talde slik pakken blir seld, for det er slik begge to tenkjer om han:
 -- "7/10" seier kor langt du er komen og kor mykje som står att i same andedrag,
 -- der "3 runs left" er eit tal du må halde opp mot noko anna for å forstå.

@@ -438,22 +438,30 @@ function BT.CreditLedger()
   for who, list in pairs(seen) do
     local runs = BT.Runs({ by = who,
                            since = (list[1].at or 0) - CREDIT_GRACE })
-    local paidRuns, at = 0, 1
+    local paidRuns, at, was = 0, 1, 1
     for _, t in ipairs(list) do
       -- runs already finished by the time this line of the book was written
+      was = at
       while at <= #runs and (runs[at].at or 0) <= (t.at or 0) do at = at + 1 end
+      -- and what was still outstanding the moment before this money moved.
+      -- Without it a row saying "you bought 3, that leaves 5" looks like bad
+      -- arithmetic rather than two left over from the pack before.
+      local carried = paidRuns - (at - 1)
+      local ran = at - was
       if t.setTo then
         -- a line that says what the balance is rather than adding to it:
         -- everything above it stops counting, here and below
         paidRuns = t.setTo + (at - 1)
-        out[t] = { setTo = t.setTo, left = t.setTo }
+        out[t] = { setTo = t.setTo, left = t.setTo, carried = carried,
+                   ran = ran }
       else
         local net = (t.gave or 0) - (t.got or 0)
         local per = PerRun(t)
         local bought = (per and per > 0 and net ~= 0)
           and (BT.Gold(net) / per) or nil
         if bought then paidRuns = paidRuns + bought end
-        out[t] = { bought = bought, per = per, left = paidRuns - (at - 1) }
+        out[t] = { bought = bought, per = per, left = paidRuns - (at - 1),
+                   carried = carried, ran = ran }
       end
     end
   end

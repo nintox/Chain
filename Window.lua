@@ -54,6 +54,22 @@ local function Button(parent, label, w, h, onClick)
   return b
 end
 
+-- A tooltip's lines, without the holes.
+--
+-- These tables are written as { a, b, c or nil, d } - "put this line in only
+-- when there is one" - and ipairs stops dead at the first nil. Every line
+-- after an absent one was being silently dropped: a trade with no zone lost
+-- its arithmetic, a run with no coin lost the group line. Varargs keep the
+-- nils long enough to skip them properly.
+local function Lines(...)
+  local out, n = {}, select("#", ...)
+  for i = 1, n do
+    local v = select(i, ...)
+    if v ~= nil and v ~= "" then out[#out + 1] = v end
+  end
+  return out
+end
+
 -- What a button says before you press it.
 local function Hint(b, text, title)
   if not b then return b end
@@ -187,8 +203,10 @@ local LAYOUTS = {
       { "buys",    46, nil, "what that net was worth in runs, at the price "
         .. "he was charging then" },
       { "to come", 50, nil, "runs he still owed you the moment this trade "
-        .. "was logged. Frozen at that second - the live figure is on the "
-        .. "Boosters tab." },
+        .. "was logged - what you bought here plus anything left over from "
+        .. "the pack before, which is why it can be more than 'buys'. Hover "
+        .. "a row for the working. Frozen at that second; the live figure is "
+        .. "on the Boosters tab." },
       { "your items", 104, nil, "items you put in the trade window - not "
         .. "gold. Usually empty." },
       { "his items", 104, nil, "items he put in the trade window - a bag of "
@@ -392,13 +410,13 @@ local function RunRows()
       at = live.start, zone = live.zone, xp = live.xp or 0, t = t,
       k = live.k or 0, rate = rate, by = live.by, lvl = live.lvl,
       grpAvg = live.grpAvg, coin = live.coin or 0,
-      tip = {
+      tip = Lines(
         BT.Short(live.zone, live.map) or "?",
         "the run you are in, still going",
         BT.N(live.xp or 0) .. " xp, " .. (live.k or 0) .. " mobs, " .. BT.T(t),
         live.by and ("boosted by " .. live.by) or "clearing it yourself",
         "it counts for nothing until you walk out"
-      },
+      ),
       cells = {
         C.good .. "now" .. C.off,
         BT.Short(live.zone, live.map) or "?",
@@ -424,7 +442,7 @@ local function RunRows()
       at = r.at, zone = r.zone, xp = r.xp, t = r.t, k = r.k,
       rate = ((r.t or 0) > 0) and (r.xp / r.t * 3600) or 0,
       by = r.by, lvl = r.lvl, grpAvg = r.grpAvg, coin = r.coin or 0,
-      tip = {
+      tip = Lines(
         BT.Short(r.zone, r.map) or "?",
         date("%A %d %B, %H:%M", r.at or time()),
         BT.N(r.xp or 0) .. " xp, " .. (r.k or 0) .. " mobs, " .. BT.T(r.t)
@@ -434,7 +452,7 @@ local function RunRows()
           or nil,
         r.grpAvg and string.format("group of %d, average level %.1f",
                                    r.grp or 0, r.grpAvg) or nil
-      },
+      ),
       cells = {
         BT.T(time() - (r.at or time())) .. " ago",
         BT.Short(r.zone, r.map) or "?",
@@ -467,7 +485,7 @@ local function RunRows()
       local runs = led and led.bought or nil
       table.insert(out, {
         trade = t, at = t.at,
-        tip = {
+        tip = Lines(
           (net > 0) and ("paid " .. (t.with or "?"))
             or ("got back from " .. (t.with or "?")),
           date("%A %d %B, %H:%M", t.at or time()),
@@ -475,7 +493,7 @@ local function RunRows()
             .. (runs and string.format("  -  %.1f runs", runs) or ""),
           t.manual and "typed in by hand" or "the addon watched this one",
           "everything above this line is what you have had since"
-        },
+        ),
         cells = {
           C.dim .. BT.T(time() - (t.at or time())) .. " ago" .. C.off,
           C.gold .. ((net > 0) and "paid" or "got back") .. C.off
@@ -632,7 +650,7 @@ local function GoldRows()
         tostring(t.lvl or "-"),
         t.by and (C.good .. "yes" .. C.off) or (C.dim .. "-" .. C.off)
       },
-      tip = {
+      tip = Lines(
         (t.with or "?") .. "   " .. date("%A %d %B, %H:%M", t.at or time()),
         ((t.gave or 0) > 0 and ("you paid " .. BT.G(BT.Gold(t.gave))) or "")
           .. (BT.ItemsText(t.gaveItems)
@@ -656,12 +674,31 @@ local function GoldRows()
                or string.format("left you %.1f runs ahead of what you had "
                                 .. "paid for", -led.left))
           or nil,
+        -- The working, because "you bought 3, that leaves 5" reads as bad
+        -- arithmetic until you are told about the two from the pack before.
+        (led and led.left and led.bought)
+          and ((math.abs(led.carried or 0) < 0.05)
+               and string.format("%.1f bought, nothing carried over",
+                                 led.bought)
+               or ((led.carried or 0) > 0
+                   and string.format("%.1f bought + %.1f he still owed you = "
+                                     .. "%.1f", led.bought, led.carried,
+                                     led.left)
+                   or string.format("%.1f bought, less the %.1f you had "
+                                    .. "already taken = %.1f", led.bought,
+                                    -(led.carried or 0), led.left)))
+          or nil,
+        (led and (led.ran or 0) > 0)
+          and string.format("%d run%s recorded between this and the payment "
+                            .. "before it", led.ran,
+                            (led.ran == 1) and "" or "s")
+          or nil,
         t.setTo and ("you set the balance here by hand. Everything before it "
           .. "stops counting and the tally starts again at "
           .. string.format("%.1f", t.setTo)) or nil,
         (t.manual and not t.setTo)
           and "you typed this one in yourself - the x removes it" or nil
-      }
+      )
     })
   end
   table.sort(out, function(a, b) return (a.at or 0) > (b.at or 0) end)
@@ -708,7 +745,7 @@ local function AdRows()
           C.dim .. (info.adText or "") .. C.off,
           ""
         },
-        tip = {
+        tip = Lines(
           name,
           (d and d.label or info.adZone)
             .. "   " .. BT.T(time() - (info.adAt or time())) .. " ago"
@@ -718,7 +755,7 @@ local function AdRows()
             and ("He says " .. BT.G(gold)
                  .. ((pack > 1) and (" for " .. pack .. " runs") or " a run") .. ".")
             or "No price in the advert - click whisper and ask."
-        }
+        )
       })
     end
   end
@@ -759,7 +796,7 @@ local function GroupRows()
         C.dim .. (g.text or "") .. C.off,
         ""
       },
-      tip = {
+      tip = Lines(
         g.by,
         (d and d.label or "no instance named")
           .. "   " .. BT.T(age) .. " ago"
@@ -769,7 +806,7 @@ local function GroupRows()
         (KIND_WORD[g.kind] or g.kind)
           .. (g.needs and (", " .. g.needs) or "")
           .. (g.levels and (", levels " .. g.levels) or "") .. "."
-      }
+      )
     }
   end
   return out
@@ -824,7 +861,7 @@ local function EnemyRows()
         "",           -- the KOS button sits here
         ""            -- and the note box
       },
-      tip = {
+      tip = Lines(
         e.name .. ((e.level and e.level > 0) and ("  " .. e.level) or ""),
         (e.class or "") .. (e.guild and ("   <" .. e.guild .. ">") or ""),
         "seen " .. (e.n or 1) .. " time" .. ((e.n or 1) == 1 and "" or "s")
@@ -834,7 +871,7 @@ local function EnemyRows()
           and "marked through his guild - the whole lot raises the alarm"
           or "marked by name - always raises the alarm") or nil,
         note
-      }
+      )
     }
   end
   return out
@@ -967,8 +1004,8 @@ local function KOSRows()
         C.dim .. (BT.Short(e.zone) or e.zone or "-") .. C.off,
         "", ""
       },
-      tip = { k.name, marked and "marked by name" or "written about, not marked",
-              k.note }
+      tip = Lines( k.name, marked and "marked by name" or "written about, not marked",
+              k.note )
     }
   end
 
@@ -1008,9 +1045,9 @@ local function KOSRows()
           C.dim .. "-" .. C.off,
           "", ""
         },
-        tip = { "<" .. gname .. ">",
+        tip = Lines( "<" .. gname .. ">",
                 marked and "the whole guild is marked" or "a note, no mark",
-                count > 0 and (count .. " of them seen") or nil, g.note }
+                count > 0 and (count .. " of them seen") or nil, g.note )
       }
     end
   end
@@ -1092,8 +1129,8 @@ local function LootRows()
   -- required level - and that is most of somebody else's loot.
   if BT.WarmLoot then BT.WarmLoot(ChainDB.loot) end
   for _, g in ipairs(LootGroups()) do
-    local tip = { g.from or ((g.who == me) and "no source recorded"
-                             or "loot lines do not say what somebody else looted from") }
+    local tip = Lines( g.from or ((g.who == me) and "no source recorded"
+                             or "loot lines do not say what somebody else looted from") )
     for _, e in ipairs(g.items) do
       local v = BT.LootValue(e)
       tip[#tip + 1] = "   " .. ((e.n or 1) > 1 and (e.n .. "x ") or "")
@@ -1275,7 +1312,7 @@ local function RouteRows()
     -- knowing every dungeon's levels by heart
     local lo, hi = BT.SpanOf(seg.e)
     table.insert(out, {
-      tip = {
+      tip = Lines(
         seg.e.label,
         "levels " .. seg.from .. " to " .. seg.to
           .. (lo and ("   the place is worth doing at " .. lo .. "-" .. hi) or ""),
@@ -1286,7 +1323,7 @@ local function RouteRows()
                .. ((endCost and endCost > nowCost)
                    and (", and " .. BT.G(endCost) .. " by " .. seg.to) or ""))
           or nil
-      },
+      ),
       cells = {
         seg.e.label,
         BT.MinChunk(seg.e, seg.from) or "-",
