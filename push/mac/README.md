@@ -1,6 +1,33 @@
 # Chain Push on macOS
 
-Build the app once, then open the app. That is the whole thing.
+## Just use the app
+
+Download **`ChainPush.zip`** from the repository's
+[Releases](../../../../releases), unzip it, and open `ChainPush.app`.
+
+That is the whole install. The icon sits in the Dock the whole time it is
+working; click it for the status, a test notification and the settings.
+
+**macOS will stop you the first time**: right-click the app → **Open** →
+**Open**. That happens because it is not signed with a paid certificate, and
+once is enough.
+
+The first run asks where to send: an ntfy topic or a Discord webhook. The
+[page above](../README.md#1-get-the-app-on-your-phone) says how to get one.
+
+**Closing the window does not stop it.** Click the Dock icon to bring it back.
+**Quit**, in the Dock menu, is the only thing that stops it.
+
+### Start it with the Mac
+
+System Settings → General → Login Items → **+** → `ChainPush.app`.
+
+---
+
+## Building it from this folder instead
+
+Everything below is for working on it. macOS has `osacompile` and usually a
+`python3` already, so unlike Windows there is nothing to install first.
 
 | | |
 |---|---|

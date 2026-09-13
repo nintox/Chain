@@ -355,6 +355,17 @@ ok("crash.log" in tsrc, "og på disk")
 ok(tsrc.count("_died(") >= 3,
    "både importen og sjølve køyringa er dekte")
 ok("debug" in bat, ".bat-fila kan køyre med meldingane synlege")
+# Windows svarer på "python" sjølv om han ikkje finst: App Execution Alias er
+# ein stubb som "where" finn, som køyrer, og som berre seier at du skal til
+# Microsoft Store. Å tru på "where" er grunnen til at programmet opna og lukka
+# seg utan eit ord. Den einaste testen som betyr noko er å køyre tingen.
+_live = [ln for ln in bat.splitlines()
+          if not ln.strip().lower().startswith("rem")]
+ok(not any(ln.strip().lower().startswith("where ") for ln in _live),
+   "han trur ikkje på 'where' - stubben frå Store finst der òg")
+ok('-c "import sys"' in bat, "han prøver å faktisk køyre Python")
+ok("py -3" in bat, "og fell tilbake på py-launcheren")
+ok("Store" in bat, "og seier frå om stubben når han ikkje finn noko")
 
 print("== ikon ==")
 ok(len(gui.ICON_PNG_BASE64) > 1000, "ikonet ligg inne i programmet")

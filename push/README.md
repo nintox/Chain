@@ -34,18 +34,27 @@ channel on your phone, or you will not hear it.
 
 ### 2. Start the program on your computer
 
-**Open the folder for your computer and follow the one page in it.** That is
-the whole instruction — each folder holds the two or three files that machine
-actually uses, and its own short README.
+**Download the one file for your computer from
+[Releases](../../../releases) and open it.** There is nothing to install
+alongside it, nothing to tick, and no Python.
 
 | | |
 |---|---|
-| **[`mac/`](mac/)** | macOS — double-click `build-mac-app.command` once, then open the app it makes. |
-| **[`windows/`](windows/)** | Windows — double-click `ChainPush.bat`. Nothing to build. |
+| **Windows** | `ChainPush.exe` — double-click it. The icon appears in the tray. |
+| **macOS** | `ChainPush.zip` — unzip, open `ChainPush.app`. The icon appears in the Dock. |
 
-The other two folders are not yours to open: **`engine/`** is the code both
-machines share, and **`icons/`** is the pictures. They sit beside the two
-platform folders rather than being copied into each.
+Both are built by `.github/workflows/chainpush.yml` on GitHub's own runners,
+because a program can only be built on the system it is for.
+
+**The first time, the system will stop you.** Windows SmartScreen: **More
+info** → **Run anyway**. macOS: right-click the app → **Open** → **Open**.
+Neither is signed with a paid certificate; once is enough and it never asks
+again.
+
+Running it from the source instead - which is what the folders here are for -
+is in **[`windows/`](windows/)** and **[`mac/`](mac/)**, one short page each.
+**`engine/`** is the code both machines share and **`icons/`** the pictures;
+neither is yours to open.
 
 **If the system refuses to open it.** macOS: right-click the app → **Open** →
 **Open**. Windows SmartScreen: **More info** → **Run anyway**. Both happen
