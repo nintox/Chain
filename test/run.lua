@@ -2079,7 +2079,7 @@ do
   S.zone, S.map, S.inInstance = "The Stockade", 34, true
   S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
   local cbody = table.concat(BT.AllLines(), "\n")
-  ok(cbody:find("runs left") or cbody:find("runs owed") or cbody:find("%d/%d"),
+  ok(cbody:find("runs left") or cbody:find("runs unpaid") or cbody:find("%d/%d"),
      "baren seier kor mange runs som står att")
   BT.BarTooltip(GameTooltip)
   local ctip = S.TipText()
@@ -2236,6 +2236,43 @@ do
       local sum = wsr.summary:GetText() or ""
       ok(sum:find("set by hand", 1, true),
          "oppsummeringa seier at talet er sett for hand (" .. sum .. ")")
+      -- og tooltipen på baren seier det same: eit tal som ikkje kan sjekkast
+      -- mot noko anna på skjermen må seie kvar det kjem frå
+      local keepBy = ChainCharDB.lastBy
+      ChainCharDB.lastBy = "Paidar"
+      BT.BarTooltip(GameTooltip)
+      ok(S.TipText():find("set by hand", 1, true),
+         "og tooltipen på baren seier det same")
+      ChainCharDB.lastBy = keepBy
+    end
+
+    -- "1.0 owed" blei lese som "ein eg har til gode", som er stikk motsett av
+    -- kva det står: det er ein run du har hatt og ikkje betalt for.
+    do
+      local keepT, keepR, keepBy = ChainDB.trades, ChainDB.runs, ChainCharDB.lastBy
+      local keepRun = ChainCharDB.run
+      ChainCharDB.run = nil
+      ChainDB.trades, ChainDB.runs = {}, {}
+      ChainDB.boosters = ChainDB.boosters or {}
+      ChainDB.boosters["Overar"] = { price = 100, pack = 5 }
+      BT.LogPayment("Overar", 100)                  -- fem runs
+      for i = 1, 6 do
+        table.insert(ChainDB.runs, { at = S.now + i, by = "Overar", id = "stock",
+                                     zone = "The Stockade", xp = 9000, k = 30,
+                                     t = 500, lvl = 20 })
+      end
+      BT.Touch() BT.TouchTrades()
+      near(BT.BoosterCredit("Overar").left, -1, "ein run over det du har betalt")
+      ChainCharDB.lastBy = "Overar"
+      BT.BarTooltip(GameTooltip)
+      local t2 = S.TipText()
+      ok(t2:find("unpaid", 1, true), "og det står 'unpaid' (" ..
+         (t2:match("with Overar%s*([^\n]*)") or "?") .. ")")
+      ok(not t2:find(" owed", 1, true), "ikkje 'owed', som peikar begge vegar")
+      ChainCharDB.lastBy, ChainCharDB.run = keepBy, keepRun
+      ChainDB.boosters["Overar"] = nil
+      ChainDB.trades, ChainDB.runs = keepT, keepR
+      BT.Touch() BT.TouchTrades()
     end
 
     -- og betaler du meir oppå, legg det seg til

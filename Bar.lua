@@ -355,8 +355,11 @@ local function BoostText()
           local v = credit.left
           local col = (v >= 1) and C.good or ((v > -0.5) and C.warn or C.bad)
           local n = string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
+          -- "1.0 owed" was read as "one owed to me", which is the exact
+          -- opposite of what it says: it is a run you have had and not paid
+          -- for. "unpaid" has only the one direction in it.
           runsLeft = col .. ((v < -0.5)
-            and (n:gsub("^%-", "") .. " runs owed")
+            and (n:gsub("^%-", "") .. " runs unpaid")
             or (n .. " runs left")) .. C.off
         end
       end
@@ -1282,7 +1285,9 @@ function BT.BarTooltip(owner)
       if credit.hisLeft ~= nil then
         txt = credit.hisDone .. "/" .. credit.hisOf
       elseif v < -0.5 then
-        txt = string.format("%.1f", -v) .. " owed"
+        -- not "owed": that word has two directions and the reader picks the
+        -- flattering one. These are runs you have had and not paid for.
+        txt = string.format("%.1f", -v) .. " unpaid"
       elseif credit.ofPack and credit.ofPack >= 1
          and (credit.donePack or 0) <= credit.ofPack then
         local total = math.floor(credit.ofPack + 0.5)
@@ -1294,6 +1299,14 @@ function BT.BarTooltip(owner)
         txt = string.format("%.1f", v) .. " to come"
       end
       Pair("runs with " .. who, col .. txt .. C.off)
+      -- A balance counted from a number you typed rather than from your
+      -- payments cannot be checked against anything on screen. It is rare, so
+      -- it costs a line only when it is true - and when it is true it is the
+      -- only thing that explains the figure above.
+      if credit.setAt and credit.setTo and credit.hisLeft == nil then
+        Pair("counted from", C.warn
+          .. math.floor(credit.setTo + 0.5) .. " set by hand" .. C.off)
+      end
     end
 
     -- whether you can go back in

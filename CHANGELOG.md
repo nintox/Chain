@@ -1015,6 +1015,15 @@ parts that are not.
 
 **Numbers you can follow**
 
+- **"1.0 owed" said the opposite of what it meant.** It is a run you have had
+  and not paid for; it was read as one you have coming, which is the flattering
+  direction and the wrong one. The word has only ever had two directions in it,
+  so it is gone: `1.0 unpaid` on the bar's tooltip, `1 run unpaid` under the
+  bar. What you have coming still says `to come`.
+- The bar tooltip also names a hand-set balance when one is in force. A figure
+  that cannot be checked against anything else on screen has to say where it
+  came from; it costs a line only in the rare case where it is true.
+
 - **A balance you set by hand now has a row.** Typing over "runs left" throws
   away every payment before it and starts the count again from your number -
   the single biggest thing that can happen to the reckoning - and it was
