@@ -2581,6 +2581,34 @@ do
   ChainCharDB.run = keepRun
 end
 
+-- Pakken er den du nettopp kjøpte, ikkje saldoen. Betal for fem med to til
+-- gode frå før og saldoen er sju - men ingen tel i sjuarar. Han seier "run 1
+-- of 5" fordi fem er det du kjøpte, og dei to frå før er ein annan samtale.
+do
+  local keepT, keepR, keepB = ChainDB.trades, ChainDB.runs, ChainDB.boosters
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainDB.boosters = { Femar = { price = 100, pack = 5 } }
+  -- fyrst ein femmarpakke, så tre runder, så ein ny femmarpakke
+  table.insert(ChainDB.trades, { at = S.now - 9000, with = "Femar",
+    gave = 100 * 10000, got = 0, id = "sm", perRun = 20, char = "Tester" })
+  for i = 1, 3 do
+    table.insert(ChainDB.runs, { at = S.now - 8000 + i * 600, t = 300,
+      zone = "The Stockade", id = "sm", by = "Femar", xp = 9000, k = 60,
+      lvl = 20 })
+  end
+  table.insert(ChainDB.trades, { at = S.now - 60, with = "Femar",
+    gave = 100 * 10000, got = 0, id = "sm", perRun = 20, char = "Tester" })
+  BT.Touch() BT.TouchTrades()
+
+  local c2 = BT.BoosterCredit("Femar")
+  near(c2.ofPack or 0, 5, "pakken er den du nettopp kjøpte - fem", 0.01)
+  eq(c2.donePack, 0, "og ingen av dei er tekne enno")
+  near(c2.left or 0, 7, "sjølv om saldoen er sju med dei to frå før", 0.01)
+
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
+  BT.Touch() BT.TouchTrades()
+end
+
 -- "Du kjøpte 3, det gir 5" ser ut som feil rekning heilt til du får vite om
 -- dei to som stod att frå pakken før. Så rada viser utrekninga.
 do
@@ -2654,6 +2682,7 @@ do
   BT.Touch() BT.TouchTrades()
   local c = BT.BoosterCredit("Pakkar")
   near(c.ofPack or 0, 10, "pakken var på ti", 0.01)
+  eq(c.donePack, 7, "og sju av dei er tekne")
   near(c.left or 0, 3, "og tre står att", 0.01)
 
   -- og den siste blir sagt høgt: det er den som avgjer om du betaler att før

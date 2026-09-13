@@ -338,12 +338,16 @@ local function BoostText()
           local col = (v >= 2) and C.good or ((v > 0) and C.warn or C.bad)
           runsLeft = col .. credit.hisDone .. "/" .. credit.hisOf .. C.off
             .. Tail(v)
-        elseif credit.left > 0 and (credit.ofPack or 0) >= 1 then
-          local v, of = credit.left, credit.ofPack
-          local total = math.floor(of + 0.5)
-          local done = math.max(0, math.min(total, math.floor(of - v + 0.5)))
-          local col = (v >= 2) and C.good or C.warn
-          runsLeft = col .. done .. "/" .. total .. C.off .. Tail(v)
+        elseif credit.ofPack and credit.ofPack >= 1
+           and (credit.donePack or 0) <= credit.ofPack then
+          -- the pack he is counting: what the last payment bought, and how
+          -- many of those you have had
+          local total = math.floor(credit.ofPack + 0.5)
+          local done = math.max(0, credit.donePack or 0)
+          local leftInPack = total - done
+          local col = (leftInPack >= 2) and C.good
+            or ((leftInPack > 0) and C.warn or C.bad)
+          runsLeft = col .. done .. "/" .. total .. C.off .. Tail(leftInPack)
         else
           local v = credit.left
           local col = (v >= 1) and C.good or ((v > -0.5) and C.warn or C.bad)
@@ -1260,10 +1264,10 @@ function BT.BarTooltip(owner)
         txt = credit.hisDone .. "/" .. credit.hisOf
       elseif v < -0.5 then
         txt = string.format("%.1f", -v) .. " runs owed"
-      elseif credit.ofPack and credit.ofPack >= 1 and v > 0 then
-        local total = math.floor(credit.ofPack + 0.5)
-        txt = math.max(0, math.min(total, math.floor(credit.ofPack - v + 0.5)))
-          .. "/" .. total
+      elseif credit.ofPack and credit.ofPack >= 1
+         and (credit.donePack or 0) <= credit.ofPack then
+        txt = math.max(0, credit.donePack or 0) .. "/"
+          .. math.floor(credit.ofPack + 0.5)
       else
         txt = string.format("%.1f", v) .. " runs left"
       end
