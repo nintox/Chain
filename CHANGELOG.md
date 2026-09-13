@@ -470,6 +470,11 @@ parts that are not.
   **now** in the when column and counts up. It is not saved, cannot be deleted
   and cannot be marked: it counts for nothing until you finish it.
 
+- **The History summary says what its count covers.** "6 runs" under a list
+  with two payments in it reads as six since the last one, and it is not - it
+  is everything on record. It says both now: **6 runs on record** and **3 since
+  you last paid Magecome**, with what that leaves him owing you.
+
 - **The bar tooltip says what is happening now, and stops.** It had grown to
   two columns and thirty-odd lines: his price, experience per gold, what a
   level costs here against what it costs at the end, the group's make-up, the

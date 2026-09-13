@@ -3033,6 +3033,18 @@ do
     if rec then end
   end
 
+  -- "6 runs" under ei liste med to betalingar i seg les som "seks sidan den
+  -- siste", og det er det ikkje: det er alt som finst. Det du eigentleg
+  -- spurde om er talet sidan pengane skifta hender.
+  do
+    local sum = ((wq.summary:GetText() or "")
+      :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+    ok(sum:find("on record"), "samandraget seier at talet er alt som finst ("
+       .. sum .. ")")
+    ok(sum:find("since you last paid"),
+       "og kor mange det er sidan du sist betalte")
+  end
+
   -- Og det same kan gå til éin person i staden. Ein booster som har forlate
   -- gruppa er utanfor rekkevidd av party chat, og å rette nokon framfor fire
   -- andre er ei anna sak enn å rette han.

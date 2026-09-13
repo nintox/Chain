@@ -1598,10 +1598,31 @@ local function Summary()
       .. C.dim .. "   " .. #BT.KOSGuildList() .. " guild"
       .. (#BT.KOSGuildList() == 1 and "" or "s") .. " marked" .. C.off
   elseif mode == "runs" then
-    local agg = BT.Aggregate(BT.Runs({}), #BT.Runs({}))
+    -- "6 runs" against a list with two payments in it reads as "six since the
+    -- last one", and it is not: it is everything on record. The one you were
+    -- actually asking about is the one since the money changed hands, so it
+    -- says both and labels each.
+    local all = BT.Runs({})
+    local agg = BT.Aggregate(all, #all)
     if not agg then return nil end
-    return #BT.Runs({}) .. " runs, " .. BT.N(agg.totalXP) .. " xp, "
-      .. BT.T(agg.totalT) .. " inside instances"
+    local txt = #all .. " runs on record" .. C.dim .. "   "
+      .. BT.N(agg.totalXP) .. " xp   " .. BT.T(agg.totalT) .. " inside" .. C.off
+    local who = (BT.CurrentBooster and BT.CurrentBooster())
+      or ChainCharDB.lastBy
+    local credit = who and BT.BoosterCredit and BT.BoosterCredit(who) or nil
+    if credit then
+      local since = credit.runsDone or 0
+      local v = (credit.hisLeft ~= nil) and credit.hisLeft or credit.left
+      txt = txt .. "   |   " .. C.good .. since .. C.off
+        .. " since you last paid " .. who
+        .. C.dim .. "   "
+        .. ((v and v > -0.5)
+            and (string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
+                 .. " to come")
+            or (string.format("%.1f", -(v or 0)) .. " past what you paid for"))
+        .. C.off
+    end
+    return txt
   end
   return nil
 end
