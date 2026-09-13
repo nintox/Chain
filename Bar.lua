@@ -1125,9 +1125,16 @@ BT.SideTooltip = SideTip
 local active = nil
 local function Tip() return active or GameTooltip end
 
-local function Pair(left, right)
+-- A label on the left and its value on the right. `head` draws the left side
+-- white instead of grey, for the line that names the thing rather than
+-- measuring it.
+local function Pair(left, right, head)
   if right == nil or right == "" then return end
-  Tip():AddDoubleLine(left, right, 0.72, 0.72, 0.72, 1, 1, 1)
+  if head then
+    Tip():AddDoubleLine(left, right, 1, 1, 1, 0.6, 0.6, 0.6)
+  else
+    Tip():AddDoubleLine(left, right, 0.72, 0.72, 0.72, 1, 1, 1)
+  end
 end
 
 -- Which column a block goes in is a judgement about the block, not about how
@@ -1226,24 +1233,31 @@ function BT.BarTooltip(owner)
       0.7, 0.7, 0.7)
   else
     -- where you are
+    -- One fact a line, one unit a fact. The mess was three figures crammed
+    -- into every right-hand column with nothing lining up underneath anything
+    -- else; a tooltip is read down the right edge, and a right edge made of
+    -- "635,624 xp  19.2 runs" against "~21m" against "1/5" is not an edge.
+    local _, _, _, i = BT.StageSpan()
+    local plan = BT.Plan()
     local head = step.label
     if routeStep then
-      local _, _, _, i = BT.StageSpan()
-      local plan = BT.Plan()
       head = head .. "  " .. (step.from or lvl) .. " > " .. step.to
-      if i and i > 0 and #plan > 1 then
-        head = head .. C.dim .. "   step " .. i .. "/" .. #plan .. C.off
-      end
     end
-    Tip():AddLine(head, 1, 1, 1)
+    if routeStep and i and i > 0 and #plan > 1 then
+      Pair(head, C.dim .. "step " .. i .. "/" .. #plan .. C.off, true)
+    else
+      Tip():AddLine(head, 1, 1, 1)
+    end
 
     local remain = select(3, BT.StageSpan())
     local st = BT.StepStats and BT.StepStats(step)
     if remain and remain > 0 then
+      -- runs, because runs is the unit you buy and the unit he counts. The
+      -- experience behind it is on the bar itself, two inches above this.
       local runs = (st and (st.xp or 0) > 0) and (remain / st.xp) or nil
-      Pair("left in this step", BT.N(remain) .. " xp"
-        .. (runs and (C.dim .. "   " .. string.format("%.1f", runs)
-                      .. " runs" .. C.off) or ""))
+      Pair("left in this step", runs
+        and (string.format("%.1f", runs) .. " runs")
+        or (BT.N(remain) .. " xp"))
     end
 
     -- when you ding
@@ -1252,6 +1266,8 @@ function BT.BarTooltip(owner)
     if rate and rate > 0 and toNext > 0 then
       Pair("ding in", "~" .. BT.T(toNext / rate * 3600))
     end
+
+    Tip():AddLine(" ")
 
     -- what you have left with him
     local who = BT.CurrentBooster and BT.CurrentBooster()
@@ -1263,28 +1279,28 @@ function BT.BarTooltip(owner)
       if credit.hisLeft ~= nil then
         txt = credit.hisDone .. "/" .. credit.hisOf
       elseif v < -0.5 then
-        txt = string.format("%.1f", -v) .. " runs owed"
+        txt = string.format("%.1f", -v) .. " owed"
       elseif credit.ofPack and credit.ofPack >= 1
          and (credit.donePack or 0) <= credit.ofPack then
         txt = math.max(0, credit.donePack or 0) .. "/"
           .. math.floor(credit.ofPack + 0.5)
       else
-        txt = string.format("%.1f", v) .. " runs left"
+        txt = string.format("%.1f", v) .. " to come"
       end
-      Pair("with " .. who, col .. txt .. C.off)
+      Pair("runs with " .. who, col .. txt .. C.off)
     end
 
     -- whether you can go back in
     local count, freeOne = BT.Lockout()
     local limit = ChainDB.limit or K.LIMIT
-    local lockTxt = count .. " of " .. limit .. " this hour"
+    -- the label carries the wordy half so the value stays a value
     if count >= limit then
-      lockTxt = C.bad .. lockTxt .. C.off
-        .. (freeOne and (C.dim .. "   free in " .. BT.T(freeOne) .. C.off) or "")
-    elseif freeOne then
-      lockTxt = lockTxt .. C.dim .. "   +1 in " .. BT.T(freeOne) .. C.off
+      Pair("locked until", freeOne and (C.bad .. BT.T(freeOne) .. C.off)
+        or (C.bad .. count .. "/" .. limit .. C.off))
+    else
+      Pair("instances this hour", count .. "/" .. limit
+        .. (freeOne and (C.dim .. "   +1 in " .. BT.T(freeOne) .. C.off) or ""))
     end
-    Pair("instances", lockTxt)
 
     -- and the run you are in, while you are in it - measured against what
     -- this place usually gives you, because "31,400 xp" is only good news if
@@ -1299,15 +1315,20 @@ function BT.BarTooltip(owner)
         timeTxt = C.alert .. timeTxt .. C.off
           .. C.dim .. " (+" .. BT.T(over) .. ")" .. C.off
       end
+      -- and nothing to compare until there is something to compare. A
+      -- booster's first minute is walking to the first pull, and "-100%" on
+      -- an empty run is a red number that means nothing.
       local devTxt = ""
-      if dev then
+      if dev and (r.xp or 0) > 0 and elapsed >= 60 then
         local col = (dev >= 0.15) and C.good
           or ((dev <= -0.15) and C.bad or C.warn)
         devTxt = "   " .. col .. string.format("%+.0f%%", dev * 100) .. C.off
       end
       Pair("this run", timeTxt
-        .. C.dim .. "   " .. (r.k or 0) .. " mobs   "
-        .. BT.N(r.xp or 0) .. " xp" .. C.off .. devTxt)
+        .. (((r.k or 0) > 0 or (r.xp or 0) > 0)
+            and (C.dim .. "   " .. (r.k or 0) .. " mobs   "
+                 .. BT.N(r.xp or 0) .. " xp" .. C.off) or "")
+        .. devTxt)
       -- and whether it is going to count, which you can still do something
       -- about: walk out and come back in properly
       if r.partial then

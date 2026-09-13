@@ -483,12 +483,13 @@ parts that are not.
   tooltip you have to *read* is a tooltip you stop opening.
 
       Chain
-      Maraudon  42 > 50   step 2/2
-      left in this step        669,821 xp   20.4 runs
-      ding in                  ~18m
-      with Magecome            7/10
-      instances                2 of 5 this hour   +1 in 12s
-      this run                 24m   288 mobs   31,400 xp
+      Maraudon  42 > 50                     step 2/2
+      left in this step                    19.2 runs
+      ding in                                  ~21m
+
+      runs with Magecome                        1/5
+      instances this hour            4/5   +1 in 44m
+      this run          24m   288 mobs   31,400 xp  +12%
 
   Where you are, when you ding, what you have left with him, whether you can
   go back in, and the run you are in - **measured against what the place
@@ -501,6 +502,14 @@ parts that are not.
   is where you go when you are deciding rather than doing. The second column
   is gone; there is a test that fails if the tooltip ever grows past sixteen
   lines or reaches for one.
+  One fact a line, one unit a fact: a tooltip is read down its right edge, and
+  a right edge made of `635,624 xp  19.2 runs` against `~21m` against `1/5` is
+  not an edge. The experience figure went - runs is the unit you buy and the
+  unit he counts, and the experience is on the bar two inches above. The wordy
+  half of a label stays on the left, where labels live. And nothing is compared
+  until there is something to compare: a booster's first minute is walking to
+  the first pull, and `-100%` on an empty run is a red number that means
+  nothing.
 
 - **A step can be one you do yourself.** Nobody buys every level: you buy to
   42, quest to 45 because nothing sells that stretch at a price worth paying,

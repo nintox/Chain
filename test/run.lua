@@ -3385,6 +3385,24 @@ ok(not tip:find("good for levels", 1, true),
    "men ikkje kva level staden er for - det er ei oppslagsverk-opplysning")
 ok(not tip:find("xp per run", 1, true), "og ikkje xp per run")
 ok(tip:find("left in this step", 1, true), "han seier kva som står att")
+-- Éin ting per linje, éi eining per ting. Rotet var tre tal pressa inn i kvar
+-- høgrekolonne med ingenting som stod under noko anna; ein tooltip blir lesen
+-- nedover høgrekanten, og ein høgrekant sett saman av "635,624 xp  19.2 runs"
+-- mot "~21m" mot "1/5" er ingen kant.
+do
+  local wide = 0
+  for line in ((tip or "") .. "\n"):gmatch("([^\n]*)\n") do
+    local _, right = line:match("^(.-)\t(.*)$")
+    if right then
+      local clean = ((right:gsub("|c%x%x%x%x%x%x%x%x", ""))):gsub("|r", "")
+      -- eit tal og eininga si, og eventuelt ei dempa tilleggsopplysning
+      local _, spaces = clean:gsub("%s%s+", "")
+      ok(spaces <= 1, "høgresida er eitt tal: " .. clean)
+      if #clean > wide then wide = #clean end
+    end
+  end
+  ok(wide <= 22, "og ingen av dei er ei setning (" .. wide .. " teikn)")
+end
 ok(tip:find("instances", 1, true), "og om du kan gå inn att")
 ok(tip:find("Right%-click"), "tooltipen har hjelpelinjene")
 do  -- utan rute skal han framleis teikne
