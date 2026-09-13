@@ -468,7 +468,7 @@ parts that are not.
   no longer need telling about it - and when a booster says "that is five"
   mid-chain, the run you are standing in is exactly the one in dispute. It says
   **now** in the when column and counts up. It is not saved, cannot be deleted
-  and cannot be ticked: it counts for nothing until you finish it.
+  and cannot be marked: it counts for nothing until you finish it.
 
 - **The x asks first.** It sits at the end of every row and it throws things
   away - a run out of the averages, a trade out of the reckoning, somebody off
@@ -550,15 +550,15 @@ parts that are not.
 - **And the count can be settled in one line of party chat.** He says five, you
   counted four, and neither of you can prove it, because both of you are
   counting in your head - him across three customers at once. The addon is not
-  counting in its head. Every History row has a **+** to tick it,
-  **tick since last trade** ticks the ones the argument is actually about (his
+  counting in its head. Every History row has a **+** to mark it,
+  **mark since last trade** marks the ones the argument is actually about (his
   alts included, since the gold often goes to a bank character), and **say in
   party** puts it in chat:
 
       [CHAIN] - 4 runs with Magecome - 49m, 1h 13m, 1h 36m, 2h 19m ago
 
-  Eight times at most, then "+3 older". The ticks are not saved: it is
-  something you do for ten seconds to settle an argument, and a tick surviving
+  Eight times at most, then "+3 older". The marks are not saved: it is
+  something you do for ten seconds to settle an argument, and a mark surviving
   a logout would only ever be a surprise.
 
 - **The Windows tray program opened and shut without a word.** `pythonw.exe`

@@ -374,8 +374,8 @@ local function Rate(value, avg, higherIsBetter)
   return C.warn
 end
 
--- Which runs you have ticked, keyed by the record itself. Not saved: it is a
--- thing you do for ten seconds to settle an argument, and a tick surviving a
+-- Which runs you have marked, keyed by the record itself. Not saved: it is a
+-- thing you do for ten seconds to settle an argument, and a mark surviving a
 -- logout would only ever be a surprise.
 local picked = {}
 
@@ -399,7 +399,7 @@ local function RunRows()
   -- you are standing in is exactly the one in dispute.
   --
   -- It is not in ChainDB.runs and does not go in: it counts for nothing until
-  -- it is finished, it cannot be deleted, and it cannot be ticked. It is shown
+  -- it is finished, it cannot be deleted, and it cannot be marked. It is shown
   -- and nothing more.
   local live = ChainCharDB.run
   if live and live.zone then
@@ -1657,9 +1657,9 @@ local function Render()
     local n = 0
     for _, r in ipairs(ChainDB.runs) do if picked[r] then n = n + 1 end end
     win.sayNote:SetText((n > 0)
-      and (C.good .. n .. C.off .. C.dim .. " ticked - the + on each row"
+      and (C.good .. n .. C.off .. C.dim .. " marked - the + on each row"
            .. C.off)
-      or (C.dim .. "tick runs with the + on each row, then say them" .. C.off))
+      or (C.dim .. "mark runs with the + on each row, then say them" .. C.off))
     if win.sayButton then
       win.sayButton.fs:SetText((IsInRaid and IsInRaid())
         and "say in raid" or "say in party")
@@ -1747,8 +1747,8 @@ local function Render()
       if mode == "runs" and d.rec then
         row.pick.rec = d.rec
         row.pick.fs:SetText(picked[d.rec] and (C.good .. "v" .. C.off) or "+")
-        row.pick.hint = "tick this run, then use 'say in party' to put the "
-          .. "times in chat. Ticks are not saved."
+        row.pick.hint = "mark this run, then use 'say in party' to put the "
+          .. "times in chat. Marks are not saved."
         row.pick:Show()
       else
         row.pick:Hide()
@@ -2336,8 +2336,8 @@ local function Build()
   -- party chat and the argument is over in one line.
   --
   -- "since the last trade" is the question actually being asked: what have I
-  -- had that I have not paid for. It ticks those; anything else you tick or
-  -- untick yourself.
+  -- had that I have not paid for. It marks those; anything else you mark or
+  -- unmark yourself.
   local function PickedRuns()
     local out = {}
     for _, r in ipairs(ChainDB.runs) do
@@ -2354,7 +2354,7 @@ local function Build()
     return ChainCharDB.lastBy
   end
 
-  win.sinceButton = Button(win, "tick since last trade", 150, 18, function()
+  win.sinceButton = Button(win, "mark since last trade", 150, 18, function()
     local who = LastBooster()
     if not who then return end
     local from = (BT.LastPaid and BT.LastPaid(who)) or 0
@@ -2367,7 +2367,7 @@ local function Build()
     end
     Render()
   end)
-  Hint(win.sinceButton, "tick every run you have had since you last paid "
+  Hint(win.sinceButton, "mark every run you have had since you last paid "
     .. "him - his bank alts included. That is the list the argument is "
     .. "about.")
   win.sinceButton:SetPoint("TOPLEFT", 12, addY + 3)
@@ -2387,7 +2387,7 @@ local function Build()
       .. ((#list > #bits) and (" (+" .. (#list - #bits) .. " older)") or "")
     if BT.SayToGroup then BT.SayToGroup(text) end
   end)
-  Hint(win.sayButton, "put the ticked runs in party chat, with how long "
+  Hint(win.sayButton, "put the marked runs in party chat, with how long "
     .. "ago each one was. One line, and the counting argument is over.")
   win.sayButton:SetPoint("TOPLEFT", 170, addY + 3)
 
