@@ -887,6 +887,59 @@ ChainDB.entries = {}
 for i = 1, 5 do S.now = S.now + 180 BT.NoteEntry() end
 
 --------------------------------------------------------------------------
+--------------------------------------------------------------------------
+print("== du er leiaren og du resetta ==")
+-- Ingen andre får vite det. Klienten seier "X has been reset" til han som
+-- trykte og til ingen andre, så fire mann står ved steinen og ventar på at
+-- nokon skal skrive det. Det er heile grunnen til at linja finst.
+do
+  local keepParty, keepZone = S.party, ChainCharDB.lastZone
+  local keepSeen, keepInst = ChainCharDB.seenInst, ChainDB.entries
+  -- ikkje på taket: då er det ventetida som blir sagt, og det er ei anna linje
+  ChainCharDB.seenInst = {}
+  ChainDB.entries = {}
+  ChainCharDB.toldLocked, ChainCharDB.toldMark = nil, nil
+  ChainCharDB.lastZone = "The Stockade"
+  ChainDB.announce = false
+  ChainDB.announceReset = nil
+  S.party = { { name = "Kunde", lead = false } }
+  S.leader = true
+
+  S.said = {}
+  S.Fire(frame, "CHAT_MSG_SYSTEM", "The Stockade has been reset.")
+  ok((S.said[1] or ""):find("has been reset", 1, true),
+     "leiaren sin reset blir sagt i gruppa (" .. tostring(S.said[1]) .. ")")
+  ok((S.said[1] or ""):find("zone out", 1, true),
+     "med den halvdelen som faktisk er nytt")
+  ok((S.said[1] or ""):find("CHAIN", 1, true), "og med namnet vårt på")
+
+  -- og den skal ikkje lese si eiga linje tilbake som ein ny reset
+  ChainCharDB.resetAt = nil
+  BT.NoteResetChat(S.said[1]:gsub("^PARTY: ", ""), "Tester")
+  eq(ChainCharDB.resetAt, nil, "vår eiga linje tel ikkje som ein ny reset")
+
+  -- er du ikkje leiar, er det ikkje din reset, og då er det av som før
+  S.leader = false
+  S.said = {}
+  S.Fire(frame, "CHAT_MSG_SYSTEM", "The Stockade has been reset.")
+  eq(#S.said, 0, "utan leiar og utan innstillinga er det stille")
+
+  -- og du kan slå di eiga av
+  S.leader = true
+  ChainDB.announceReset = false
+  S.said = {}
+  S.Fire(frame, "CHAT_MSG_SYSTEM", "The Stockade has been reset.")
+  eq(#S.said, 0, "og du kan slå henne av")
+
+  ChainDB.announceReset = nil
+  S.leader = nil
+  S.party, ChainCharDB.lastZone = keepParty, keepZone
+  ChainCharDB.seenInst = keepSeen
+  ChainDB.entries = keepInst
+  ChainCharDB.resetAt = nil
+end
+
+--------------------------------------------------------------------------
 print("== reset-varsel ==")
 ChainCharDB.resetAt = nil
 ChainCharDB.lastZone = "The Stockade"
@@ -2155,6 +2208,35 @@ do
                                  zone = "The Stockade", xp = 9000, k = 30, t = 500 })
     BT.Touch()
     near(BT.BoosterCredit("Paidar").left, 6, "ein run seinare står det seks")
+
+    -- Og ho skal vere synleg. Ein balanse du sette sjølv kastar alt som stod
+    -- før, og stod han ingen stad kunne du korkje forstå talet eller ta det
+    -- tilbake - han var ei usynleg linje som gjorde reknestykket uråd å
+    -- fylgje.
+    do
+      BT.ShowTab("runs")
+      local wsr = _G.ChainWindow
+      local setRow
+      for _, r in ipairs(wsr.rows or {}) do
+        local what = ((r.cells[2]:GetText() or "")
+          :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+        if r:IsShown() and what:find("^set to") then setRow = r end
+      end
+      ok(setRow ~= nil, "linja du sette står i historikken")
+      ok(setRow and (setRow.cells[2]:GetText() or ""):find("7"),
+         "med talet du sette (" .. tostring(setRow and setRow.cells[2]:GetText())
+         .. ")")
+      ok(setRow and setRow.del:IsShown(), "og ho kan takast tilbake")
+      setRow.__scripts.OnEnter(setRow)
+      ok(S.TipText():find("by hand", 1, true),
+         "og tooltipen seier kva ho er")
+      -- og oppsummeringa skal seie at talet er rekna frå henne: ein balanse
+      -- ingen kan rekne seg fram til frå radene over er ein balanse du ikkje
+      -- kan krangle med
+      local sum = wsr.summary:GetText() or ""
+      ok(sum:find("set by hand", 1, true),
+         "oppsummeringa seier at talet er sett for hand (" .. sum .. ")")
+    end
 
     -- og betaler du meir oppå, legg det seg til
     BT.LogPayment("Paidar", 120)                    -- tre runs

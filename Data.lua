@@ -342,7 +342,10 @@ BT.DEFAULTS = {
   -- see every zone-in ourselves; reading its count live only matters if you
   -- would rather trust it than us.
   useNIT = false,
-  announce = false,    -- tell the group when the instance resets
+  announce = false,    -- somebody else reset: tell the group. Off - his
+                       -- addon has almost certainly said it already.
+  announceReset = true,-- your own reset: tell the group. On - nobody else is
+                       -- told at all, so this is the one that is news.
   readAds = true,      -- pick boosters and their prices out of chat adverts
   share = false,       -- swap measurements with other people's addons
   shareWith = "all",   -- "all" (everyone running it), "guild", or "friends"

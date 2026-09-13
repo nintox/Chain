@@ -1192,8 +1192,29 @@ function BT.AnnounceLock(force)
   end
 end
 
+-- Whether the reset the client just told you about was yours. Only the
+-- leader can reset, and the client only tells the person who did it, so the
+-- two together are as close to "you pressed it" as the game will say.
+function BT.ILead()
+  if not (IsInGroup and IsInGroup()) then return false end
+  if type(UnitIsGroupLeader) ~= "function" then return false end
+  return UnitIsGroupLeader("player") and true or false
+end
+
 function BT.Announce(zone)
-  if not ChainDB.announce then return end
+  -- Your own reset is a different thing from somebody else's. Nobody else in
+  -- the group is told the instance has been reset - the client says it to the
+  -- person who pressed it and to nobody else - so four people sit at the
+  -- stone waiting for someone to type it. That line is the whole reason this
+  -- exists, so when it is your reset it goes out unless you turn it off;
+  -- somebody else's stays off unless you turn it on, because his addon has
+  -- almost certainly said it already.
+  local mine = BT.ILead()
+  if mine then
+    if ChainDB.announceReset == false then return end
+  elseif not ChainDB.announce then
+    return
+  end
   -- "go in" is the wrong thing to shout when you cannot. At the limit the
   -- group wants the other sentence: how long the wait is.
   local locked = LockText()
@@ -1201,6 +1222,15 @@ function BT.Announce(zone)
     -- not forced: a reset every twenty seconds is normal in a boost chain,
     -- and the group needs telling once, not once per attempt
     if ChainDB.announceLock then BT.AnnounceLock() end
+    return
+  end
+  if mine then
+    -- The half of it that is actually news: somebody who was still inside
+    -- when you pressed it is not locked out, he just has to walk out and
+    -- back in. Without that line he sits in the old copy wondering why the
+    -- rest of you have vanished.
+    Tell((BT.Short(zone) or zone) .. " has been reset"
+      .. " (anyone still inside can zone out and back in)")
     return
   end
   Tell((BT.Short(zone) or zone) .. " reset - go in")
@@ -1258,6 +1288,9 @@ end
 -- client telling you, and it needs no vouching for.
 function BT.NoteResetChat(msg, sender)
   if type(msg) ~= "string" then return end
+  -- our own line, come back round the party channel. Reading it would beep at
+  -- you a second time for a reset you already know about.
+  if BT.SAY and msg:sub(1, #BT.SAY) == BT.SAY then return end
   local low = msg:lower()
   if not low:find("%f[%a]reset") then return end
   if low:find("?", 1, true) then return end

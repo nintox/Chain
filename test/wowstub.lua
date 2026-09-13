@@ -46,6 +46,7 @@ function UnitExists(u)
   return (i and S.party[i]) and true or false
 end
 function UnitIsGroupLeader(u)
+  if u == "player" then return S.leader and true or false end
   local i = tonumber(tostring(u):match("party(%d)"))
   return (i and S.party[i]) and (S.party[i].lead or false) or false
 end

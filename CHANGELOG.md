@@ -1013,7 +1013,31 @@ parts that are not.
   addon that talks in a channel by itself is what gets everybody's addon
   thrown out of it.
 
+**Numbers you can follow**
+
+- **A balance you set by hand now has a row.** Typing over "runs left" throws
+  away every payment before it and starts the count again from your number -
+  the single biggest thing that can happen to the reckoning - and it was
+  invisible. The result was a figure nobody could derive from the rows above
+  it and nobody could take back. It sits in History now as `set to 1 run`,
+  with an x that puts every earlier payment back into the sum.
+- **History's footer said "since you last paid" about a number that was not
+  that.** It was runs since the reckoning started, which is the same thing
+  only when you have never set a balance by hand. The footer now says the two
+  figures apart: `5/5 in this pack` - the same count, worked the same way, as
+  the one under the bar - and `2.0 to come in all`, which is the balance with
+  every earlier pack's leftovers in it. When the balance is counted from a
+  number you typed, it says so in amber.
+
 **Smaller things**
+
+- **Your own reset is announced to the group, and it is on.** Nobody else is
+  told an instance has been reset: the client says it to whoever pressed the
+  button and to no one else, so four people stand at the stone waiting for
+  somebody to type it. When you are the leader Chain types it, with the half
+  that is actually news - anyone still inside can zone out and back in rather
+  than being locked out. Somebody else's reset stays off by default, because
+  his addon has almost certainly said it already. `/chain myreset`.
 
 - **The frames and latency readout sits on the enemy tracker.** Two boxes of
   numbers you skim, stacked into one thing to look at rather than two corners

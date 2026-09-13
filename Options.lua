@@ -337,9 +337,15 @@ local function BuildOptions()
     end)
     opt.soundRepeat:SetPoint("TOPLEFT", x + 124, ly + 3)
   end
-  opt.announce = Toggle(2, "Tell the group on reset",
+  opt.announce = Toggle(2, "Tell the group on somebody else's reset",
     function(v) ChainDB.announce = v end)
   opt.banner = Toggle(3, "Big alert on reset", function(v) ChainDB.banner = v end)
+  NextRow()
+  -- Your own reset is the one nobody else is told about: the client says it
+  -- to whoever pressed it and to no one else, so four people sit at the stone
+  -- waiting for somebody to type it.
+  opt.announceReset = Toggle(1, "Tell the group when you reset",
+    function(v) ChainDB.announceReset = v end)
   NextRow()
 
   -- A reset means the opposite thing depending on which side of the portal
@@ -772,6 +778,7 @@ function BT.RenderOptions()
   opt.soundOut.fs:SetText("zone out: " .. BT.SoundByKey(db.soundOut or "warning").label)
   opt.banner:SetChecked(db.banner and true or false)
   opt.announce:SetChecked(db.announce and true or false)
+  opt.announceReset:SetChecked(db.announceReset ~= false)
   opt.ads:SetChecked(db.readAds and true or false)
   opt.signal:SetChecked(db.logSignal and true or false)
   opt.snap:SetChecked(db.snapSignal and true or false)
@@ -1326,6 +1333,10 @@ SlashCmdList["CHAIN"] = function(input)
           .. C.dim .. "  " .. tostring(a.from or "?"):gsub("^channel:", "") .. C.off)
       end
     end
+  elseif cmd == "myreset" then
+    ChainDB.announceReset = (ChainDB.announceReset == false) or nil
+    Say("telling the group when you reset "
+      .. ((ChainDB.announceReset ~= false) and "on" or "off"))
   elseif cmd == "announce" then
     ChainDB.announce = not ChainDB.announce
     Say("reset announcements to the group are "
@@ -1392,7 +1403,8 @@ SlashCmdList["CHAIN"] = function(input)
     print("  /chain heard      the last adverts the addon picked up")
     print("  /chain testpush   write test markers for the phone program")
     print("  /chain flush      force the chat log out to disk")
-    print("  /chain announce   tell the group when the instance resets")
+    print("  /chain announce   tell the group when somebody else resets")
+    print("  /chain myreset    tell the group when you reset - on")
     print("  /chain lockout    tell the group your lockout, and count it down")
     print("  /chain font       the face the addon is written in")
     print("  /chain trade      what you have paid, and to whom")

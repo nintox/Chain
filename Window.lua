@@ -609,6 +609,36 @@ local function RunRows()
   local ledger = BT.CreditLedger and BT.CreditLedger() or {}
   for _, t in ipairs(ChainDB.trades or {}) do
     local net = (t.gave or 0) - (t.got or 0)
+    -- A balance you typed in is not a trade, but it is the single biggest
+    -- thing that can happen to the reckoning: everything before it is thrown
+    -- away and the count starts again from your number. It was invisible
+    -- here, so a balance nobody could explain had no row to point at and no
+    -- x to take it back with. It has both now.
+    if t.at and t.setTo then
+      local n = t.setTo
+      table.insert(out, {
+        trade = t, at = t.at, setTo = n,
+        tip = Lines(
+          "you set " .. (t.with or "?") .. "'s balance by hand",
+          date("%A %d %B, %H:%M", t.at or time()),
+          "counting starts again from " .. BT.Runsish(n)
+            .. " - everything below this line stopped counting",
+          "take it off with the x and the payments above and below add up "
+            .. "again on their own"
+        ),
+        cells = {
+          C.dim .. BT.T(time() - (t.at or time())) .. " ago" .. C.off,
+          C.warn .. "set to" .. C.off .. C.dim .. "  "
+            .. BT.Runsish(n) .. C.off,
+          C.dim .. "-" .. C.off, C.dim .. "-" .. C.off,
+          C.dim .. "-" .. C.off, C.dim .. "-" .. C.off,
+          C.dim .. "-" .. C.off, C.dim .. "-" .. C.off,
+          t.with or (C.dim .. "?" .. C.off),
+          tostring(t.lvl or "-"),
+          C.dim .. "-" .. C.off
+        }
+      })
+    end
     if t.at and net ~= 0 then
       local led = ledger[t]
       local runs = led and led.bought or nil
@@ -1865,16 +1895,40 @@ local function Summary()
       or ChainCharDB.lastBy
     local credit = who and BT.BoosterCredit and BT.BoosterCredit(who) or nil
     if credit then
-      local since = credit.runsDone or 0
+      -- Two different numbers that look like one. The pack is what the last
+      -- payment bought and it is the figure on the bar; the balance is
+      -- everything you are owed, carry-over from earlier packs included. Say
+      -- them apart, and say the pack the same way the bar says it - the two
+      -- reading differently is what sends you looking for a bug.
+      txt = txt .. "   |   "
+      if credit.ofPack and credit.ofPack >= 1
+         and (credit.donePack or 0) <= credit.ofPack then
+        txt = txt .. C.good .. credit.donePack .. "/"
+          .. math.floor(credit.ofPack + 0.5) .. C.off .. " in this pack"
+          .. C.dim .. "   " .. C.off
+      else
+        -- no pack to speak of: say what has happened since the money instead
+        local since = #BT.Runs({ by = who,
+                                 since = ((BT.LastPaid and BT.LastPaid(who))
+                                          or 0) + 1 })
+        txt = txt .. C.good .. since .. C.off .. " since you last paid " .. who
+          .. C.dim .. "   " .. C.off
+      end
       local v = (credit.hisLeft ~= nil) and credit.hisLeft or credit.left
-      txt = txt .. "   |   " .. C.good .. since .. C.off
-        .. " since you last paid " .. who
-        .. C.dim .. "   "
+      txt = txt .. C.dim
         .. ((v and v > -0.5)
             and (string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
-                 .. " to come")
+                 .. " to come in all")
             or (string.format("%.1f", -(v or 0)) .. " past what you paid for"))
         .. C.off
+      -- and if that figure is counted from a number you typed rather than
+      -- from your payments, say so. A balance nobody can derive from the rows
+      -- above it is a balance you cannot argue with.
+      if credit.setAt and credit.setTo then
+        txt = txt .. C.warn .. "   counted from the "
+          .. math.floor(credit.setTo + 0.5) .. " you set by hand "
+          .. BT.T(time() - credit.setAt) .. " ago" .. C.off
+      end
     end
     return txt
   end
@@ -2841,6 +2895,17 @@ local function Build()
           .. ((step and step.to) or "?"), function()
             if ChainDB.ownSteps then table.remove(ChainDB.ownSteps, own) end
             BT.Touch()
+            Render()
+            if BT.Refresh then BT.Refresh() end
+          end)
+        return
+      end
+      if trade and trade.setTo then
+        Confirm("Take back the balance you set?\n\n"
+          .. BT.Runsish(trade.setTo) .. ", set "
+          .. BT.T(time() - (trade.at or time())) .. " ago.\n\nEvery payment "
+          .. "before it starts counting again.", function()
+            BT.ForgetTrade(trade)
             Render()
             if BT.Refresh then BT.Refresh() end
           end)
