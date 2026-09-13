@@ -66,41 +66,32 @@ end
 -- The x sits at the end of every row and it throws things away: a run out of
 -- the averages, a trade out of the reckoning, a booster off the list. One
 -- stray click on a dense list and a piece of your history is gone, and there
--- is nothing to undo it with.
+-- is nothing to undo it with. So it asks, in the game's own dialog, and the
+-- question names the thing rather than saying "are you sure" at you.
 --
--- So the first click only arms it: the button turns red and says "sure?", and
--- the second one does the work. It disarms itself after five seconds, and
--- arming one disarms whichever was armed before - two red buttons at once
--- would be worse than none.
--- The rows are recycled as the list redraws, so arming is remembered against
--- the thing being removed rather than against the button. A redraw that moves
--- a row under your cursor must not leave a red "sure?" pointed at something
--- else.
-local armed, armedFor, armedAt = nil, nil, 0
-local ARM_FOR = 5
-
-local function Now() return (GetTime and GetTime()) or 0 end
-
-local function Disarm()
-  local was = armed
-  armed, armedFor, armedAt = nil, nil, 0
-  if was and was.SetArmed then was:SetArmed(false) end
+-- preferredIndex 3 is not decoration: without it the popup can be handed a
+-- frame another addon is already using, and Blizzard's own code has carried
+-- that bug for years.
+if type(StaticPopupDialogs) == "table" then
+  StaticPopupDialogs["CHAIN_CONFIRM"] = {
+    text = "%s",
+    button1 = YES or "Yes",
+    button2 = NO or "No",
+    OnAccept = function(_, data) if data and data.fn then data.fn() end end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    showAlert = true,
+    preferredIndex = 3
+  }
 end
 
-local function Target(b)
-  return b.trade or b.rec or b.name
+local function Confirm(question, fn)
+  if type(StaticPopup_Show) ~= "function" then fn() return end
+  StaticPopup_Show("CHAIN_CONFIRM", question, nil, { fn = fn })
 end
 
-local function ArmedCheck(b)
-  if armed == b and armedFor == Target(b) and (Now() - armedAt) <= ARM_FOR then
-    Disarm()
-    return true
-  end
-  Disarm()
-  armed, armedFor, armedAt = b, Target(b), Now()
-  if b.SetArmed then b:SetArmed(true) end
-  return false
-end
+
 
 --------------------------------------------------------------------------
 -- What each tab is for, on the tab itself. Eleven tabs is a lot to learn by
@@ -175,7 +166,11 @@ local LAYOUTS = {
       { "gold/lvl", 62, nil },
       { "xp/gold",  62, "value" },
       { "verdict",  50, "value" },
-      { "runs left",56, "left" },
+      { "runs left",56, "left", "what he still owes you: what you paid, "
+        .. "divided by his price, less the runs recorded since. Every one of "
+        .. "those can be wrong - a trade the client never announced, a run "
+        .. "that never got logged, a wipe he gave you back. Type over it and "
+        .. "the reckoning starts again from your number." },
       { "reported", 80, nil },
       { "your note", 96, nil }
     }
@@ -1699,26 +1694,26 @@ local function Render()
       else
         row.pick:Hide()
       end
-      -- a redraw keeps the red "sure?" only if this button still points at
-      -- the same thing, and only inside its five seconds
-      local still = (armed == row.del) and (armedFor == Target(row.del))
-        and ((Now() - armedAt) <= ARM_FOR)
-      if armed == row.del and not still then Disarm() end
-      if row.del.SetArmed then row.del:SetArmed(still and true or false) end
       row.del.rec, row.del.name, row.del.trade = nil, nil, nil
+      -- the first two cells describe the row well enough to name it in the
+      -- question: "2h 39m ago   paid  10 runs"
+      row.del.what = ((tostring(d.cells and d.cells[1] or "")
+        :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", ""))
+        .. "   " .. ((tostring(d.cells and d.cells[2] or "")
+        :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", ""))
       if mode == "runs" and d.trade then
         row.del.trade = d.trade
-        row.del.restHint = "take this payment out of the reckoning. The runs "
+        row.del.hint = "take this payment out of the reckoning. The runs "
           .. "it bought stop counting with it."
         row.del:Show()
       elseif mode == "runs" and d.rec then
         row.del.rec = d.rec
-        row.del.restHint = "throw this run out of the averages. It stays in "
+        row.del.hint = "throw this run out of the averages. It stays in "
           .. "no list and stops affecting every figure worked out from it."
         row.del:Show()
       elseif mode == "boosters" and d.mine then
         row.del.name = d.by
-        row.del.restHint = "remove somebody you added by hand. A booster you "
+        row.del.hint = "remove somebody you added by hand. A booster you "
           .. "have actually run with cannot be removed - that is measured "
           .. "history."
         row.del:Show()
@@ -1728,7 +1723,7 @@ local function Render()
         -- anything inferred has to be correctable by the person who was
         -- actually there.
         row.del.trade = d.rec
-        row.del.restHint = "remove this trade. Everything worked out from it "
+        row.del.hint = "remove this trade. Everything worked out from it "
           .. "- what it bought, what he owes you - goes with it."
         row.del:Show()
       else
@@ -1837,6 +1832,24 @@ local function Render()
         row.pack:SetPoint("LEFT", row, "LEFT", px + layout.cols[7][2], 0)
         row.pack:Show()
 
+        -- column 12 is what he still owes you, and it is a box: the figure
+        -- is inferred, and when an inference is wrong you are the one who
+        -- knows
+        local lx = 0
+        for ci, col in ipairs(layout.cols) do
+          if ci < 12 then lx = lx + col[2] end
+        end
+        row.left.by = d.by
+        if not row.left:HasFocus() then
+          local v = d.left
+          row.left:SetText(v and string.format(
+            (math.abs(v) < 10) and "%.1f" or "%.0f", v) or "")
+        end
+        row.left:ClearAllPoints()
+        row.left:SetPoint("LEFT", row, "LEFT", lx, 0)
+        row.left:SetWidth(math.max(36, layout.cols[12][2] - 6))
+        row.left:Show()
+
         -- and the last column is yours to write in
         local nx = 0
         for ci, col in ipairs(layout.cols) do
@@ -1854,12 +1867,13 @@ local function Render()
       else
         row.price:Hide()
         row.pack:Hide()
+        row.left:Hide()
       end
       if not noteShown then row.note:Hide() end
       row:Show()
     else
       row.tip, row.link = nil, nil
-      row.price:Hide() row.pack:Hide() row.kos:Hide()
+      row.price:Hide() row.pack:Hide() row.kos:Hide() row.left:Hide()
       row.note:Hide() row.del:Hide() row.whisper:Hide() row.pick:Hide()
       row:Hide()
     end
@@ -2105,6 +2119,42 @@ local function Build()
       Render()
       if BT.Refresh then BT.Refresh() end
     end)
+
+    -- Runs left, typed straight into the column that shows it.
+    --
+    -- The figure is inferred: what you paid, divided by his price, less the
+    -- runs recorded since. Every one of those can be wrong - a trade the
+    -- client never announced, a run that did not get logged, a wipe he gave
+    -- you back. When it is wrong you are the one who knows, and arguing with
+    -- you about it would be the wrong way round. So type the number; the
+    -- reckoning starts again from it and everything before stops counting.
+    row.left = CreateFrame("EditBox", nil, row)
+    row.left:SetSize(48, 16)
+    row.left:SetAutoFocus(false)
+    row.left:SetFontObject("ChainFontHighlightSmall")
+    row.left:SetJustifyH("CENTER")
+    row.left:SetMaxLetters(5)
+    row.left.bg = Tex(row.left, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
+    row.left.bg:SetAllPoints()
+    row.left:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    row.left:SetScript("OnEscapePressed", function(self)
+      self.typed = nil
+      self:ClearFocus()
+    end)
+    row.left:SetScript("OnTextChanged", function(self, byUser)
+      if byUser then self.typed = true end
+    end)
+    row.left:SetScript("OnEditFocusLost", function(self)
+      -- only when you actually typed something: focus passing through a box
+      -- must not rewrite a balance
+      if self.by and self.typed and BT.SetRunsLeft then
+        BT.SetRunsLeft(self.by, self:GetText())
+      end
+      self.typed = nil
+      Render()
+      if BT.Refresh then BT.Refresh() end
+    end)
+    row.left:Hide()
     row.pack:Hide()
 
     -- your own words about this man. Never sent anywhere: what travels
@@ -2180,38 +2230,40 @@ local function Build()
     row.pick:Hide()
 
     row.del = Button(row, "x", 16, 14, function(self)
-      -- one click arms it, the second one does it
-      if not ArmedCheck(self) then return end
-      if self.trade then
-        BT.ForgetTrade(self.trade)
-        Render()
+      -- what is about to go, named. "Are you sure?" is not a question you can
+      -- answer without being told what you are being asked about.
+      local trade, name, rec = self.trade, self.name, self.rec
+      if trade then
+        Confirm("Remove this trade?\n\n" .. (self.what or "")
+          .. "\n\nWhat it bought stops counting with it.", function()
+            BT.ForgetTrade(trade)
+            Render()
+          end)
         return
       end
-      if self.name then
-        BT.ForgetBooster(self.name)
-        Render()
+      if name then
+        Confirm("Remove " .. name .. " from the list?\n\nYour notes on him "
+          .. "go too.", function()
+            BT.ForgetBooster(name)
+            Render()
+          end)
         return
       end
-      if not self.rec then return end
-      for idx, r in ipairs(ChainDB.runs) do
-        if r == self.rec then
-          table.remove(ChainDB.runs, idx)
-          BT.Touch()
-          break
-        end
-      end
-      Render()
-      if BT.Refresh then BT.Refresh() end
+      if not rec then return end
+      Confirm("Throw this run out of the averages?\n\n" .. (self.what or "")
+        .. "\n\nEvery figure worked out from it changes.", function()
+          for idx, r in ipairs(ChainDB.runs) do
+            if r == rec then
+              table.remove(ChainDB.runs, idx)
+              BT.Touch()
+              break
+            end
+          end
+          Render()
+          if BT.Refresh then BT.Refresh() end
+        end)
     end)
     row.del:SetPoint("LEFT", row, "LEFT", 832, 0)
-    function row.del:SetArmed(on)
-      self.fs:SetText(on and (C.bad .. "?" .. C.off) or "x")
-      self.bg:SetColorTexture(on and 0.45 or 0.15, on and 0.1 or 0.15,
-                              on and 0.1 or 0.15, 0.9)
-      self.hint = on
-        and "click again to remove it - or move away and it forgets you asked"
-        or self.restHint
-    end
     rows[i] = row
   end
 

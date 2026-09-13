@@ -2522,6 +2522,47 @@ do
   ChainCharDB.run = keepRun
 end
 
+-- "runs left" er eit tal addonen har rekna seg fram til: kva du betalte,
+-- delt på prisen hans, minus rundene som er logga sidan. Kvar einaste av dei
+-- kan vere feil. Når han er feil er det du som veit det, og å krangle med deg
+-- om det ville vore feil veg rundt.
+do
+  local keepT, keepR, keepB = ChainDB.trades, ChainDB.runs, ChainDB.boosters
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainDB.boosters = { Retter = { price = 100, pack = 10 } }
+  table.insert(ChainDB.trades, { at = S.now - 3000, with = "Retter",
+    gave = 100 * 10000, got = 0, id = "sm", perRun = 10, char = "Tester" })
+  BT.Touch() BT.TouchTrades()
+  BT.ShowTab("boosters")
+  local wl2, box = _G.ChainWindow, nil
+  for _, r in ipairs(wl2.rows or {}) do
+    if r:IsShown() and r.left and r.left:IsShown() and r.left.by == "Retter" then
+      box = r.left
+    end
+  end
+  ok(box ~= nil, "runs left er ein boks du kan skrive i")
+  if box then
+    ok((box:GetText() or "") ~= "", "med talet i (" .. tostring(box:GetText()) .. ")")
+    box:SetText("3")
+    box.typed = true
+    box.__scripts.OnEditFocusLost(box)
+    local c = BT.BoosterCredit("Retter")
+    near(c and c.left or 0, 3, "og talet du skreiv er det som gjeld", 0.01)
+
+    -- og ein boks som berre mistar fokus utan at du skreiv noko rører ingenting
+    for _, r in ipairs(wl2.rows or {}) do
+      if r:IsShown() and r.left and r.left.by == "Retter" then box = r.left end
+    end
+    box:SetText("999")
+    box.typed = nil
+    box.__scripts.OnEditFocusLost(box)
+    near(BT.BoosterCredit("Retter").left or 0, 3,
+         "eit fokusbyte skriv ikkje om saldoen", 0.01)
+  end
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
+  BT.Touch() BT.TouchTrades()
+end
+
 -- Kvar knapp seier kva han gjer før du trykkjer. Ei rad med einbokstavs-
 -- knappar er elles ei rad med gjetningar, og ein av dei slettar ting.
 do
@@ -2892,17 +2933,20 @@ do
   ok(not leaked, "notatet blir aldri sendt til andre")
   ChainDB.share = false
 
-  -- Og x-en fjernar han igjen - men han spør fyrst. Eitt bomklikk på ei tett
-  -- liste og eit stykke av historikken din er borte, og det finst ingenting å
-  -- angre med.
+  -- Og x-en fjernar han igjen - men han spør fyrst, i spelet sin eigen
+  -- ja/nei-dialog. Eitt bomklikk på ei tett liste og eit stykke av
+  -- historikken din er borte, og det finst ingenting å angre med.
+  S.popup = nil
   delBox.__scripts.OnClick(delBox)
   ok(ChainDB.boosters["Kjeltring"] ~= nil, "eitt trykk slettar ingenting")
-  ok((delBox.fs:GetText() or ""):find("?", 1, true),
-     "knappen spør i staden (" .. tostring(delBox.fs:GetText()) .. ")")
-  delBox.__scripts.OnClick(delBox)
-  eq(ChainDB.boosters["Kjeltring"], nil, "det andre trykket gjer det")
+  ok(S.popup ~= nil, "det kjem eit spørsmål opp")
+  ok((S.popup and S.popup.text or ""):find("Kjeltring"),
+     "og spørsmålet namngir kven det gjeld (" ..
+     tostring(S.popup and S.popup.text) .. ")")
+  S.PopupAccept()
+  eq(ChainDB.boosters["Kjeltring"], nil, "og ja fjernar han")
 
-  -- og han gløymer at du spurde om du lèt han ligge
+  -- og nei gjer ingenting
   ChainDB.boosters["Kjeltring2"] = { mine = true, note = "x" }
   BT.Touch()
   BT.ShowTab("boosters")
@@ -2911,13 +2955,11 @@ do
     if r.del and r.del:IsShown() and r.del.name == "Kjeltring2" then d2 = r.del end
   end
   if d2 then
+    S.popup = nil
     d2.__scripts.OnClick(d2)
-    S.uptime = S.uptime + 30
-    d2.__scripts.OnClick(d2)
-    ok(ChainDB.boosters["Kjeltring2"] ~= nil,
-       "eit trykk seks sekund seinare spør på nytt i staden")
-    d2.__scripts.OnClick(d2)
-    eq(ChainDB.boosters["Kjeltring2"], nil, "og då tek det to til")
+    ok(S.popup ~= nil, "spørsmålet kjem")
+    S.popup = nil                       -- du trykte nei
+    ok(ChainDB.boosters["Kjeltring2"] ~= nil, "og nei let han vere i fred")
   end
   ChainDB.boosters["Kjeltring2"] = nil
   BT.ShowTab("runs")

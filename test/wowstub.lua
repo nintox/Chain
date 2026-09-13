@@ -314,6 +314,24 @@ end
 S.printed = {}
 S.mouseOver = nil
 
+-- Spelet sin eigen ja/nei-dialog. S.popup er den som står oppe.
+StaticPopupDialogs = StaticPopupDialogs or {}
+S.popup = nil
+function StaticPopup_Show(which, a, b, data)
+  S.popup = { which = which, text = a, text2 = b, data = data }
+  return S.popup
+end
+function StaticPopup_Hide() S.popup = nil end
+-- Trykk "ja" på han som står oppe
+function S.PopupAccept()
+  local p = S.popup
+  if not p then return false end
+  local d = StaticPopupDialogs[p.which]
+  S.popup = nil
+  if d and d.OnAccept then d.OnAccept(nil, p.data) end
+  return true
+end
+
 -- Sekund sidan spelet starta, slik spelet gjer det. S.uptime er handtaket.
 S.uptime = 1000
 function GetTime() return S.uptime end
@@ -362,7 +380,6 @@ function S.Said(pattern)
 end
 
 SlashCmdList = {}
-function StaticPopup_Show() end
 S.whispered = {}
 DEFAULT_CHAT_FRAME = {}
 function ChatFrame_SendTell(name) table.insert(S.whispered, name) end

@@ -472,12 +472,19 @@ parts that are not.
 
 - **The x asks first.** It sits at the end of every row and it throws things
   away - a run out of the averages, a trade out of the reckoning, somebody off
-  the Boosters list - and there is nothing to undo it with. The first click
-  only arms it: the button turns red and says **?**, and the second one does
-  the work. It forgets you asked after five seconds, arming one disarms
-  whichever was armed before, and a redraw that moves a row under your cursor
-  cannot leave a red **?** pointed at something else - it is remembered against
-  the thing being removed, not against the button.
+  the Boosters list - and there is nothing to undo it with. It now puts the
+  question up in the game's own dialog, and the question names the thing:
+  *Remove this trade? 2h 39m ago  paid 10 runs. What it bought stops counting
+  with it.* "Are you sure?" is not a question you can answer without being
+  told what you are being asked about.
+
+- **"runs left" is a box you can type in.** The figure is inferred - what you
+  paid, divided by his price, less the runs recorded since - and every one of
+  those can be wrong: a trade the client never announced, a run that never got
+  logged, a wipe he gave you back. When it is wrong you are the one who knows,
+  and arguing with you about it would be the wrong way round. Type the number
+  on the Boosters tab and the reckoning starts again from it. A box that only
+  loses focus changes nothing; it has to be typed in.
 
 - **Everything you can click says what it does.** Every button, every tab and
   every column heading carries a line explaining it, on hover. A row of
