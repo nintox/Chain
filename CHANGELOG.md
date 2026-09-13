@@ -478,6 +478,13 @@ parts that are not.
   with it.* "Are you sure?" is not a question you can answer without being
   told what you are being asked about.
 
+- **The Trade tab starts out pointed at whoever is boosting you**, rather than
+  at nobody. An empty name field meant typing a number, pressing the button and
+  being told "no name"; it is filled in with the current booster now. Beside
+  the box it says what the figure is **right now** - `now 3.0` - because the
+  `to come` figures in the rows above are each frozen at their own payment, and
+  the two being different is the whole reason you are looking.
+
 - **"runs left" is a box you can type in.** The figure is inferred - what you
   paid, divided by his price, less the runs recorded since - and every one of
   those can be wrong: a trade the client never announced, a run that never got

@@ -1588,6 +1588,28 @@ local function Render()
                        win.payRunsButton, win.payNote }) do
     if w then w:SetShown(paying) end
   end
+  -- Whoever is boosting you now is who both of these are about, nine times in
+  -- ten. Leaving the name blank means typing a number, pressing the button
+  -- and being told "no name" - so it starts out filled in with him.
+  if paying and win.payName and not win.payName:HasFocus()
+     and (win.payName:GetText() or "") == "" then
+    local who = (BT.CurrentBooster and BT.CurrentBooster())
+      or ChainCharDB.lastBy
+    if who then win.payName:SetText(who) end
+  end
+  -- And it says what the figure is right now, beside the box you would type
+  -- over. "to come" in the rows above is frozen at each payment; this is the
+  -- live one, and the two being different is the whole reason to look.
+  if paying and win.payNote then
+    local who = win.payName and win.payName:GetText()
+    local c = (who and who ~= "" and BT.BoosterCredit) and BT.BoosterCredit(who)
+    local v = c and (c.hisLeft or c.left) or nil
+    win.payNote:SetText(v
+      and (C.dim .. "now " .. C.off
+           .. string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
+           .. C.dim .. " - the tally starts again from what you type" .. C.off)
+      or (C.dim .. "the tally starts again from there" .. C.off))
+  end
 
   -- and the two settle-up buttons belong to the History tab
   local counting = (mode == "runs")

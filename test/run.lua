@@ -2522,6 +2522,31 @@ do
   ChainCharDB.run = keepRun
 end
 
+-- Gull-fana skal vere klar til bruk utan at du fyller ut namnet: den som
+-- boostar deg no er den det gjeld i ni av ti tilfelle, og eit tomt namnefelt
+-- tyder at du skriv eit tal, trykkjer, og får "no name" i retur.
+do
+  local keepT, keepB = ChainDB.trades, ChainDB.boosters
+  local who = (BT.CurrentBooster and BT.CurrentBooster()) or ChainCharDB.lastBy
+    or "Ferdig"
+  ChainDB.trades = {}
+  ChainDB.boosters = { [who] = { price = 100, pack = 10 } }
+  table.insert(ChainDB.trades, { at = S.now - 3000, with = who,
+    gave = 100 * 10000, got = 0, id = "sm", perRun = 10, char = "Tester" })
+  ChainCharDB.lastBy = who
+  BT.Touch() BT.TouchTrades()
+  local wp = _G.ChainWindow
+  if wp and wp.payName then wp.payName:SetText("") end
+  BT.ShowTab("gold")
+  eq(wp.payName:GetText(), who, "namnet er fylt ut med den som boostar no")
+  local note = ((wp.payNote:GetText() or "")
+    :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+  ok(note:find("now "), "og det står kva talet er no (" .. note .. ")")
+  ok(note:find("10"), "det levande talet, ikkje det frosne i radene over")
+  ChainDB.trades, ChainDB.boosters = keepT, keepB
+  BT.Touch() BT.TouchTrades()
+end
+
 -- "runs left" er eit tal addonen har rekna seg fram til: kva du betalte,
 -- delt på prisen hans, minus rundene som er logga sidan. Kvar einaste av dei
 -- kan vere feil. Når han er feil er det du som veit det, og å krangle med deg
