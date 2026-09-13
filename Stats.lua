@@ -56,7 +56,11 @@ function BT.T(sec)
   if sec < 60 then return sec .. "s" end
   local m = math.floor(sec / 60)
   if m < 60 then return m .. "m" end
-  return math.floor(m / 60) .. "h " .. (m % 60) .. "m"
+  -- "4h", not "4h 0m": a zero that only ever means "nothing here" is one more
+  -- thing to read past
+  local h, rest = math.floor(m / 60), m % 60
+  if rest == 0 then return h .. "h" end
+  return h .. "h " .. rest .. "m"
 end
 
 function BT.Pct(v)

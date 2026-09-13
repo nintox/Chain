@@ -492,6 +492,10 @@ parts that are not.
   lost its arithmetic and its balance; a run with no coin lost the group line.
   Eleven of them, all silently truncated, for as long as they have existed.
 
+- **`4h`, not `4h 0m`.** A zero that only ever means "nothing here" is one more
+  thing to read past, and it turned up in every line that quoted a round number
+  of hours.
+
 - **The runs are counted the way the pack is sold: `7/10`.** That is how both
   of you are thinking about it - it says how far through you are and how much
   is left in the same breath, where `3 runs left` is a number you have to hold
@@ -555,7 +559,7 @@ parts that are not.
   alts included, since the gold often goes to a bank character), and **say in
   party** puts it in chat:
 
-      [CHAIN] - 4 runs with Magecome - 49m, 1h 13m, 1h 36m, 2h 19m ago
+      [CHAIN] - 5 runs with Magecome - 12m, 47m, 1h 14m, 1h 36m, 2h 21m ago
 
   Eight times at most, then "+3 older". The marks are not saved: it is
   something you do for ten seconds to settle an argument, and a mark surviving

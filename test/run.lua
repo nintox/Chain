@@ -1720,6 +1720,13 @@ do  -- kvar instans i ruteredigeringa skal vise kva level han er for
   ok(spans > 0, "opsjonane viser level-spennet per instans")
 end
 local csv = BT.BuildCSV()
+-- "4h", ikkje "4h 0m": eit null som berre nokon gong tyder "ingenting her" er
+-- ein ting til å lese forbi
+eq(BT.T(4 * 3600), "4h", "heile timar blir sagt utan minutt")
+eq(BT.T(4 * 3600 + 180), "4h 3m", "og med, når det er nokre")
+eq(BT.T(90), "1m", "under timen er det minutt")
+eq(BT.T(30), "30s", "og under minuttet sekund")
+
 ok(csv:find("^at,date,zone"), "CSV har overskrift")
 local lines = select(2, csv:gsub("\n", "\n")) + 1
 eq(lines, #ChainDB.runs + 1, "ei CSV-linje per run")
