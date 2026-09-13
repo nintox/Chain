@@ -232,7 +232,8 @@ def main():
     # two TGAs in the addon folder, because that is the one image format the
     # game will load from there: the minimap button's face, and the square
     # one the addon list shows next to the name
-    addon = os.path.dirname(HERE)
+    # push/icons -> push -> the addon folder itself
+    addon = os.path.dirname(os.path.dirname(HERE))
     mm = minimap(64)
     write_tga(mm, os.path.join(addon, "minimap.tga"))
     mm.save(os.path.join(HERE, "minimap.png"))

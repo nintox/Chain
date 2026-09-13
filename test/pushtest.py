@@ -25,8 +25,13 @@ for _cand in (os.path.join(HERE, "..", "push"),
         PUSH = os.path.abspath(_cand)
         break
 assert PUSH, "cannot find the push folder from " + HERE
-sys.path.insert(0, PUSH)
-sys.path.insert(0, HERE)
+# one folder per platform, and the shared parts beside them
+ENGINE = os.path.join(PUSH, "engine")
+ICONS = os.path.join(PUSH, "icons")
+WINDOWS = os.path.join(PUSH, "windows")
+MAC = os.path.join(PUSH, "mac")
+for _d in (PUSH, ENGINE, ICONS, HERE):
+    sys.path.insert(0, _d)
 
 import tkstub                                                # noqa: E402
 tkstub.install()
@@ -282,7 +287,7 @@ print("== appen på mac ==")
 # shell-script kan ikkje ta imot eit klikk - det var heile grunnen til at det
 # ikkje fanst nokon veg tilbake når du lukka vindauget. Og menylinja: ho hadde
 # ikkje plass på maskina, og kosta 46 % CPU på å teikne ingenting.
-applet = os.path.join(PUSH, "applet.applescript")
+applet = os.path.join(MAC, "applet.applescript")
 ok(os.path.exists(applet), "applet.applescript finst")
 asrc = open(applet, encoding="utf-8").read()
 ok("on reopen" in asrc, "han tek imot klikk i Docken")
@@ -292,7 +297,7 @@ ok("LSUIElement" not in asrc, "ingen skjult app - Dock-ikonet er heile poenget")
 ok("--saved --serve" in asrc, "han startar vaktaren")
 ok("--settings-only" in asrc, "og kan opne innstillingane")
 
-build = os.path.join(PUSH, "build-mac-app.command")
+build = os.path.join(MAC, "build-mac-app.command")
 ok(os.path.exists(build), "build-mac-app.command finst")
 bsrc = open(build, encoding="utf-8").read()
 ok("osacompile" in bsrc, "han byggjer med osacompile, som finst på kvar Mac")
@@ -312,12 +317,13 @@ ok("pkill" in bsrc, "og ryddar bort det som køyrde frå før")
 
 # menylinje-forsøket skal vere heilt borte: det åt ein halv prosessor
 for gone in ("menubar.js", "menubar.png", "menubar@2x.png"):
-    ok(not os.path.exists(os.path.join(PUSH, gone)),
+    ok(not os.path.exists(os.path.join(MAC, gone))
+       and not os.path.exists(os.path.join(ICONS, gone)),
        gone + " er fjerna")
-ok(os.path.exists(os.path.join(PUSH, "notify.png")), "notify.png finst")
+ok(os.path.exists(os.path.join(ICONS, "notify.png")), "notify.png finst")
 
 print("== skuffa på windows ==")
-tray = os.path.join(PUSH, "tray_win.py")
+tray = os.path.join(WINDOWS, "tray_win.py")
 ok(os.path.exists(tray), "tray_win.py finst")
 import py_compile                                            # noqa: E402
 try:
@@ -331,7 +337,7 @@ ok("NIIF_USER" in tsrc, "ballongen får vårt eige ikon")
 ok(not any(line.strip().startswith(("import pystray", "from PIL", "import PIL"))
            for line in tsrc.splitlines()),
    "ingenting å installere fyrst")
-bat = open(os.path.join(PUSH, "ChainPush.bat"), encoding="utf-8").read()
+bat = open(os.path.join(WINDOWS, "ChainPush.bat"), encoding="utf-8").read()
 ok("tray_win.py" in bat, ".bat-fila startar skuffa")
 ok("pythonw" in bat, "og utan eit konsollvindauge bak spelet")
 
@@ -353,18 +359,18 @@ ok("debug" in bat, ".bat-fila kan køyre med meldingane synlege")
 print("== ikon ==")
 ok(len(gui.ICON_PNG_BASE64) > 1000, "ikonet ligg inne i programmet")
 for f in ("icon.png", "icon.ico", "icon.icns"):
-    ok(os.path.exists(os.path.join(PUSH, f)), "%s finst" % f)
-with open(os.path.join(PUSH, "icon.icns"), "rb") as fh:
+    ok(os.path.exists(os.path.join(ICONS, f)), "%s finst" % f)
+with open(os.path.join(ICONS, "icon.icns"), "rb") as fh:
     ok(fh.read(4) == b"icns", "icns-fila har rett hovud")
 # notify.png er det som ligg på varselbanneret, og må vere ekte farge
 from PIL import Image                                        # noqa: E402
-banner = Image.open(os.path.join(PUSH, "notify.png")).convert("RGBA")
+banner = Image.open(os.path.join(ICONS, "notify.png")).convert("RGBA")
 ok(banner.size[0] >= 64, "varselikonet er stort nok (%dpx)" % banner.size[0])
 
 # .icns-fila må ha storleikane macOS spør etter. Manglar ein, kan macOS
 # stillteiande bruke det generiske ikonet i staden.
 import struct                                                # noqa: E402
-raw = open(os.path.join(PUSH, "icon.icns"), "rb").read()
+raw = open(os.path.join(ICONS, "icon.icns"), "rb").read()
 kinds, at = set(), 8
 while at < len(raw):
     kind = raw[at:at + 4]

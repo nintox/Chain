@@ -34,7 +34,7 @@ jobs:
         run: python -m pip install --upgrade pip pyinstaller pillow
 
       - name: Build
-        run: python push/build.py
+        run: python push/engine/build.py
 
       # macOS ships an .app folder; zip it so the download stays an app
       - name: Zip the app

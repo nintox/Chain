@@ -14,6 +14,9 @@
 set -u
 cd "$(dirname "$0")" || exit 1
 HERE="$(pwd)"
+# the engine and the pictures are shared with Windows and sit beside this
+# folder rather than in duplicate inside it
+PUSH="$(cd .. && pwd)"
 APP="$HERE/ChainPush.app"
 
 echo "Building ChainPush.app in:"
@@ -53,8 +56,11 @@ echo "compiled  (stay open: $STAYOPEN)"
 
 RES="$APP/Contents/Resources"
 mkdir -p "$RES"
-for f in chainpush.py chainpush_gui.py chainpush.sh iconbytes.py notify.png icon.png; do
-  [ -f "$HERE/$f" ] && cp -f "$HERE/$f" "$RES/$f"
+# Flat inside the app - that is what the applet runtime expects - however the
+# repository happens to be laid out.
+for f in engine/chainpush.py engine/chainpush_gui.py mac/chainpush.sh \
+         icons/iconbytes.py icons/notify.png icons/icon.png; do
+  [ -f "$PUSH/$f" ] && cp -f "$PUSH/$f" "$RES/$(basename "$f")"
 done
 chmod +x "$RES/chainpush.sh" 2>/dev/null
 
@@ -65,11 +71,11 @@ chmod +x "$RES/chainpush.sh" 2>/dev/null
 # names it in the plist as CFBundleIconName. Modern macOS prefers that over
 # CFBundleIconFile and never looks at the .icns at all. So the catalogue and
 # the key that points at it both have to go.
-if [ -f "$HERE/icon.icns" ]; then
+if [ -f "$PUSH/icons/icon.icns" ]; then
   for existing in "$RES"/*.icns; do
-    [ -e "$existing" ] && cp -f "$HERE/icon.icns" "$existing"
+    [ -e "$existing" ] && cp -f "$PUSH/icons/icon.icns" "$existing"
   done
-  cp -f "$HERE/icon.icns" "$RES/applet.icns"
+  cp -f "$PUSH/icons/icon.icns" "$RES/applet.icns"
   rm -f "$RES/Assets.car"
   /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$APP/Contents/Info.plist" 2>/dev/null
   echo "icon      set (asset catalogue removed)"

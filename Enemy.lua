@@ -1266,7 +1266,8 @@ local function RowTooltip(self)
   if e.race then table.insert(bits, e.race) end
   if e.class then table.insert(bits, BT.ClassLabel(e.class)) end
   GameTooltip:AddLine(table.concat(bits, " "), 1, 1, 1)
-  if e.faction then GameTooltip:AddLine(e.faction, 0.7, 0.7, 0.7) end
+  -- No faction line: the race above it already says which side he is on, and
+  -- so does the fact that he is on this list at all.
 
   -- Your own score against them. Nobody else can tell you this, which is
   -- exactly why it is worth keeping.
@@ -1280,23 +1281,11 @@ local function RowTooltip(self)
       0.7, 0.7, 0.7)
   end
 
-  GameTooltip:AddLine(" ")
-  GameTooltip:AddDoubleLine("last seen", BT.T(time() - (e.at or time())) .. " ago",
-                            0.7, 0.7, 0.7, 1, 1, 1)
-  GameTooltip:AddDoubleLine("seen", (e.n or 1) .. " time"
-    .. ((e.n or 1) == 1 and "" or "s"), 0.7, 0.7, 0.7, 1, 1, 1)
-  if e.first then
-    GameTooltip:AddDoubleLine("first met", BT.T(time() - e.first) .. " ago",
-                              0.7, 0.7, 0.7, 1, 1, 1)
-  end
-  if e.zone then
-    GameTooltip:AddDoubleLine("in", e.zone
-      .. ((e.x and e.y) and string.format("  (%.0f, %.0f)", e.x, e.y) or ""),
-      0.7, 0.7, 0.7, 1, 1, 1)
-  end
-  if e.how then
-    GameTooltip:AddDoubleLine("spotted by", e.how, 0.7, 0.7, 0.7, 0.6, 0.6, 0.6)
-  end
+  -- The ledger - last seen, seen how often, first met, where, what spotted
+  -- him - is on the Enemies tab, in columns, where it can be sorted and read
+  -- properly. Here it was eight lines of history over a man standing behind
+  -- you. This tooltip answers who he is and whether you have beaten him
+  -- before; everything else is for afterwards.
 
   local why = BT.IsKOS(e.name, e.guild)
   local note = BT.EnemyNote(e.name) or (e.guild and BT.GuildNote(e.guild))
@@ -1315,9 +1304,6 @@ local function RowTooltip(self)
   GameTooltip:AddLine(" ")
   if e.levelGuess then
     GameTooltip:AddLine("at least that - from an ability they used",
-                        0.5, 0.5, 0.5)
-  elseif not e.level or e.level <= 0 then
-    GameTooltip:AddLine("no level: you have not actually seen them yet",
                         0.5, 0.5, 0.5)
   end
   GameTooltip:AddLine("Click: target him", 0.4, 0.7, 1)
@@ -1973,7 +1959,11 @@ function BT.BuildNearby()
     -- pointing a click at the wrong person. The banner still announces
     -- everybody who turns up; it is the part that matters mid-fight anyway.
     local row = CreateFrame("Button", nil, nearby, "SecureActionButtonTemplate")
-    row:SetSize(NearWidth() - 12, 13)
+    -- Full width, with the text inset instead. The row used to be twelve
+    -- pixels narrower than the box and sit six in from the left, so the class
+    -- stripe stopped short at both ends and left a dark bar down either side
+    -- of every name. The stripe is the row; it should reach the edges.
+    row:SetSize(NearWidth(), ROW_H - 1)
     -- see the banner: the named up-clicks alone leave a secure button that
     -- does nothing on this client
     row:RegisterForClicks("AnyDown", "AnyUp")
@@ -1983,9 +1973,9 @@ function BT.BuildNearby()
     row:SetScript("OnDragStart", BeginDrag)
     row:SetScript("OnDragStop", EndDrag)
     row.name = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
-    row.name:SetPoint("LEFT", 3, 0)
+    row.name:SetPoint("LEFT", 5, 0)
     row.name:SetJustifyH("LEFT")
-    row.name:SetWidth(NearWidth() - 12 - RIGHT_W - 3)
+    row.name:SetWidth(NearWidth() - 10 - RIGHT_W)
     -- A name that does not fit was wrapping, and a two-line string centred on
     -- a one-line row puts the mark above the name and the name below the
     -- stripe. Long names are cut off instead; the tooltip has the whole of it.
@@ -1998,7 +1988,7 @@ function BT.BuildNearby()
     row.stripe:SetAllPoints()
     -- level and class together on the right, the way the game writes it
     row.right = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
-    row.right:SetPoint("RIGHT", -3, 0)
+    row.right:SetPoint("RIGHT", -5, 0)
     row.right:SetJustifyH("RIGHT")
     if row.right.SetWordWrap then row.right:SetWordWrap(false) end
     if row.right.SetMaxLines then row.right:SetMaxLines(1) end
@@ -2057,15 +2047,21 @@ local function LayoutNearby(shown)
   if not sizing then nearby:SetWidth(w) end
   for i = 1, NEAR_MAX do
     local row = nearby.rows[i]
-    row:SetWidth(w - 12)
-    -- the name takes whatever the class does not need, so a wider box gives
-    -- the name more room rather than opening a hole in the middle
-    row.name:SetWidth(w - 12 - RIGHT_W)
+    row:SetWidth(w)
+    -- The name takes everything the right-hand side does not actually need,
+    -- measured rather than reserved. "?? Rogue" is not "45 Warlock", and a
+    -- fixed reservation cut names short to keep room nobody was using.
+    local need = RIGHT_W
+    if row.right:IsShown() and row.right.GetStringWidth then
+      local px = row.right:GetStringWidth() or 0
+      if px > 0 then need = math.min(RIGHT_W, math.ceil(px) + 8) end
+    end
+    row.name:SetWidth(math.max(30, w - 10 - need))
     row:ClearAllPoints()
     if up then
-      row:SetPoint("BOTTOMLEFT", 6, 20 + (i - 1) * ROW_H)
+      row:SetPoint("BOTTOMLEFT", 0, 20 + (i - 1) * ROW_H)
     else
-      row:SetPoint("TOPLEFT", 6, -20 - (i - 1) * ROW_H)
+      row:SetPoint("TOPLEFT", 0, -20 - (i - 1) * ROW_H)
     end
   end
   if nearby.grip then

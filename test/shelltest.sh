@@ -10,6 +10,9 @@ for cand in "$(dirname "$0")/../push" "$(dirname "$0")/../Chain/push"; do
   [ -d "$cand" ] && PUSH="$(cd "$cand" && pwd)" && break
 done
 [ -n "${PUSH:-}" ] || { echo "cannot find the push folder" >&2; exit 1; }
+# one folder per platform, and the shared parts beside them
+MAC="$PUSH/mac"
+ICONS="$PUSH/icons"
 TMP="$(mktemp -d)"
 PASS=0; FAIL=0
 
@@ -40,7 +43,7 @@ export LT_CONF="$TMP/push.json"
 export LT_STATE="$TMP/count"
 export LT_SOURCE_ONLY=1
 # shellcheck disable=SC1090
-. "$PUSH/chainpush.sh"
+. "$MAC/chainpush.sh"
 
 echo "== innstillingar =="
 SERVICE="ntfy"; TOPIC="hemmeleg"; SERVER="http://127.0.0.1:8731"; WEBHOOK=""
@@ -132,18 +135,18 @@ echo "== mac-appen =="
 # Appen blir bygd på Mac-en med osacompile, så det einaste som kan testast
 # her er oppskrifta. Ein AppleScript-applet, fordi eit shell-script i ei
 # app-mappe ikkje kan ta imot eit klikk i Docken.
-BUILD="$PUSH/build-mac-app.command"
+BUILD="$MAC/build-mac-app.command"
 ok "$([ -x "$BUILD" ] && echo 1)" "byggeskriptet er køyrbart"
 ok "$(bash -n "$BUILD" && echo 1)" "og gyldig bash"
 ok "$(grep -q "osacompile" "$BUILD" && echo 1)" "det byggjer med osacompile"
 ok "$(grep -q "applet.applescript" "$BUILD" && echo 1)" "frå applet.applescript"
-ok "$([ -f "$PUSH/applet.applescript" ] && echo 1)" "som ligg der"
-ok "$(grep -q "^on reopen" "$PUSH/applet.applescript" && echo 1)" \
+ok "$([ -f "$MAC/applet.applescript" ] && echo 1)" "som ligg der"
+ok "$(grep -q "^on reopen" "$MAC/applet.applescript" && echo 1)" \
    "og tek imot klikk i Docken"
-ok "$(grep -q "^on quit" "$PUSH/applet.applescript" && echo 1)" "og Quit"
-ok "$([ -f "$PUSH/icon.icns" ] && echo 1)" "ikonet finst å byggje med"
-ok "$(bash -n "$PUSH/chainpush.sh" && echo 1)" "skriptet er gyldig bash"
-ok "$(grep -q -- "--settings-only" "$PUSH/chainpush.sh" && echo 1)" \
+ok "$(grep -q "^on quit" "$MAC/applet.applescript" && echo 1)" "og Quit"
+ok "$([ -f "$ICONS/icon.icns" ] && echo 1)" "ikonet finst å byggje med"
+ok "$(bash -n "$MAC/chainpush.sh" && echo 1)" "skriptet er gyldig bash"
+ok "$(grep -q -- "--settings-only" "$MAC/chainpush.sh" && echo 1)" \
    "og kan opne berre innstillingane"
 
 kill "$SERVER_PID" 2>/dev/null

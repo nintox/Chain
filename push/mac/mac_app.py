@@ -19,12 +19,26 @@ import stat
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+PUSH = os.path.dirname(HERE)
 APP = os.path.join(HERE, "ChainPush.app")
 RES = os.path.join(APP, "Contents", "Resources")
 EXE = os.path.join(APP, "Contents", "MacOS", "applet")
 
-CARRIED = ["chainpush.py", "chainpush_gui.py", "chainpush.sh", "iconbytes.py",
-           "notify.png", "icon.png"]
+# Inside the app everything sits flat in Resources - that is what the applet
+# runtime expects - so this is a map from where each file lives in the
+# repository to the one name it answers to in there.
+CARRIED = [
+    ("engine", "chainpush.py"),
+    ("engine", "chainpush_gui.py"),
+    ("mac", "chainpush.sh"),
+    ("icons", "iconbytes.py"),
+    ("icons", "notify.png"),
+    ("icons", "icon.png"),
+]
+
+
+def source(where, name):
+    return os.path.join(PUSH, where, name)
 
 
 def main():
@@ -33,13 +47,13 @@ def main():
               "build-mac-app.command on a Mac first", file=sys.stderr)
         return 1
     os.makedirs(RES, exist_ok=True)
-    for name in CARRIED:
-        src = os.path.join(HERE, name)
+    for where, name in CARRIED:
+        src = source(where, name)
         if not os.path.exists(src):
             print("missing " + name, file=sys.stderr)
             return 1
         shutil.copy2(src, os.path.join(RES, name))
-    icon = os.path.join(HERE, "icon.icns")
+    icon = source("icons", "icon.icns")
     if os.path.exists(icon):
         # applet.icns is the name the AppleScript applet runtime looks for
         shutil.copy2(icon, os.path.join(RES, "applet.icns"))

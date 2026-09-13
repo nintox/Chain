@@ -6400,6 +6400,23 @@ do
     -- Eit namn som ikkje fekk plass braut linja, og ein to-linjers streng
     -- midtstilt på ei ein-linjes rad la merket over namnet og namnet under
     -- stripa. Det er akkurat det skjermbiletet viste.
+    -- Rada er heile boksen brei. Ho var tolv pikslar smalare og stod seks inn
+    -- frå venstre, så klassestripa stoppa før begge kantane og la ei mørk
+    -- stripe nedover kvar side av namnet.
+    eq(nb.rows[1]:GetWidth(), nb:GetWidth(), "rada er like brei som boksen")
+    eq(select(4, nb.rows[1]:GetPoint(1)), 0, "og byrjar heilt ute i kanten")
+    -- og namnet får alt det høgresida ikkje treng, målt og ikkje reservert:
+    -- "60 Rogue" er ikkje "45 Warlock", og ein fast reservasjon klipte namn
+    -- for å halde av plass ingen brukte
+    do
+      local r = nb.rows[1]
+      local rightPx = r.right:GetStringWidth() or 0
+      ok(r.name:GetWidth() + rightPx + 10 <= nb:GetWidth() + 1,
+         "namn og høgreside får plass side om side")
+      ok(r.name:GetWidth() > nb:GetWidth() - 10 - 74,
+         "og namnet får meir enn den gamle faste avsetjinga ("
+         .. r.name:GetWidth() .. " mot " .. (nb:GetWidth() - 10 - 74) .. ")")
+    end
     eq(nb.rows[1].name.__wrap, false, "namnet bryt ikkje linja")
     eq(nb.rows[1].right.__wrap, false, "og ikkje level og klasse heller")
     eq(nb.title.__wrap, false, "og ikkje overskrifta")
@@ -6417,7 +6434,16 @@ do
     ok(tip:find("Level 60"), "levelen")
     ok(tip:find("Rogue"), "klassen")
     ok(tip:find("Bad Bois"), "guilden")
-    ok(tip:find("seen"), "og kor mange gonger han er sett")
+    -- ...og ikkje meir. Kven han er og om du har slege han før; heile
+    -- historikken - sist sett, kor ofte, kvar, kva som såg han - ligg i
+    -- kolonnar på Enemies-fana, der han kan sorterast og lesast ordentleg.
+    -- Åtte linjer historie over ein mann som står bak deg er åtte for mykje.
+    ok(not tip:find("first met", 1, true), "ikkje heile historikken")
+    ok(not tip:find("spotted by", 1, true), "og ikkje kva som såg han")
+    -- fraksjon seier seg sjølv: rasen over står der, og han står på lista
+    ok(not tip:find("Horde", 1, true) and not tip:find("Alliance", 1, true),
+       "og ikkje fraksjonen")
+    ok(tip:find("Click: target him", 1, true), "men klikka står der")
     ok(tip:find("marked by name"), "og at han er merka")
 
     -- den som gjekk sin veg fell ut av seg sjølv

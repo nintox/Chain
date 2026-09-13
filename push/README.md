@@ -1,7 +1,7 @@
 # Phone notifications
 
 <p align="center">
-  <img src="icon.png" width="96" alt="Chain Push">
+  <img src="icons/icon.png" width="96" alt="Chain Push">
 </p>
 
 Chain Push sends a notification to your phone when the instance is reset or
@@ -34,38 +34,18 @@ channel on your phone, or you will not hear it.
 
 ### 2. Start the program on your computer
 
-<table>
-<tr><th align="left">macOS</th><th align="left">Windows</th></tr>
-<tr valign="top"><td>
+**Open the folder for your computer and follow the one page in it.** That is
+the whole instruction — each folder holds the two or three files that machine
+actually uses, and its own short README.
 
-Double-click **`build-mac-app.command`** in this folder.
+| | |
+|---|---|
+| **[`mac/`](mac/)** | macOS — double-click `build-mac-app.command` once, then open the app it makes. |
+| **[`windows/`](windows/)** | Windows — double-click `ChainPush.bat`. Nothing to build. |
 
-It runs `osacompile`, which is already part of macOS. Nothing is downloaded
-and nothing is installed. About two seconds later **`ChainPush.app`** appears
-beside it.
-
-Open that app. Drag it to Applications or the Dock if you want it handy.
-
-You only build once. After that you just open the app.
-
-</td><td>
-
-Double-click **`ChainPush.bat`** in this folder.
-
-The icon appears in the tray next to the clock. That is it — nothing to
-install, nothing to build.
-
-If you would rather have a single `.exe` to keep somewhere else:
-
-```
-python3 -m pip install pyinstaller pillow
-python3 build.py
-```
-
-which writes `dist/ChainPush.exe`.
-
-</td></tr>
-</table>
+The other two folders are not yours to open: **`engine/`** is the code both
+machines share, and **`icons/`** is the pictures. They sit beside the two
+platform folders rather than being copied into each.
 
 **If the system refuses to open it.** macOS: right-click the app → **Open** →
 **Open**. Windows SmartScreen: **More info** → **Run anyway**. Both happen
@@ -120,7 +100,7 @@ working without picking the phone up.
 
 **Start it with the computer?** macOS: System Settings → General → Login Items
 → **+** → `ChainPush.app`. Windows: press Win+R, type `shell:startup`, and
-drop a shortcut to `ChainPush.bat` in the folder that opens.
+drop a shortcut to `windows/ChainPush.bat` in the folder that opens.
 
 ---
 
@@ -218,7 +198,7 @@ it in `crash.log` under `%LOCALAPPDATA%\ChainPush`. To watch it start with
 everything on screen:
 
 ```
-ChainPush.bat debug
+windows\ChainPush.bat debug
 ```
 
 That runs it in the command window rather than behind it, so whatever it says
@@ -230,11 +210,11 @@ stays where you can read it.
 
 | | |
 |---|---|
-| macOS, Dock | `build-mac-app.command` once, then `ChainPush.app` |
-| Windows, tray | `ChainPush.bat`, or `pythonw tray_win.py` |
-| no icon, just a terminal | `python3 chainpush.py --saved --serve` |
-| a plain window | `python3 chainpush_gui.py` |
-| macOS dialogs only | `bash chainpush.sh` |
+| macOS, Dock | `mac/build-mac-app.command` once, then `ChainPush.app` |
+| Windows, tray | `windows/ChainPush.bat`, or `pythonw windows/tray_win.py` |
+| no icon, just a terminal | `python3 engine/chainpush.py --saved --serve` |
+| a plain window | `python3 engine/chainpush_gui.py` |
+| macOS dialogs only | `bash mac/chainpush.sh` |
 
 **Settings...** in the Mac app opens whichever settings screen this Mac can
 draw — the full window where there is a `python3` with a modern Tk, the Mac's
@@ -242,23 +222,25 @@ own dialogs where there is not. Apple's own `python3` carries Tk 8.5.9, which
 on any recent macOS draws an empty white rectangle, so it is not trusted on
 sight.
 
-After changing any of the sources, `python3 mac_app.py` copies them back into
-the built app, so it is not left carrying yesterday's copy.
+After changing any of the sources, `python3 mac/mac_app.py` copies them back
+into the built app, so it is not left carrying yesterday's copy. Inside the
+app everything sits flat in `Resources` whatever folder it came from - that is
+what the applet runtime expects.
 
 ### The command line
 
 ```bash
-python3 chainpush.py --ntfy my-secret-topic --test   # check it reaches you
-python3 chainpush.py --ntfy my-secret-topic          # then leave it running
-python3 chainpush.py --discord https://discord.com/api/webhooks/...
-python3 chainpush.py --saved                         # use the window's settings
+python3 engine/chainpush.py --ntfy my-topic --test   # check it reaches you
+python3 engine/chainpush.py --ntfy my-topic          # then leave it running
+python3 engine/chainpush.py --discord https://discord.com/api/webhooks/...
+python3 engine/chainpush.py --saved                  # use the window's settings
 ```
 
 Without Python at all, the shell version takes two of the same switches:
 
 ```bash
-bash chainpush.sh --test     # send one notification and stop
-bash chainpush.sh --watch    # watch and send, printing what it does
+bash mac/chainpush.sh --test     # send one notification and stop
+bash mac/chainpush.sh --watch    # watch and send, printing what it does
 ```
 
 | | |
@@ -292,3 +274,17 @@ A program can only be built on the system it is for, so
 `.github/workflows/chainpush.yml` builds the Windows executable and a macOS
 bundle side by side and attaches both to a release. Run it from the Actions
 tab, or publish a release and it runs itself.
+
+## What is in this folder
+
+```
+push/
+  mac/        double-click ChainPush.command, or build the app once
+  windows/    double-click ChainPush.bat
+  engine/     the code both of them run - nothing to open
+  icons/      the pictures, and the script that draws them
+```
+
+Four folders rather than eighteen files in a heap. The two at the top are the
+only ones anybody opens; the two underneath are shared by both machines and
+are there once rather than twice.

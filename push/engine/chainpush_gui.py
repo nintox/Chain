@@ -28,8 +28,12 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
+# Inside the built app everything is flat in Resources, so HERE is enough
+# there; in the repository the pictures live in ../icons. Both, and whichever
+# one is real wins.
+for _d in (HERE, os.path.join(os.path.dirname(HERE), "icons")):
+    if _d not in sys.path:
+        sys.path.insert(0, _d)
 
 import chainpush as engine                                  # noqa: E402
 

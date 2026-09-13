@@ -25,13 +25,15 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+PUSH = os.path.dirname(HERE)
+ICONS = os.path.join(PUSH, "icons")
 NAME = "ChainPush"
 
 
 def icons():
     """Draw the icons if they are not already sitting here."""
     want = ["icon.ico", "icon.icns", "icon.png", "iconbytes.py"]
-    if all(os.path.exists(os.path.join(HERE, f)) for f in want):
+    if all(os.path.exists(os.path.join(ICONS, f)) for f in want):
         return True
     try:
         import PIL                                           # noqa: F401
@@ -39,7 +41,7 @@ def icons():
         print("Pillow is not installed, so the icons cannot be drawn.")
         print("  python3 -m pip install pillow")
         return False
-    subprocess.check_call([sys.executable, os.path.join(HERE, "icon.py")])
+    subprocess.check_call([sys.executable, os.path.join(ICONS, "icon.py")])
     return True
 
 
@@ -54,16 +56,17 @@ def main():
 
     icon = None
     if have_icons:
-        icon = os.path.join(HERE, "icon.icns" if sys.platform == "darwin" else "icon.ico")
+        icon = os.path.join(ICONS,
+                            "icon.icns" if sys.platform == "darwin" else "icon.ico")
         if not os.path.exists(icon):
             icon = None
 
     cmd = [sys.executable, "-m", "PyInstaller",
            "--noconfirm", "--clean", "--onefile", "--windowed",
            "--name", NAME,
-           "--distpath", os.path.join(HERE, "dist"),
-           "--workpath", os.path.join(HERE, "build"),
-           "--specpath", os.path.join(HERE, "build")]
+           "--distpath", os.path.join(PUSH, "dist"),
+           "--workpath", os.path.join(PUSH, "build"),
+           "--specpath", os.path.join(PUSH, "build")]
     if icon:
         cmd += ["--icon", icon]
     # optional: a tray icon, if the machine building has the libraries
@@ -78,11 +81,11 @@ def main():
     print(" ".join(cmd))
     subprocess.check_call(cmd)
 
-    out = os.path.join(HERE, "dist")
+    out = os.path.join(PUSH, "dist")
     print("\nbuilt into %s:" % out)
     for entry in sorted(os.listdir(out)):
         print("  " + entry)
-    shutil.rmtree(os.path.join(HERE, "build"), ignore_errors=True)
+    shutil.rmtree(os.path.join(PUSH, "build"), ignore_errors=True)
     return 0
 
 

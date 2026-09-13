@@ -29,8 +29,12 @@ import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
+# The Windows folder holds the two files you actually open; the engine and the
+# icons are shared with the Mac and live beside it rather than in duplicate.
+PUSH = os.path.dirname(HERE)
+for _d in (HERE, os.path.join(PUSH, "engine"), os.path.join(PUSH, "icons")):
+    if _d not in sys.path:
+        sys.path.insert(0, _d)
 
 APP_TITLE = "Chain Push"
 
