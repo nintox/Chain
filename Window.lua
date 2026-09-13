@@ -2372,23 +2372,51 @@ local function Build()
     .. "about.")
   win.sinceButton:SetPoint("TOPLEFT", 12, addY + 3)
 
+  -- One line a run, numbered the way he counts them.
+  --
+  -- A single line of "12m, 47m, 1h 14m ago" is a list of times somebody has to
+  -- match up against their own memory. A line each - when it started, when it
+  -- ended, how long it took, how many things died, what it paid - is a
+  -- receipt, and there is nothing left to disagree about.
+  --
+  -- Eight at most. Beyond that it is a wall of text in somebody else's chat
+  -- window, and the game throttles a run of messages hard enough to get you
+  -- disconnected - which is why they go out half a second apart rather than
+  -- all in the same frame.
+  local SAY_MAX = 8
+
   win.sayButton = Button(win, "say in party", 110, 18, function()
-    local list = PickedRuns()
-    if #list == 0 then return end
-    local who = list[#list].by
-    local bits = {}
-    for i = #list, 1, -1 do
-      if #bits >= 8 then break end
-      table.insert(bits, BT.T(time() - (list[i].at or time())))
+    local list = PickedRuns()                        -- oldest first
+    local n = #list
+    if n == 0 then return end
+    local lines = {}
+    for i = 1, math.min(n, SAY_MAX) do
+      local r = list[i]
+      local from = date("%H:%M", r.at or time())
+      local to = date("%H:%M", (r.at or time()) + (r.t or 0))
+      lines[#lines + 1] = i .. "/" .. n
+        .. (r.by and (" with " .. r.by) or "")
+        .. " - " .. from .. "-" .. to
+        .. ", " .. BT.T(r.t or 0)
+        .. ", " .. (r.k or 0) .. " mobs"
+        .. ", " .. BT.N(r.xp or 0) .. " xp"
     end
-    local text = #list .. ((#list == 1) and " run" or " runs")
-      .. (who and (" with " .. who) or "")
-      .. " - " .. table.concat(bits, ", ") .. " ago"
-      .. ((#list > #bits) and (" (+" .. (#list - #bits) .. " older)") or "")
-    if BT.SayToGroup then BT.SayToGroup(text) end
+    if n > SAY_MAX then
+      lines[#lines + 1] = "(+" .. (n - SAY_MAX) .. " older, not listed)"
+    end
+    for i, text in ipairs(lines) do
+      if i == 1 or type(C_Timer) ~= "table" or not C_Timer.After then
+        if BT.SayToGroup then BT.SayToGroup(text) end
+      else
+        C_Timer.After((i - 1) * 0.5, function()
+          if BT.SayToGroup then BT.SayToGroup(text) end
+        end)
+      end
+    end
   end)
-  Hint(win.sayButton, "put the marked runs in party chat, with how long "
-    .. "ago each one was. One line, and the counting argument is over.")
+  Hint(win.sayButton, "put the marked runs in party chat, one line each: when "
+    .. "it started and ended, how long it took, the mobs and the experience. "
+    .. "Eight at most, half a second apart so the game does not throttle you.")
   win.sayButton:SetPoint("TOPLEFT", 170, addY + 3)
 
   win.sayNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")

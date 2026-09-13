@@ -2839,8 +2839,9 @@ do
     S.said, S.printed = {}, {}
     wq.sayButton.__scripts.OnClick(wq.sayButton)
     local line = S.said[1] or S.printed[1] or ""
-    ok(line:find("1 run"), "linja seier kor mange (" .. line .. ")")
-    ok(line:find("ago"), "og kor lenge sidan")
+    ok(line:find("1/1"), "linja er nummerert (" .. line .. ")")
+    ok(line:find("%d%d:%d%d%-%d%d:%d%d"), "med klokkeslett frå og til")
+    ok(line:find("mobs") and line:find("xp"), "og kva runden gav")
     ok(line:find("%[CHAIN%]"), "og kven som seier det")
 
     -- av att
@@ -2878,7 +2879,10 @@ do
     S.said, S.printed = {}, {}
     wq.sayButton.__scripts.OnClick(wq.sayButton)
     local line = S.said[1] or S.printed[1] or ""
-    ok(line:find("2 runs with " .. who), "og linja namngir han (" .. line .. ")")
+    ok(line:find("1/2 with " .. who), "fyrste linja er ein av to (" .. line .. ")")
+    -- ei linje per run, og resten går ut eit halvt sekund om gongen
+    local total = #S.said + #S.printed + #(S.timers or {})
+    ok(total >= 2, "det er ei linje per run (" .. total .. ")")
   end
 end
 

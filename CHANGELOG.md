@@ -559,11 +559,18 @@ parts that are not.
   alts included, since the gold often goes to a bank character), and **say in
   party** puts it in chat:
 
-      [CHAIN] - 5 runs with Magecome - 12m, 47m, 1h 14m, 1h 36m, 2h 21m ago
+      [CHAIN] - 1/5 with Magecome - 19:52-20:15, 23m, 300 mobs, 33,000 xp
+      [CHAIN] - 2/5 with Magecome - 20:37-21:00, 23m, 300 mobs, 33,000 xp
+      [CHAIN] - 3/5 with Magecome - 20:59-21:22, 23m, 300 mobs, 33,000 xp
 
-  Eight times at most, then "+3 older". The marks are not saved: it is
-  something you do for ten seconds to settle an argument, and a mark surviving
-  a logout would only ever be a surprise.
+  One line a run, numbered the way he counts them. A single line of times is a
+  list somebody has to match against their own memory; a line each - when it
+  started, when it ended, how long it took, how many things died, what it paid
+  - is a receipt, and there is nothing left to disagree about. Eight at most,
+  then "(+4 older, not listed)", and they go out half a second apart, because
+  the game throttles a run of messages hard enough to disconnect you. The marks
+  are not saved: it is something you do for ten seconds to settle an argument,
+  and a mark surviving a logout would only ever be a surprise.
 
 - **The Windows tray program opened and shut without a word.** `pythonw.exe`
   runs with no console - which is the point, since nobody wants a black window
