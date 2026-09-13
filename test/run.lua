@@ -2522,6 +2522,35 @@ do
   ChainCharDB.run = keepRun
 end
 
+-- Ei kolonneoverskrift har plass til to ord, og to ord kan ikkje seie kva
+-- "after" eller "he gave" tyder. Difor forklarar overskrifta seg sjølv når du
+-- held peikaren over henne - der du alt ser når du lurer.
+do
+  BT.ShowTab("gold")
+  local wh2 = _G.ChainWindow
+  local found, sortable = 0, 0
+  for _, h in ipairs(wh2.headers or {}) do
+    if h:IsShown() and h.hint then found = found + 1 end
+  end
+  ok(found >= 8, "gull-fana forklarar kolonnane sine (" .. found .. ")")
+
+  local h = wh2.headers[7]
+  eq(h.fs:GetText(), "to come", "og 'after' heiter noko ein forstår")
+  S.tip = {}
+  h.__scripts.OnEnter(h)
+  local t = S.TipText() or ""
+  ok(t:find("still had coming"), "med forklaringa i tooltipen")
+  ok(t:find("frozen"), "og at han er frosen der, ikkje levande")
+  h.__scripts.OnLeave(h)
+
+  BT.ShowTab("runs")
+  local hints = 0
+  for _, hh in ipairs(wh2.headers or {}) do
+    if hh:IsShown() and hh.hint then hints = hints + 1 end
+  end
+  ok(hints >= 8, "historikk-fana gjer det same (" .. hints .. ")")
+end
+
 -- Betalingane høyrer heime i same lista som runane. "Når betalte eg, og kva
 -- har eg fått sidan" er eitt spørsmål, og det var to faner: tidene låg i
 -- Trade-fana og runane her, og du sat att med ei klokke i hovudet.

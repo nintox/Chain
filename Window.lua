@@ -53,16 +53,27 @@ local LAYOUTS = {
     title = "Runs and payments, newest first. What sits above a payment is "
       .. "what you have had since it.",
     cols = {
-      { "when",     78, "at" },
-      { "instance", 90, "zone" },
-      { "xp",       55, "xp" },
-      { "time",     45, "t" },
-      { "mobs",     40, "k" },
-      { "xp/h",     55, "rate" },
-      { "gold",     62, "coin" },
-      { "booster",  70, "by" },
-      { "lvl",      30, "lvl" },
-      { "grp",      40, "grpAvg" }
+      { "when",     78, "at", "how long ago it finished. The run you are in "
+        .. "says 'now' and counts up." },
+      { "instance", 90, "zone", "where it was. A payment row says 'paid' "
+        .. "here instead, with the runs it bought." },
+      { "xp",       55, "xp", "experience you gained in there. Coloured "
+        .. "against what this instance usually gives you." },
+      { "time",     45, "t", "door to door. Less is better, so the colours "
+        .. "run the other way." },
+      { "mobs",     40, "k", "how many things died. A short run with the "
+        .. "usual mob count was a fast booster; a short run with half of "
+        .. "them was a skipped wing." },
+      { "xp/h",     55, "rate", "the run's own rate: its experience over its "
+        .. "own time. Nothing to do with the bar's live figure." },
+      { "gold",     62, "coin", "raw gold picked up off the mobs. On a "
+        .. "payment row it is what you paid instead." },
+      { "booster",  70, "by", "who ran it. 'self' means you cleared it "
+        .. "yourself." },
+      { "lvl",      30, "lvl", "the level you were when you walked in" },
+      { "grp",      40, "grpAvg", "the group's average level. A high one "
+        .. "costs you experience - that is the maths behind 'grp' on the "
+        .. "bar." }
     }
   },
   boosters = {
@@ -86,22 +97,28 @@ local LAYOUTS = {
     }
   },
   gold = {
-    title = "Every trade, both ways. 'buys' is what it was worth in runs, "
-      .. "'after' the balance it left you on.",
+    title = "Every trade, both ways. Hover a heading to see what it means.",
     cols = {
-      { "when",    70, "at" },
-      { "traded",  84, "with" },
-      { "paid",    54, "gave" },
-      { "got back",54, "got" },
-      { "net",     54, "net" },
-      { "buys",    46, nil },
-      { "after",   50, nil },
-      { "you gave",104, nil },
-      { "he gave", 104, nil },
-      { "where",   78, "zone" },
-      { "step",    56, "id" },
-      { "lvl",     30, "lvl" },
-      { "booster", 52, nil }
+      { "when",    70, "at", "how long ago the trade window closed" },
+      { "traded",  84, "with", "who was on the other side of it" },
+      { "paid",    54, "gave", "gold you handed over" },
+      { "got back",54, "got", "gold he handed you - change, or a refund" },
+      { "net",     54, "net", "what actually left your bags: paid less got "
+        .. "back" },
+      { "buys",    46, nil, "what that net was worth in runs, at the price "
+        .. "he was charging then" },
+      { "to come", 50, nil, "how many runs you still had coming the moment "
+        .. "this was logged - what he owed you after taking the money. It is "
+        .. "frozen at that second; the live figure is on the Boosters tab." },
+      { "your items", 104, nil, "items you put in the trade window - not "
+        .. "gold. Usually empty." },
+      { "his items", 104, nil, "items he put in the trade window - a bag of "
+        .. "greens off the run, say. Not gold." },
+      { "where",   78, "zone", "where you were standing when you paid" },
+      { "step",    56, "id", "which step of your route the money was for" },
+      { "lvl",     30, "lvl", "the level you were at the time" },
+      { "booster", 52, nil, "whether this person is one of your boosters, or "
+        .. "somebody you just happened to trade with" }
     }
   },
   enemies = {
@@ -1549,6 +1566,10 @@ local function Render()
       h:SetWidth(col[2])
       h:Show()
       h.key = col[3]
+      -- A column heading has room for two words, and two words cannot say
+      -- what "after" or "he gave" mean. The fourth field says it properly,
+      -- on the heading itself, where you are already looking when you wonder.
+      h.hint = col[4]
     else
       h:Hide()
     end
@@ -1848,6 +1869,18 @@ local function Build()
     h:SetHeight(16)
     h.fs = h:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
     h.fs:SetPoint("LEFT")
+    h:EnableMouse(true)
+    h:SetScript("OnEnter", function(self)
+      if not self.hint then return end
+      GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+      GameTooltip:AddLine(self.fs:GetText() or "", 1, 0.82, 0)
+      GameTooltip:AddLine(self.hint, 0.9, 0.9, 0.9, true)
+      if self.key then
+        GameTooltip:AddLine("click to sort", 0.6, 0.6, 0.6)
+      end
+      GameTooltip:Show()
+    end)
+    h:SetScript("OnLeave", function() GameTooltip:Hide() end)
     h:SetScript("OnClick", function(self)
       if not self.key then return end
       if sortKey == self.key then sortDesc = not sortDesc

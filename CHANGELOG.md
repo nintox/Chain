@@ -470,6 +470,15 @@ parts that are not.
   **now** in the when column and counts up. It is not saved, cannot be deleted
   and cannot be ticked: it counts for nothing until you finish it.
 
+- **Every column heading explains itself.** A heading has room for two words,
+  and two words cannot say what **after** or **he gave** mean - hover one and
+  it says, where you are already looking when you wonder. Two of them were
+  beyond saving and are renamed: **after** is now **to come** (how many runs
+  you still had coming the moment that payment was logged, frozen at that
+  second), and **you gave** / **he gave** are **your items** / **his items**,
+  since they were never about gold at all - they are what was in the trade
+  window besides the money.
+
 - **The payments sit in the History list, among the runs.** "When did I pay
   him, and what have I had since" is one question, and it was two tabs: the
   times were in the Trade tab, the runs were here, and you were left holding a
