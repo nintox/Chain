@@ -314,6 +314,10 @@ end
 S.printed = {}
 S.mouseOver = nil
 
+-- Sekund sidan spelet starta, slik spelet gjer det. S.uptime er handtaket.
+S.uptime = 1000
+function GetTime() return S.uptime end
+
 function wipe(t)
   for k in pairs(t) do t[k] = nil end
   return t

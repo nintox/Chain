@@ -2522,6 +2522,35 @@ do
   ChainCharDB.run = keepRun
 end
 
+-- Kvar knapp seier kva han gjer før du trykkjer. Ei rad med einbokstavs-
+-- knappar er elles ei rad med gjetningar, og ein av dei slettar ting.
+do
+  BT.ShowTab("runs")
+  local wb = _G.ChainWindow
+  local missing = {}
+  local function Check(b, name)
+    if b and b:IsShown() and not b.hint then table.insert(missing, name) end
+  end
+  Check(wb.sinceButton, "sinceButton")
+  Check(wb.sayButton, "sayButton")
+  for i, t in ipairs(wb.tabs or {}) do Check(t, "tab " .. i) end
+  for _, r in ipairs(wb.rows or {}) do
+    if r:IsShown() then
+      Check(r.del, "x")
+      Check(r.pick, "+")
+    end
+  end
+  eq(#missing, 0, "alt som kan trykkast forklarar seg (" ..
+     table.concat(missing, ", ") .. ")")
+
+  -- og tooltipen kjem faktisk opp
+  local b = wb.sayButton
+  S.tip = {}
+  b.__scripts.OnEnter(b)
+  ok((S.TipText() or ""):find("party chat"), "og seier det når du held over")
+  b.__scripts.OnLeave(b)
+end
+
 -- Ei kolonneoverskrift har plass til to ord, og to ord kan ikkje seie kva
 -- "after" eller "he gave" tyder. Difor forklarar overskrifta seg sjølv når du
 -- held peikaren over henne - der du alt ser når du lurer.
@@ -2863,9 +2892,34 @@ do
   ok(not leaked, "notatet blir aldri sendt til andre")
   ChainDB.share = false
 
-  -- og x-en fjernar han igjen
+  -- Og x-en fjernar han igjen - men han spør fyrst. Eitt bomklikk på ei tett
+  -- liste og eit stykke av historikken din er borte, og det finst ingenting å
+  -- angre med.
   delBox.__scripts.OnClick(delBox)
-  eq(ChainDB.boosters["Kjeltring"], nil, "borte att etter x")
+  ok(ChainDB.boosters["Kjeltring"] ~= nil, "eitt trykk slettar ingenting")
+  ok((delBox.fs:GetText() or ""):find("?", 1, true),
+     "knappen spør i staden (" .. tostring(delBox.fs:GetText()) .. ")")
+  delBox.__scripts.OnClick(delBox)
+  eq(ChainDB.boosters["Kjeltring"], nil, "det andre trykket gjer det")
+
+  -- og han gløymer at du spurde om du lèt han ligge
+  ChainDB.boosters["Kjeltring2"] = { mine = true, note = "x" }
+  BT.Touch()
+  BT.ShowTab("boosters")
+  local d2
+  for _, r in ipairs((_G.ChainWindow.rows or {})) do
+    if r.del and r.del:IsShown() and r.del.name == "Kjeltring2" then d2 = r.del end
+  end
+  if d2 then
+    d2.__scripts.OnClick(d2)
+    S.uptime = S.uptime + 30
+    d2.__scripts.OnClick(d2)
+    ok(ChainDB.boosters["Kjeltring2"] ~= nil,
+       "eit trykk seks sekund seinare spør på nytt i staden")
+    d2.__scripts.OnClick(d2)
+    eq(ChainDB.boosters["Kjeltring2"], nil, "og då tek det to til")
+  end
+  ChainDB.boosters["Kjeltring2"] = nil
   BT.ShowTab("runs")
   ok(not (w.rows[1].note and w.rows[1].note:IsShown()), "notatboksen berre på Boosters")
   ok(not (w.addName and w.addName:IsShown()), "og feltet for å leggje til også")

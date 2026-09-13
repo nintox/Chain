@@ -35,16 +35,100 @@ local function Button(parent, label, w, h, onClick)
   b.fs = b:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
   b.fs:SetPoint("CENTER")
   b.fs:SetText(label)
-  b:SetScript("OnEnter", function(self) self.bg:SetColorTexture(0.3, 0.3, 0.3, 0.9) end)
+  b:SetScript("OnEnter", function(self)
+    self.bg:SetColorTexture(0.3, 0.3, 0.3, 0.9)
+    -- Every button says what it does before you press it. A row of one-letter
+    -- buttons is a row of guesses otherwise, and one of them deletes things.
+    if not self.hint then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+    GameTooltip:AddLine(self.hintTitle or self.fs:GetText() or "", 1, 0.82, 0)
+    GameTooltip:AddLine(self.hint, 0.9, 0.9, 0.9, true)
+    GameTooltip:Show()
+  end)
   b:SetScript("OnLeave", function(self)
     self.bg:SetColorTexture(self.active and 0.25 or 0.15, self.active and 0.25 or 0.15,
                             self.active and 0.35 or 0.15, 0.9)
+    GameTooltip:Hide()
   end)
   b:SetScript("OnClick", onClick)
   return b
 end
 
+-- What a button says before you press it.
+local function Hint(b, text, title)
+  if not b then return b end
+  b.hint, b.hintTitle = text, title
+  return b
+end
+
+-- Asking first.
+--
+-- The x sits at the end of every row and it throws things away: a run out of
+-- the averages, a trade out of the reckoning, a booster off the list. One
+-- stray click on a dense list and a piece of your history is gone, and there
+-- is nothing to undo it with.
+--
+-- So the first click only arms it: the button turns red and says "sure?", and
+-- the second one does the work. It disarms itself after five seconds, and
+-- arming one disarms whichever was armed before - two red buttons at once
+-- would be worse than none.
+-- The rows are recycled as the list redraws, so arming is remembered against
+-- the thing being removed rather than against the button. A redraw that moves
+-- a row under your cursor must not leave a red "sure?" pointed at something
+-- else.
+local armed, armedFor, armedAt = nil, nil, 0
+local ARM_FOR = 5
+
+local function Now() return (GetTime and GetTime()) or 0 end
+
+local function Disarm()
+  local was = armed
+  armed, armedFor, armedAt = nil, nil, 0
+  if was and was.SetArmed then was:SetArmed(false) end
+end
+
+local function Target(b)
+  return b.trade or b.rec or b.name
+end
+
+local function ArmedCheck(b)
+  if armed == b and armedFor == Target(b) and (Now() - armedAt) <= ARM_FOR then
+    Disarm()
+    return true
+  end
+  Disarm()
+  armed, armedFor, armedAt = b, Target(b), Now()
+  if b.SetArmed then b:SetArmed(true) end
+  return false
+end
+
 --------------------------------------------------------------------------
+-- What each tab is for, on the tab itself. Eleven tabs is a lot to learn by
+-- clicking them one at a time.
+local TAB_HINT = {
+  runs = "every run and every payment, newest first. Where you settle what "
+    .. "you have had since you last paid.",
+  boosters = "everyone selling the step you are on, with what each one has "
+    .. "actually delivered. Your notes on them live here and are never "
+    .. "shared.",
+  ads = "who is selling right now, read out of chat. Older than half an hour "
+    .. "and they are off the list.",
+  groups = "people looking for a boost rather than selling one - LFM, LFG "
+    .. "and WTB.",
+  reported = "what other people's addons have told you, kept apart from your "
+    .. "own numbers so you always know which are which.",
+  gold = "every trade, both ways, and what each one bought you in runs.",
+  loot = "one row per corpse, plus what the raw coin came to per run.",
+  enemies = "everyone seen out there, and everyone you have marked or "
+    .. "written about.",
+  pvp = "the rank you want, week by week, and which honour number to stop "
+    .. "on.",
+  locks = "every instance you entered and every reset - the five an hour, "
+    .. "and where they went.",
+  route = "the plan: which instances, which levels, and what a level costs "
+    .. "in each."
+}
+
 -- Column layouts
 --------------------------------------------------------------------------
 -- key is what the sort uses; nil means the column is not sortable
@@ -1609,19 +1693,34 @@ local function Render()
       if mode == "runs" and d.rec then
         row.pick.rec = d.rec
         row.pick.fs:SetText(picked[d.rec] and (C.good .. "v" .. C.off) or "+")
+        row.pick.hint = "tick this run, then use 'say in party' to put the "
+          .. "times in chat. Ticks are not saved."
         row.pick:Show()
       else
         row.pick:Hide()
       end
+      -- a redraw keeps the red "sure?" only if this button still points at
+      -- the same thing, and only inside its five seconds
+      local still = (armed == row.del) and (armedFor == Target(row.del))
+        and ((Now() - armedAt) <= ARM_FOR)
+      if armed == row.del and not still then Disarm() end
+      if row.del.SetArmed then row.del:SetArmed(still and true or false) end
       row.del.rec, row.del.name, row.del.trade = nil, nil, nil
       if mode == "runs" and d.trade then
         row.del.trade = d.trade
+        row.del.restHint = "take this payment out of the reckoning. The runs "
+          .. "it bought stop counting with it."
         row.del:Show()
       elseif mode == "runs" and d.rec then
         row.del.rec = d.rec
+        row.del.restHint = "throw this run out of the averages. It stays in "
+          .. "no list and stops affecting every figure worked out from it."
         row.del:Show()
       elseif mode == "boosters" and d.mine then
         row.del.name = d.by
+        row.del.restHint = "remove somebody you added by hand. A booster you "
+          .. "have actually run with cannot be removed - that is measured "
+          .. "history."
         row.del:Show()
       elseif mode == "gold" and d.rec then
         -- Every trade row, not only the ones you typed. Detection is now an
@@ -1629,6 +1728,8 @@ local function Render()
         -- anything inferred has to be correctable by the person who was
         -- actually there.
         row.del.trade = d.rec
+        row.del.restHint = "remove this trade. Everything worked out from it "
+          .. "- what it bought, what he owes you - goes with it."
         row.del:Show()
       else
         row.del:Hide()
@@ -1644,7 +1745,9 @@ local function Render()
         row.whisper:SetPoint("LEFT", row, "LEFT", wx, 0)
         row.whisper:Show()
       else
-        row.whisper:Hide()
+        Hint(row.whisper, "open a whisper to this person - the name is filled "
+      .. "in, including any accents in it")
+    row.whisper:Hide()
       end
 
       -- One note box, three tabs that want it. The branches below each show
@@ -1704,7 +1807,10 @@ local function Render()
         row.note:SetWidth(math.max(40, layout.cols[#layout.cols][2] - 4))
         row.note:Show()
       else
-        row.kos:Hide()
+        Hint(row.kos, "mark this player, or the whole guild on a guild row. A "
+      .. "marked player sets off the alarm whether or not you have alerts "
+      .. "on, and his nameplate is marked too.")
+    row.kos:Hide()
       end
 
       if mode == "boosters" and d.by then
@@ -1803,7 +1909,8 @@ local function Build()
   win.title:SetPoint("TOPLEFT", 10, -8)
   win.title:SetText(BT.NAME)
 
-  local close = Button(win, "X", 22, 18, function() win:Hide() end)
+  local close = Hint(Button(win, "X", 22, 18, function() win:Hide() end),
+    "close the window. Everything in it keeps running.", "close")
   close:SetPoint("TOPRIGHT", -6, -6)
 
   tabs = {}
@@ -1818,9 +1925,12 @@ local function Build()
                          { "route", "Route" } }) do
     -- ten of them now, so they are measured rather than spaced by hand:
     -- one more tab used to push the last one off the right-hand edge
-    local b = Button(win, def[2], 74, 20, function() SetMode(def[1]) end)
+    local b = Hint(Button(win, def[2], 74, 20, function() SetMode(def[1]) end),
+      TAB_HINT[def[1]] or "")
     b:SetPoint("TOPLEFT", tx, -28)
     tabs[def[1]] = b
+    win.tabs = win.tabs or {}
+    table.insert(win.tabs, b)
     tx = tx + 78
   end
 
@@ -1858,6 +1968,7 @@ local function Build()
   local clear = Button(win, "x", 22, 18, function()
     win.search:SetText("")
   end)
+  Hint(clear, "empty the search box", "clear")
   clear:SetPoint("TOPRIGHT", -8, -51)
 
   win.headerRow = CreateFrame("Frame", nil, win)
@@ -2069,6 +2180,8 @@ local function Build()
     row.pick:Hide()
 
     row.del = Button(row, "x", 16, 14, function(self)
+      -- one click arms it, the second one does it
+      if not ArmedCheck(self) then return end
       if self.trade then
         BT.ForgetTrade(self.trade)
         Render()
@@ -2091,6 +2204,14 @@ local function Build()
       if BT.Refresh then BT.Refresh() end
     end)
     row.del:SetPoint("LEFT", row, "LEFT", 832, 0)
+    function row.del:SetArmed(on)
+      self.fs:SetText(on and (C.bad .. "?" .. C.off) or "x")
+      self.bg:SetColorTexture(on and 0.45 or 0.15, on and 0.1 or 0.15,
+                              on and 0.1 or 0.15, 0.9)
+      self.hint = on
+        and "click again to remove it - or move away and it forgets you asked"
+        or self.restHint
+    end
     rows[i] = row
   end
 
@@ -2135,6 +2256,9 @@ local function Build()
     end
     Render()
   end)
+  Hint(win.sinceButton, "tick every run you have had since you last paid "
+    .. "him - his bank alts included. That is the list the argument is "
+    .. "about.")
   win.sinceButton:SetPoint("TOPLEFT", 12, addY + 3)
 
   win.sayButton = Button(win, "say in party", 110, 18, function()
@@ -2152,6 +2276,8 @@ local function Build()
       .. ((#list > #bits) and (" (+" .. (#list - #bits) .. " older)") or "")
     if BT.SayToGroup then BT.SayToGroup(text) end
   end)
+  Hint(win.sayButton, "put the ticked runs in party chat, with how long "
+    .. "ago each one was. One line, and the counting argument is over.")
   win.sayButton:SetPoint("TOPLEFT", 170, addY + 3)
 
   win.sayNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
@@ -2203,7 +2329,9 @@ local function Build()
   end
   win.addName:SetScript("OnEnterPressed", DoAdd)
   win.addNote:SetScript("OnEnterPressed", DoAdd)
-  win.addButton = Button(win, "Add", 60, 18, DoAdd)
+  win.addButton = Hint(Button(win, "Add", 60, 18, DoAdd),
+    "put this person on the Boosters list before you have ever run with "
+    .. "him - a name from a whisper is worth keeping.")
   win.addButton:SetPoint("TOPLEFT", 526, addY + 3)
   win.addNote2 = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.addNote2:SetPoint("TOPLEFT", 596, addY)
@@ -2246,6 +2374,9 @@ local function Build()
     end
     if BT.ShowNearbyMenu then BT.ShowNearbyMenu("who did you pay?", items, self) end
   end)
+  Hint(win.payPick, "pick the name out of your group, your last booster or "
+    .. "whoever you traded lately - names with accents in them are not "
+    .. "worth typing twice.")
   win.payPick:SetPoint("TOPLEFT", 206, addY + 3)
   local function ResetSaid()
     win.payLabel:SetText("never saw it?")
@@ -2278,7 +2409,9 @@ local function Build()
   end
   win.payName:SetScript("OnEnterPressed", DoPay)
   win.payGold:SetScript("OnEnterPressed", DoPay)
-  win.payButton = Button(win, "I paid him", 78, 18, DoPay)
+  win.payButton = Hint(Button(win, "I paid him", 78, 18, DoPay),
+    "log gold the addon never saw - a trade to his bank alt, or one the "
+    .. "client never announced. It counts exactly like a watched trade.")
   win.payButton:SetPoint("TOPLEFT", 310, addY + 3)
 
   win.payOr = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
@@ -2296,7 +2429,9 @@ local function Build()
     Render()
   end
   win.payRuns:SetScript("OnEnterPressed", DoRuns)
-  win.payRunsButton = Button(win, "runs left", 68, 18, DoRuns)
+  win.payRunsButton = Hint(Button(win, "runs left", 68, 18, DoRuns),
+    "say outright how many runs he still owes you. Everything before this "
+    .. "stops counting and the tally starts again from your number.")
   win.payRunsButton:SetPoint("TOPLEFT", 560, addY + 3)
 
   win.payNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
@@ -2308,6 +2443,8 @@ local function Build()
   win.enemyView = Button(win, "", 210, 18, function()
     SetMode(mode == "koslist" and "enemies" or "koslist")
   end)
+  Hint(win.enemyView, "switch between everyone you have seen and only the "
+    .. "ones you have marked")
   win.enemyView:SetPoint("TOPLEFT", 12, addY + 3)
 
   win.targetLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
@@ -2344,9 +2481,11 @@ local function Build()
       Render()
     end
   end
-  win.targetDown = Button(win, "-", 20, 18, Step(-1))
+  win.targetDown = Hint(Button(win, "-", 20, 18, Step(-1)),
+    "aim one rank lower")
   win.targetDown:SetPoint("TOPLEFT", 76, addY + 3)
-  win.targetUp = Button(win, "+", 20, 18, Step(1))
+  win.targetUp = Hint(Button(win, "+", 20, 18, Step(1)),
+    "aim one rank higher")
   win.targetUp:SetPoint("TOPLEFT", 144, addY + 3)
 
   win.targetName = win:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
@@ -2363,10 +2502,12 @@ local function Build()
   local prev = Button(win, "< prev", 60, 18, function()
     if page > 1 then page = page - 1 Render() end
   end)
+  Hint(prev, "the page before this one")
   prev:SetPoint("BOTTOMRIGHT", -76, 8)
   local nxt = Button(win, "next >", 60, 18, function()
     page = page + 1 Render()
   end)
+  Hint(nxt, "the next page of this list")
   nxt:SetPoint("BOTTOMRIGHT", -12, 8)
 
   win.rows = rows

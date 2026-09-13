@@ -470,6 +470,20 @@ parts that are not.
   **now** in the when column and counts up. It is not saved, cannot be deleted
   and cannot be ticked: it counts for nothing until you finish it.
 
+- **The x asks first.** It sits at the end of every row and it throws things
+  away - a run out of the averages, a trade out of the reckoning, somebody off
+  the Boosters list - and there is nothing to undo it with. The first click
+  only arms it: the button turns red and says **?**, and the second one does
+  the work. It forgets you asked after five seconds, arming one disarms
+  whichever was armed before, and a redraw that moves a row under your cursor
+  cannot leave a red **?** pointed at something else - it is remembered against
+  the thing being removed, not against the button.
+
+- **Everything you can click says what it does.** Every button, every tab and
+  every column heading carries a line explaining it, on hover. A row of
+  one-letter buttons is a row of guesses otherwise, and one of them deletes
+  things. There is a test that nothing clickable is left without one.
+
 - **The credit lines are written in English now.** "4.0 runs still owed you
   after this one" is not a sentence anybody says. A trade row now reads
   **left him owing you 4.0 runs**, or **left you 2.5 runs ahead of what you
