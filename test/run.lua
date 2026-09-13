@@ -1746,6 +1746,55 @@ do  -- Fanene i innstillingane: same form som det store vindauget, éi side om
     else ok(not b.active, "og dei andre ikkje (" .. b.key .. ")") end
   end
 
+  -- ...og halde fram med å syne det. OnLeave sette fargen tilbake til grå
+  -- uansett kva knappen var, så å halde musa over fana du alt stod på og
+  -- flytte henne bort att gjorde henne til ei fane du ikkje stod på.
+  do
+    local tab
+    for _, b in ipairs(o.tabs) do if b.key == "enemies" then tab = b end end
+    ok(tab.mark and tab.mark:IsShown(), "den valde fana har ei strek under seg")
+    local before = tab.bg.__alpha
+    tab.__scripts.OnEnter(tab)
+    tab.__scripts.OnLeave(tab)
+    ok(tab.active, "ho er framleis den valde etter at musa har vore innom")
+    eq(tab.bg.__alpha, before, "og ser framleis vald ut")
+    -- medan ei som ikkje er vald ikkje blir det av å bli peika på
+    local other
+    for _, b in ipairs(o.tabs) do if b.key == "route" then other = b end end
+    other.__scripts.OnEnter(other)
+    other.__scripts.OnLeave(other)
+    ok(not other.active, "og ei anna blir ikkje vald av å bli peika på")
+    ok(not (other.mark and other.mark:IsShown()), "og får inga strek")
+  end
+
+  -- Kvar side seier kva ho er for. Eit panel med brytarar og ingen ord er eit
+  -- panel du endrar ved å prøve deg fram.
+  do
+    local seen = {}
+    for _, pg in ipairs(o.pages or {}) do
+      BT.ShowOptionsPage(pg.key)
+      local note = o.pageNote and o.pageNote:GetText() or ""
+      if note == "" then seen[#seen + 1] = pg.key end
+    end
+    eq(#seen, 0, "alle sidene forklarar seg (" .. table.concat(seen, ", ") .. ")")
+    BT.ShowOptionsPage("route")
+  end
+
+  -- og kvar einaste brytar og boks seier kva han gjer
+  do
+    local dumb = {}
+    for name, w in pairs(o) do
+      if type(w) == "table" and w.label and type(w.GetObjectType) == "function"
+         and not w.hint then
+        dumb[#dumb + 1] = name
+      end
+    end
+    for _, b in ipairs(o.boxes or {}) do
+      if not b.hint then dumb[#dumb + 1] = "ein talboks" end
+    end
+    eq(#dumb, 0, "ingen brytar utan forklaring (" .. table.concat(dumb, ", ") .. ")")
+  end
+
   -- Begge vindauga opne samtidig: innstillingane skal liggje over, og vere
   -- ugjennomsiktige. To kolonnar med tal som les svakt gjennom kvarandre er
   -- verre enn begge kvar for seg.
@@ -2705,6 +2754,100 @@ do
   S.party, ChainCharDB.run = keepParty, keepRun
   S.zone, S.inInstance = keepZone, keepIn
   BT.Touch()
+end
+
+--------------------------------------------------------------------------
+print("== baren finn ein kvileplass, og går ikkje ut av skjermen ==")
+-- Dregen for hand landar ein bar der musa slapp: tre pikslar til venstre for
+-- midten, to under sist. Du ser ikkje tre pikslar og du kan ikkje korrigere
+-- for dei heller, så han ser aldri heilt plassert ut.
+do
+  -- rutenettet: han set seg på næraste kvileplass
+  local x, y = BT.SnapPoint(103, -47, 380, 26, 1600, 900)
+  eq(x, 104, "103 blir 104 - næraste åttande piksel")
+  eq(y, -48, "og -47 blir -48")
+
+  -- og midten er ein plass for seg: nær nok er nøyaktig der
+  eq(select(1, BT.SnapPoint(9, 0, 380, 26, 1600, 900)), 0,
+     "ni pikslar frå midten er midten")
+  eq(select(1, BT.SnapPoint(-11, 0, 380, 26, 1600, 900)), 0,
+     "og elleve på den andre sida òg")
+  ok(BT.SnapPoint(40, 0, 380, 26, 1600, 900) ~= 0,
+     "men førti er ikkje midten")
+
+  -- og han kan ikkje leggjast der han ikkje kan lesast
+  local fx = BT.SnapPoint(5000, 0, 380, 26, 1600, 900)
+  eq(fx, 1600 / 2 - 190, "han stoppar ved kanten, ikkje utanfor")
+  local _, fy = BT.SnapPoint(0, -5000, 380, 26, 1600, 900)
+  ok(fy > -450, "og ikkje ut under heller")
+  -- Linjene under baren er ikkje ein del av ramma, så SetClampedToScreen
+  -- visste ingenting om dei: baren stod stille medan alt han sa gjekk utfor.
+  local _, hi = BT.SnapPoint(0, 5000, 380, 26, 1600, 900)
+  local _, lo = BT.SnapPoint(0, -5000, 380, 26, 1600, 900)
+  ok(math.abs(lo) < math.abs(hi),
+     "det er meir plass over enn under, fordi linjene heng under ("
+     .. hi .. " mot " .. lo .. ")")
+
+  -- ei lita skjerm har mindre å gå på, og det skal ikkje gå i minus
+  local sx = BT.SnapPoint(900, 0, 380, 26, 300, 200)
+  eq(sx, 0, "er skjermen smalare enn baren, står han midt på")
+end
+
+--------------------------------------------------------------------------
+print("== kvar karakter sitt eige oppsett ==")
+-- Ein bar plassert for ein rogue sitt UI står feil på ein mage sitt, og ei
+-- rute som gjev meining på 47 gjev inga på 12. Det du har lært om andre folk
+-- er derimot det same uansett kven som ser på det.
+do
+  local keepMine = ChainCharDB.mine
+  local keepPoint, keepRoute = ChainDB.point, ChainDB.route
+  local keepBoosters = ChainDB.boosters
+
+  ok(BT.PerChar(), "på som standard")
+
+  -- karakter A legg baren ein stad og set ei rute
+  ChainDB.point = { "CENTER", nil, "CENTER", 120, -40 }
+  ChainDB.route = { stock = { on = true, from = 20, to = 26 } }
+  ChainDB.boosters = { Delt = { price = 100, pack = 5 } }
+  BT.HarvestMine()
+  local a = ChainCharDB.mine
+  ok(a ~= nil, "oppsettet hans er lagra på han")
+  eq(a.point[4], 120, "med plasseringa")
+  ok(a.route.stock ~= nil, "og ruta")
+  eq(a.boosters, nil, "men ikkje det han veit om andre - det er felles")
+
+  -- ein annan karakter loggar inn: si eiga lagring, sitt eige oppsett
+  local other = { point = { "CENTER", nil, "CENTER", -300, 0 }, route = {} }
+  ChainCharDB.mine = other
+  BT.RestoreMine(true)
+  eq(ChainDB.point[4], -300, "den andre karakteren får si eiga plassering")
+  eq(next(ChainDB.route), nil, "og si eiga rute")
+  ok(ChainDB.boosters.Delt ~= nil, "men boosterane er dei same")
+
+  -- og ein ny alt utan lagring i det heile tek det som står framfor han,
+  -- heller enn å sjå ut som ein fersk installasjon
+  ChainCharDB.mine = nil
+  BT.RestoreMine(true)
+  ok(ChainCharDB.mine ~= nil, "ein ny karakter får si eiga lagring med ein gong")
+  eq(ChainDB.point[4], -300, "og arvar det som stod der")
+
+  -- ei endring blir teken vare på når du loggar ut
+  ChainDB.point = { "CENTER", nil, "CENTER", 64, 64 }
+  S.Fire(frame, "PLAYER_LOGOUT")
+  eq(ChainCharDB.mine.point[4], 64, "utlogging tek vare på det du flytta")
+
+  -- og du kan slå det av utan at skjermen stokkar om seg sjølv
+  BT.SetPerChar(false)
+  ok(not BT.PerChar(), "det kan slåast av")
+  eq(ChainDB.point[4], 64, "og då står skjermen som han stod")
+  BT.RestoreMine(true)
+  eq(ChainDB.point[4], 64, "avslått gjer innlogging ingenting")
+  BT.SetPerChar(true)
+  ok(BT.PerChar(), "og på igjen")
+
+  ChainCharDB.mine = keepMine
+  ChainDB.point, ChainDB.route = keepPoint, keepRoute
+  ChainDB.boosters = keepBoosters
 end
 
 --------------------------------------------------------------------------

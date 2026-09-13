@@ -1038,7 +1038,58 @@ parts that are not.
   every earlier pack's leftovers in it. When the balance is counted from a
   number you typed, it says so in amber.
 
+**The settings panel**
+
+- **The tab you are on stopped looking like it the moment you hovered it.**
+  `OnLeave` reset every button to the inactive grey whatever it was, so
+  pointing at the tab you were already standing on and moving away made it
+  look like a tab you were not on. That is most of why the panel never seemed
+  to know where you were. The active tab is a real difference now - its own
+  colour, its label in gold, and a line under it - and hovering cannot take
+  any of that away.
+- **Every page says what it is for.** One line under the tab row, the way the
+  main window has always had one. The instance table had an explanation to
+  itself and the other five pages had none, so opening any of them gave you a
+  wall of switches and nothing to tell you what they were about.
+- **And every switch says what it does.** Hover any of them - and any number
+  box - and it tells you, in a sentence, including the part you would
+  otherwise have to find out by trying it. The text lives beside the label
+  rather than at the call, so a switch nobody explained fails a test instead
+  of reaching somebody's screen.
+
+**Your screen, your character**
+
+- **Each character keeps its own layout and its own route.** A bar placed for
+  a rogue's UI is in the wrong place on a mage's, and a route that makes sense
+  at 47 makes none at 12. Position, size, scale, what is switched on, the
+  route, the pack size and the caps all follow the character now.
+- What you have **learned about other people** does not, and should not: a
+  booster's price, what he actually delivers, who ganked you in Desolace, the
+  trade log. That is the same knowledge whichever of your characters is
+  looking at it, and making each one find it out again would be the wrong kind
+  of tidy.
+- An alt made tonight starts out looking like the character you set up last
+  week rather than like a fresh install, because a character with nothing
+  saved takes what is in front of him. **Layout and route per character** in
+  the settings, or `/chain perchar`, turns the whole thing off - and turning
+  it off hands the account whatever this character was using, so the screen
+  does not rearrange itself underneath you.
+
 **Smaller things**
+
+- **The bar has resting places now.** Dragged by hand it landed wherever the
+  mouse let go - three pixels left of centre, two below last time - and you
+  can neither see three pixels nor correct for them, so it never quite looked
+  placed. It settles on the nearest one when you let go, and the middle of the
+  screen is a place of its own: come within fourteen pixels and it goes
+  exactly there, because "centred" is the one position people actually mean.
+- **And it cannot be put where it cannot be read.** `SetClampedToScreen` keeps
+  the frame on screen but knows nothing about the two lines hanging
+  underneath it, so the bar stayed put while everything it was saying went
+  over the edge. The room those lines need is part of the sum now, and a
+  position saved on another machine or before a change of resolution is pulled
+  back on screen at login rather than left hanging off an edge you cannot
+  reach to drag.
 
 - **The phone-notification folder is four folders now, not eighteen files in a
   heap.** `mac/` and `windows/` hold the two or three files that machine

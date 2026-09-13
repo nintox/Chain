@@ -26,10 +26,33 @@ local function Button(parent, label, w, h, onClick)
   b.fs = b:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
   b.fs:SetPoint("CENTER")
   b.fs:SetText(label)
-  b:SetScript("OnEnter", function(self) self.bg:SetColorTexture(0.3, 0.3, 0.3, 0.9) end)
-  b:SetScript("OnLeave", function(self) self.bg:SetColorTexture(0.15, 0.15, 0.15, 0.9) end)
+  -- Both of these used to end at the colour. OnLeave in particular reset to
+  -- the inactive grey whatever the button was, so hovering the tab you were
+  -- already on and moving away left it looking like the tab you were not on -
+  -- which is most of why the panel never looked like it knew where you were.
+  b:SetScript("OnEnter", function(self)
+    self.bg:SetColorTexture(0.32, 0.32, 0.40, 0.95)
+    if not self.hint then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+    GameTooltip:AddLine(self.hintTitle or self.fs:GetText() or "", 1, 0.82, 0)
+    GameTooltip:AddLine(self.hint, 0.9, 0.9, 0.9, true)
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", function(self)
+    if self.active then self.bg:SetColorTexture(0.26, 0.30, 0.45, 1)
+    else self.bg:SetColorTexture(0.15, 0.15, 0.15, 0.9) end
+    GameTooltip:Hide()
+  end)
   b:SetScript("OnClick", onClick)
   return b
+end
+
+-- What a control says before you touch it. Every one of them has one: a panel
+-- of switches with no words on them is a panel you change by trial.
+local function Hint(w, text, title)
+  if not w then return w end
+  w.hint, w.hintTitle = text, title
+  return w
 end
 
 -- A number box that only writes back a sane value
@@ -42,6 +65,14 @@ local function NumBox(parent, w, onSet)
   e:SetMaxLetters(6)
   e.bg = Tex(e, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
   e.bg:SetAllPoints()
+  e:SetScript("OnEnter", function(self)
+    if not self.hint then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+    GameTooltip:AddLine(self.hintTitle or "", 1, 0.82, 0)
+    GameTooltip:AddLine(self.hint, 0.9, 0.9, 0.9, true)
+    GameTooltip:Show()
+  end)
+  e:SetScript("OnLeave", function() GameTooltip:Hide() end)
   e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
   e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
   e:SetScript("OnEditFocusLost", function(self)
@@ -55,6 +86,14 @@ end
 local function Check(parent, onSet)
   local c = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
   c:SetSize(20, 20)
+  c:SetScript("OnEnter", function(self)
+    if not self.hint then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+    GameTooltip:AddLine(self.hintTitle or "", 1, 0.82, 0)
+    GameTooltip:AddLine(self.hint, 0.9, 0.9, 0.9, true)
+    GameTooltip:Show()
+  end)
+  c:SetScript("OnLeave", function() GameTooltip:Hide() end)
   c:SetScript("OnClick", function(self)
     onSet(self:GetChecked() and true or false)
     if BT.RenderOptions then BT.RenderOptions() end
@@ -62,6 +101,86 @@ local function Check(parent, onSet)
   end)
   return c
 end
+
+-- What each switch on the panel actually does, keyed by what it says.
+--
+-- Kept here rather than passed at each control, because a label and its
+-- explanation are the same piece of writing and drift apart the moment they
+-- live in two places. Toggle and Field look it up themselves, so a new switch
+-- that nobody explained shows up in the tests rather than on somebody's
+-- screen.
+local WHY = {
+  ["Runs per price"] =
+    "How many runs one price covers, where nothing more specific is set. The 'runs' column on the Instances page beats this for one instance, and a pack typed against a booster beats them both while he is boosting you.",
+  ["Runs in average"] =
+    "How many of your most recent runs an average is worked out from. Fewer follows a booster changing pace; more means one bad run does not move it.",
+  ["Max per hour"] =
+    "Instances the game lets one character enter in an hour. Five, unless Blizzard ever changes it - this is here so the count stays right if they do.",
+  ["Sound on reset"] =
+    "A sound when the instance resets. Two different ones, because the reset means opposite things: get out if you are still inside, go in if you are not. One sound for both would make you look at the screen to find out which.",
+  ["Tell the group on somebody else's reset"] =
+    "Somebody else reset and you noticed. Off, because his addon has almost certainly said it already, and two lines is one too many.",
+  ["Big alert on reset"] =
+    "A large banner across the middle of the screen. Off: the line on the bar says the same thing without covering anything up.",
+  ["Tell the group when you reset"] =
+    "Nobody else is told an instance has been reset - the game says it to whoever pressed the button and to no one else. So the group stands at the stone waiting for somebody to type it. This types it.",
+  ["Layout and route per character"] =
+    "The bar's place, size and scale, what is switched on, and your route follow the character rather than the account. What you have learned about other people - prices, what a booster delivers, who ganked you - stays shared.",
+  ["Read NIT's count"] =
+    "Take Nova Instance Tracker's hourly count instead of our own. Off: its history was copied across once, and after that we see every zone-in ourselves.",
+  ["Read sellers out of chat"] =
+    "Pick boosters and their prices out of the adverts people post. It only ever reads; nothing is sent.",
+  ["Marker in the chat log"] =
+    "Writes a line into WoW's own chat log when the instance resets, so a program outside the game can turn it into a phone notification. It does nothing unless you have set that program up.",
+  ["Instant alert (screenshot)"] =
+    "WoW writes its chat log to disk in batches, so an alert can be ten minutes late. Taking a screenshot forces it out at once. This is what makes the phone buzz in seconds rather than eventually.",
+  ["Read LFM and LFG posts"] =
+    "Keep the posts from people looking for a group, not only the ones selling. Same channels, same reading - they go on the Groups tab.",
+  ["Log loot, yours and the group's"] =
+    "One row per corpse on the Loot tab. Raw coin is counted per run either way; this is for the items.",
+  ["Watch for enemies"] =
+    "Notice players of the other faction and keep what the game tells us about them. Everything the tracker and the Enemies tab know comes from this.",
+  ["Alert on everyone"] =
+    "Raise the alarm for any enemy, not only the ones you marked. Off by default: in a contested zone it would never stop.",
+  ["Sound on a marked one"] =
+    "A sound when somebody you marked turns up. The mark is the whole point, so it gets a noise whether or not alerts are on for everyone else.",
+  ["Shout about stealth"] =
+    "Somebody going into stealth is the thing you actually want to know, and the combat log announces it two rooms away. Loud on purpose.",
+  ["Call out marked ones"] =
+    "Put a line in chat when somebody you marked is seen: name, level, class, and where you are standing. Cross-faction whispers do not exist, but your own side can be told.",
+  ["List on screen"] =
+    "The small list of who is nearby, in the corner of your eye. The Enemies tab is for reading afterwards; this is for now.",
+  ["Rows to show"] =
+    "How many names the list shows at once. Marked ones are always at the top, so this decides who you never see.",
+  ["Forget after (s)"] =
+    "How long somebody stays on the list after you stop seeing him. Nobody tells us he walked away, so it has to fade on its own.",
+  ["Keep the header on screen"] =
+    "Leave the box there when nobody is about, so it does not appear and vanish. Off, it is only on screen when it has something to say.",
+  ["Tell the group your lockout"] =
+    "The group cannot see your lockout - they see you not going in. This says it for you, once when you are stuck and once when you are free again.",
+  ["Say it in chat when the count moves"] =
+    "A line to yourself each time an instance is counted. For checking our count against the game's own, not for every day.",
+  ["Button on the minimap"] =
+    "The Chain button beside the minimap. Left-click opens the window, right-click opens this. Drag it round the edge to move it.",
+  ["Bar tooltip in one column"] =
+    "The bar's tooltip splits into two columns so it does not run off a tall screen. On a narrow one the height is the lesser problem, and this puts it back to one.",
+  ["Share what you measure"] =
+    "Swap measurements with other people running Chain, so a booster's numbers are known before you pay him. Only figures are ever sent: never a note, never an opinion, never anything you wrote.",
+  ["Show the bar"] =
+    "The bar itself. Everything keeps being counted with it off - this only decides whether you can see it.",
+  ["Lock the bar"] =
+    "Stops the bar being dragged by accident. Unlocked it snaps to a grid when you let go, and the middle of the screen is a resting place of its own.",
+  ["Bar scale"] =
+    "How big the bar is drawn, as a percentage. Everything on it scales together.",
+  ["Honor bar too"] =
+    "A second, thinner bar under the first showing this week's honour. Off if you are not ranking.",
+  ["Bar width"] =
+    "How wide the bar is, in pixels. The lines underneath are packed to fit whatever you choose, so a wider bar fits more on one line.",
+  ["Honor bar at max level"] =
+    "At sixty there is no experience left to show, so the honour bar takes the main bar's place rather than sitting under an empty one.",
+  ["FPS and ping on screen"] =
+    "Frames and latency in the corner of your eye. It rides on the enemy tracker unless you drag it off. A run that suddenly feels heavy is usually one of those two numbers.",
+}
 
 --------------------------------------------------------------------------
 local function BuildOptions()
@@ -117,13 +236,11 @@ local function BuildOptions()
   opt:SetScale(ChainDB.optScale or 1)
 
   opt.help = opt:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
-  opt.help:SetPoint("TOPLEFT", 16, -56)
+  opt.help:SetPoint("TOPLEFT", 16, -53)
   opt.help:SetJustifyH("LEFT")
   -- bounded and wrapping: written out in full it ran off the right edge
   opt.help:SetWidth(WIDTH - 20)
-  opt.help:SetText("Tick the instances you will be boosted through, then set a level span "
-    .. "and a price.\n'enter' is the level the game lets you in at; 'levels' is what the "
-    .. "place is worth doing at; 'runs' is how many runs that price buys here.")
+  -- the text is set per page from here on; this is only what it starts as
 
   -- column headings for the route table
   -- 'gold' is the price of a pack and 'runs' is how many runs that pack is,
@@ -251,16 +368,25 @@ local function BuildOptions()
     fs:SetPoint("TOPLEFT", x, ly)
     fs:SetText(label)
     local box = NumBox(opt, width or 40, set)
+    Hint(box, WHY[label], label)
     box:SetPoint("TOPLEFT", x + 112, ly + 3)
     box.get = get
     table.insert(opt.boxes, box)
     return box
   end
 
-  local PAGE_TOP = -58          -- under the tab row, same as the window's
-  local function Page(title, key)
+  -- One line under the tab row saying what this page is for. The window has
+  -- one and the settings did not, so every page opened as a wall of switches
+  -- with nothing to say what it was about. It is the same fontstring the
+  -- instance table used to have to itself: one line in one place, whichever
+  -- page you are on, rather than one page with an explanation and five
+  -- without.
+  opt.pageNote = opt.help
+
+  local PAGE_TOP = -70          -- under the tab row and that line
+  local function Page(title, key, note)
     Claim()                     -- everything built since the last one
-    local p = { key = key, title = title, widgets = {} }
+    local p = { key = key, title = title, widgets = {}, note = note }
     curPage = p
     table.insert(opt.pages, p)
 
@@ -268,6 +394,11 @@ local function BuildOptions()
     b.fs:SetText(title)
     b:SetWidth((b.fs:GetStringWidth() or 60) + 22)
     b.key = key
+    b.mark = Tex(b, "OVERLAY", 1, 0.82, 0, 1)
+    b.mark:SetHeight(2)
+    b.mark:SetPoint("BOTTOMLEFT", 0, 0)
+    b.mark:SetPoint("BOTTOMRIGHT", 0, 0)
+    b.mark:Hide()
     table.insert(opt.tabs, b)
     claimed[b] = true           -- a tab belongs to the frame, not to a page
 
@@ -279,6 +410,7 @@ local function BuildOptions()
 
   local function Toggle(c, label, set)
     local chk = Check(opt, set)
+    Hint(chk, WHY[label], label)
     local x, ly = At(c)
     chk:SetPoint("TOPLEFT", x - 2, ly + 4)
     local fs = opt:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
@@ -296,9 +428,15 @@ local function BuildOptions()
   -- always on screen above everything else, which is most of why the panel
   -- was the length of a screen.
   do
-    local p = { key = "route", title = "Instances", widgets = {} }
+    local p = { key = "route", title = "Instances", widgets = {},
+      note = "Tick the instances you plan to run, give each one the levels "
+        .. "you will do it between, and the price a booster charges - that is "
+        .. "your route, and everything the bar says is worked out from it.\n"
+        .. "'enter' is the level the game lets you in at; 'levels' is what "
+        .. "the place is worth doing at; 'runs' is how many runs that price "
+        .. "buys here." }
     table.insert(opt.pages, 1, p)
-    for _, w in ipairs({ opt.help, opt.pageText, opt.prevPage, opt.nextPage }) do
+    for _, w in ipairs({ opt.pageText, opt.prevPage, opt.nextPage }) do
       if w then claimed[w] = true table.insert(p.widgets, w) end
     end
     for _, w in ipairs(opt.routeHeads or {}) do
@@ -313,11 +451,19 @@ local function BuildOptions()
     b.fs:SetText("Instances")
     b:SetWidth((b.fs:GetStringWidth() or 60) + 22)
     b.key = "route"
+    b.mark = Tex(b, "OVERLAY", 1, 0.82, 0, 1)
+    b.mark:SetHeight(2)
+    b.mark:SetPoint("BOTTOMLEFT", 0, 0)
+    b.mark:SetPoint("BOTTOMRIGHT", 0, 0)
+    b.mark:Hide()
     table.insert(opt.tabs, 1, b)
     claimed[b] = true
   end
 
-  Page("Runs & prices", "runs")
+  Page("Runs & prices", "runs",
+    "How a price is counted and how many runs an average is worked out from. "
+      .. "Nothing here changes what happens in the game - only how it is "
+      .. "added up afterwards.")
   opt.pack = Field(1, "Runs per price", 40, function() return ChainDB.pack end,
     -- the fallback only: the 'runs' column above beats it per instance, and a
     -- pack typed against a booster beats them both while he is boosting you
@@ -328,7 +474,10 @@ local function BuildOptions()
     function(v) ChainDB.limit = math.max(1, math.floor(v or 5)) end)
   NextRow()
 
-  Page("Resets & sounds", "resets")
+  Page("Resets & sounds", "resets",
+    "A reset means the opposite thing depending on which side of the portal "
+      .. "you are on, so it gets two sounds. What is said to the group, and "
+      .. "how loudly you are told, is here.")
   opt.sound = Toggle(1, "Sound on reset", function(v) ChainDB.sound = v end)
   do
     local x, ly = At(1)
@@ -346,6 +495,11 @@ local function BuildOptions()
   -- waiting for somebody to type it.
   opt.announceReset = Toggle(1, "Tell the group when you reset",
     function(v) ChainDB.announceReset = v end)
+  -- A bar placed for a rogue's UI is in the wrong place on a mage's, and a
+  -- route that makes sense at 47 makes none at 12. What you have learned
+  -- about other people is the same whichever character is looking.
+  opt.perChar = Toggle(2, "Layout and route per character",
+    function(v) BT.SetPerChar(v) end)
   NextRow()
 
   -- A reset means the opposite thing depending on which side of the portal
@@ -378,7 +532,9 @@ local function BuildOptions()
   end
   NextRow()
 
-  Page("Chat", "chat")
+  Page("Chat", "chat",
+    "Boosters advertise in chat and people look for groups there. Which "
+      .. "channels are read, and what is done with what they say.")
   -- Its history is taken into our own log on every login whether this is on
   -- or off. This only decides whether its live count is trusted over ours.
   opt.nit = Toggle(1, "Read NIT's count",
@@ -422,7 +578,9 @@ local function BuildOptions()
   end
   NextRow()
 
-  Page("Enemies", "enemies")
+  Page("Enemies", "enemies",
+    "Who is out there, how long a sighting counts for, and how loudly you "
+      .. "are told. Your notes on people are yours and are never shared.")
   opt.watch = Toggle(1, "Watch for enemies", function(v)
     ChainDB.watchEnemies = v
   end)
@@ -521,7 +679,10 @@ local function BuildOptions()
   end)
   NextRow()
 
-  Page("Bar & sharing", "share")
+  Page("Bar & sharing", "share",
+    "What the bar looks like and where it sits, and whether measurements are "
+      .. "swapped with other people running Chain. Only numbers are ever "
+      .. "sent - never a note, never an opinion.")
   opt.announceLock = Toggle(1, "Tell the group your lockout",
     function(v) ChainDB.announceLock = v end)
   -- The count moves twice on the way in - up when you zone, back down when
@@ -715,8 +876,19 @@ function BT.ShowOptionsPage(key)
   for _, b in ipairs(opt.tabs or {}) do
     local on = (b.key == want)
     b.active = on
-    b.bg:SetColorTexture(on and 0.25 or 0.15, on and 0.25 or 0.15,
-                         on and 0.35 or 0.15, 0.9)
+    -- A tenth of a shade darker was the only thing telling you where you
+    -- were. It is a real difference now, and a line under the tab says it
+    -- again in a way you cannot miss at a glance.
+    b.bg:SetColorTexture(on and 0.26 or 0.15, on and 0.30 or 0.15,
+                         on and 0.45 or 0.15, on and 1 or 0.9)
+    b.fs:SetTextColor(on and 1 or 0.7, on and 0.92 or 0.7, on and 0.6 or 0.7)
+    if b.mark then b.mark:SetShown(on) end
+  end
+  -- and the line under the tab row says what the page is for
+  if opt.pageNote then
+    local note
+    for _, p in ipairs(opt.pages) do if p.key == want then note = p.note end end
+    opt.pageNote:SetText(note and (C.dim .. note .. C.off) or "")
   end
   return want
 end
@@ -779,6 +951,7 @@ function BT.RenderOptions()
   opt.banner:SetChecked(db.banner and true or false)
   opt.announce:SetChecked(db.announce and true or false)
   opt.announceReset:SetChecked(db.announceReset ~= false)
+  opt.perChar:SetChecked(BT.PerChar())
   opt.ads:SetChecked(db.readAds and true or false)
   opt.signal:SetChecked(db.logSignal and true or false)
   opt.snap:SetChecked(db.snapSignal and true or false)
@@ -1333,6 +1506,8 @@ SlashCmdList["CHAIN"] = function(input)
           .. C.dim .. "  " .. tostring(a.from or "?"):gsub("^channel:", "") .. C.off)
       end
     end
+  elseif cmd == "perchar" then
+    Say("layout and route per character " .. (BT.SetPerChar() and "on" or "off"))
   elseif cmd == "myreset" then
     ChainDB.announceReset = (ChainDB.announceReset == false) or nil
     Say("telling the group when you reset "
@@ -1405,6 +1580,7 @@ SlashCmdList["CHAIN"] = function(input)
     print("  /chain flush      force the chat log out to disk")
     print("  /chain announce   tell the group when somebody else resets")
     print("  /chain myreset    tell the group when you reset - on")
+    print("  /chain perchar    layout and route per character - on")
     print("  /chain lockout    tell the group your lockout, and count it down")
     print("  /chain font       the face the addon is written in")
     print("  /chain trade      what you have paid, and to whom")

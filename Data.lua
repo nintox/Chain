@@ -457,3 +457,90 @@ function BT.AbilityLevelByName(spellName)
   if type(spellName) ~= "string" then return nil end
   return BT.ABILITY_LEVEL[spellName]
 end
+
+--------------------------------------------------------------------------
+-- What belongs to the character, and what belongs to the account
+--------------------------------------------------------------------------
+-- A bar placed for a rogue's UI is in the wrong place on a mage's, and a
+-- route that makes sense at 47 makes none at 12. Those follow the character.
+--
+-- What you have learned about other people does not. A booster's price, what
+-- he actually delivers, who ganked you in Desolace, the trade log - that is
+-- the same knowledge whichever of your characters is looking at it, and
+-- making each one find it out again would be the wrong kind of tidy.
+--
+-- The mechanism is deliberately dull. Only one character is logged in at a
+-- time, so ChainDB is that character's working copy: the list below is read
+-- out of his own store when he logs in and written back as he plays. Nothing
+-- else in the addon has to know, and no read anywhere had to change.
+BT.MINE = {
+  -- where things sit and what is on screen
+  "point", "scale", "width", "locked", "shown", "banner", "honorBar",
+  "honorMode", "oneColumn", "face",
+  "optScale", "optPage",
+  "meter", "meterPos", "meterScale", "meterLocked", "meterDock",
+  "meterFPS", "meterPing",
+  "nearbyList", "nearbyPos", "nearbyWidth", "nearbyRows", "nearbyScale",
+  "nearbyGrow", "nearbyLocked", "nearbyAlways", "nearbySeconds",
+  "alertPos", "alertLocked",
+  "minimap", "minimapIcon",
+  -- and what this character is actually doing
+  "route", "ownSteps", "pack", "window", "limit", "daily", "sell",
+}
+
+local function Clone(v)
+  if type(v) ~= "table" then return v end
+  local out = {}
+  for k, e in pairs(v) do out[k] = Clone(e) end
+  return out
+end
+
+function BT.PerChar()
+  return ChainDB and ChainDB.perChar ~= false
+end
+
+-- Working copy -> the character's own store.
+function BT.HarvestMine()
+  if not ChainCharDB or not ChainDB then return nil end
+  if not BT.PerChar() then return nil end
+  local mine = {}
+  for _, k in ipairs(BT.MINE) do mine[k] = Clone(ChainDB[k]) end
+  ChainCharDB.mine = mine
+  return mine
+end
+
+-- The character's own store -> working copy. A character who has none yet
+-- takes what is in front of him: an alt made tonight starts out looking like
+-- the character you set up last week, rather than like a fresh install.
+-- Once a session, and only once. ChainDB is the working copy from the moment
+-- it is loaded, so reading the store over the top of it a second time would
+-- throw away everything done since - which is what an addon reloading, or a
+-- second ADDON_LOADED from a library, would otherwise cause.
+local restored = false
+
+function BT.RestoreMine(force)
+  if not ChainCharDB or not ChainDB then return nil end
+  if restored and not force then return ChainCharDB.mine end
+  restored = true
+  if not BT.PerChar() then return nil end
+  local mine = ChainCharDB.mine
+  if type(mine) ~= "table" then return BT.HarvestMine() end
+  for _, k in ipairs(BT.MINE) do
+    if mine[k] ~= nil then ChainDB[k] = Clone(mine[k]) end
+  end
+  return mine
+end
+
+-- Turning it off hands the account back whatever this character was using,
+-- so the screen does not rearrange itself underneath you.
+function BT.SetPerChar(on)
+  if on == nil then on = not BT.PerChar() end
+  if on then
+    ChainDB.perChar = nil
+    BT.HarvestMine()
+  else
+    BT.HarvestMine()
+    ChainDB.perChar = false
+  end
+  return BT.PerChar()
+end

@@ -1797,6 +1797,7 @@ local EVENTS = {
   "PLAYER_LOGIN",
   "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED",
   "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "UPDATE_EXHAUSTION", "TIME_PLAYED_MSG",
+  "PLAYER_LOGOUT",
   "COMBAT_LOG_EVENT_UNFILTERED", "CHAT_MSG_COMBAT_XP_GAIN",
   "CHAT_MSG_SYSTEM", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER",
   "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER",
@@ -1821,6 +1822,8 @@ function BT.OnEvent(_, event, ...)
 
     ChainDB = BT.ApplyDefaults(ChainDB or {}, BT.DEFAULTS)
     ChainCharDB = BT.ApplyDefaults(ChainCharDB or {}, BT.CHAR_DEFAULTS)
+    -- this character's own layout and route, before a single frame is built
+    if BT.RestoreMine then BT.RestoreMine() end
     -- before anything is drawn: every label in the addon is written in one of
     -- five font objects of ours, and this is where they are pointed at a face
     if BT.ApplyFont then BT.ApplyFont() end
@@ -2072,6 +2075,8 @@ function BT.OnEvent(_, event, ...)
       BT.Sync()
     end
     BT.ScanQuests()
+  elseif event == "PLAYER_LOGOUT" then
+    if BT.HarvestMine then BT.HarvestMine() end
   elseif event == "TIME_PLAYED_MSG" then
     BT.NotePlayed(...)
   elseif event == "PLAYER_LEVEL_UP" or event == "PLAYER_XP_UPDATE" then

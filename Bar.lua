@@ -63,6 +63,91 @@ local hticks = {}
 local HONOR_H = 12
 
 --------------------------------------------------------------------------
+-- Where the bar sits
+--------------------------------------------------------------------------
+-- Dragged by hand, a bar lands wherever the mouse let go: three pixels left
+-- of centre, two below the last time. You cannot see three pixels and you
+-- cannot correct for them either, so it never quite looks placed.
+--
+-- So there are resting places. The bar settles on the nearest one when you
+-- let go, and the middle of the screen is a place of its own - come near it
+-- and it goes exactly there, because "centred" is the one position people
+-- actually mean.
+--
+-- And it cannot be put where it cannot be read. SetClampedToScreen keeps the
+-- frame on screen but knows nothing about the two lines hanging underneath
+-- it, so the bar stayed put while everything it was saying went over the
+-- edge. The room those lines need is part of the sum here.
+local GRID = 8       -- how far apart the resting places are
+local MAGNET = 14    -- this close to the middle is the middle
+local BELOW = 70     -- what the lines under the bar need, in bar pixels
+local ABOVE = 16     -- and the heading above it
+
+-- Pure arithmetic, so it can be checked without a screen. Everything is in
+-- the bar's own scale: SetPoint offsets are, and mixing the two is how a
+-- scaled bar ends up clamped to the wrong edge.
+function BT.SnapPoint(dx, dy, barW, barH, uiW, uiH)
+  local function snap(v)
+    if math.abs(v) <= MAGNET then return 0 end
+    return math.floor(v / GRID + 0.5) * GRID
+  end
+  dx, dy = snap(dx or 0), snap(dy or 0)
+  local halfW, halfH = (barW or 0) / 2, (barH or 0) / 2
+  local limX = math.max(0, (uiW or 0) / 2 - halfW)
+  dx = math.max(-limX, math.min(limX, dx))
+  local top = math.max(0, (uiH or 0) / 2 - halfH - ABOVE)
+  local bottom = math.max(0, (uiH or 0) / 2 - halfH - BELOW)
+  dy = math.max(-bottom, math.min(top, dy))
+  return dx, dy
+end
+
+-- What the bar is standing on right now, snapped, and remembered.
+function BT.SaveBarPos()
+  local b = bar
+  if not b or not b.GetCenter then return nil end
+  local scale = (b.GetScale and b:GetScale()) or 1
+  if scale <= 0 then scale = 1 end
+  local cx, cy = b:GetCenter()
+  local ui = _G.UIParent
+  if not cx or not ui or not ui.GetCenter then return nil end
+  local ux, uy = ui:GetCenter()
+  local uiScale = (ui.GetScale and ui:GetScale()) or 1
+  if uiScale <= 0 then uiScale = 1 end
+  -- the bar's own units throughout
+  local dx = cx - ux * uiScale / scale
+  local dy = cy - uy * uiScale / scale
+  dx, dy = BT.SnapPoint(dx, dy, b:GetWidth(), b:GetHeight(),
+                        ui:GetWidth() * uiScale / scale,
+                        ui:GetHeight() * uiScale / scale)
+  ChainDB.point = { "CENTER", nil, "CENTER", dx, dy }
+  BT.PlaceBar()
+  return dx, dy
+end
+
+-- Put it where it is remembered, through the same sums. A position saved on
+-- another machine, or before you changed resolution, is pulled back on screen
+-- rather than left hanging off the edge where you cannot reach it to drag.
+function BT.PlaceBar()
+  local b = bar
+  if not b then return end
+  local p = ChainDB.point or { "CENTER", nil, "CENTER", 0, 200 }
+  local dx, dy = p[4] or 0, p[5] or 0
+  local ui = _G.UIParent
+  if ui and ui.GetWidth then
+    local scale = (b.GetScale and b:GetScale()) or 1
+    if scale <= 0 then scale = 1 end
+    local uiScale = (ui.GetScale and ui:GetScale()) or 1
+    if uiScale <= 0 then uiScale = 1 end
+    dx, dy = BT.SnapPoint(dx, dy, b:GetWidth(), b:GetHeight(),
+                          ui:GetWidth() * uiScale / scale,
+                          ui:GetHeight() * uiScale / scale)
+    ChainDB.point = { "CENTER", nil, "CENTER", dx, dy }
+  end
+  b:ClearAllPoints()
+  b:SetPoint("CENTER", ui or nil, "CENTER", dx, dy)
+end
+
+--------------------------------------------------------------------------
 -- The text
 --------------------------------------------------------------------------
 -- The two bottom corners are one line: a fontstring pinned to the left end of
@@ -871,8 +956,7 @@ function BT.InitUI()
   bar:RegisterForDrag("LeftButton")
   bar:SetClampedToScreen(true)
 
-  local p = db.point or { "CENTER", nil, "CENTER", 0, 200 }
-  bar:SetPoint(p[1], UIParent, p[3], p[4], p[5])
+  BT.PlaceBar()
 
   bar.bg = MakeTexture(bar, "BACKGROUND", 0, 0, 0, 0, 0.75)
   bar.bg:SetAllPoints()
@@ -955,8 +1039,7 @@ function BT.InitUI()
   end)
   bar:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
-    local pt, _, rel, x, y = self:GetPoint()
-    ChainDB.point = { pt, nil, rel, x, y }
+    BT.SaveBarPos()
   end)
   bar:SetScript("OnMouseUp", function(_, button)
     if button == "RightButton" then
