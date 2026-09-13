@@ -110,6 +110,19 @@ end
 
 
 --------------------------------------------------------------------------
+-- Tabs inside a tab.
+--
+-- Eleven across the top was a wall of words to read before you could start.
+-- Three of them - who sells this step, who is selling right now, and what
+-- other people's addons have said - are the same subject from three angles,
+-- so they sit under one heading and you pick the angle once you are there.
+local SUBTABS = {
+  boosting = { { "boosters", "Boosters" }, { "ads", "Sellers" },
+               { "reported", "Shared" } }
+}
+local GROUP = { boosters = "boosting", ads = "boosting",
+                reported = "boosting" }
+
 -- What each tab is for, on the tab itself. Eleven tabs is a lot to learn by
 -- clicking them one at a time.
 local TAB_HINT = {
@@ -122,6 +135,8 @@ local TAB_HINT = {
     .. "and they are off the list.",
   groups = "people looking for a boost rather than selling one - LFM, LFG "
     .. "and WTB.",
+  boosting = "buying and selling: who sells the step you are on, who is "
+    .. "advertising right now, and what other people's addons have said.",
   reported = "what other people's addons have told you, kept apart from your "
     .. "own numbers so you always know which are which.",
   gold = "every trade, both ways, and what each one bought you in runs.",
@@ -168,8 +183,8 @@ local LAYOUTS = {
     }
   },
   boosters = {
-    title = "Everyone selling this step. Type his price and what it buys; the "
-      .. "verdict follows. Notes are never shared.",
+    title = "Everyone selling this step. Type his price; the verdict "
+      .. "follows.",
     cols = {
       { "booster",  84, "by" },
       { "xp/h",     54, "rate" },
@@ -283,8 +298,8 @@ local LAYOUTS = {
     }
   },
   reported = {
-    title = "What other people's addons told you, kept apart from your own "
-      .. "numbers so you always know which are which.",
+    title = "What other people's addons told you, kept apart from your "
+      .. "own numbers.",
     cols = {
       { "booster",  90, "by" },
       { "instance", 96, "zone" },
@@ -299,8 +314,8 @@ local LAYOUTS = {
     }
   },
   ads = {
-    title = "Who is selling right now, newest first. Off the list after "
-      .. "half an hour. Click whisper to ask the price.",
+    title = "Who is advertising right now. Off the list after half an "
+      .. "hour.",
     cols = {
       { "when",     70, "at" },
       { "booster",  88, "by" },
@@ -1954,14 +1969,36 @@ local function Render()
 end
 
 local function SetMode(m)
+  -- clicking the heading itself goes back to whichever of its tabs you were
+  -- last on, because that is the one you were working in
+  if SUBTABS[m] then
+    m = ChainCharDB[m .. "Tab"] or SUBTABS[m][1][1]
+  end
   mode = m
+  if GROUP[m] then ChainCharDB[GROUP[m] .. "Tab"] = m end
   page = 1
   sortKey, sortDesc = nil, false
   for key, b in pairs(tabs) do
-    -- the kill-on-sight list lives under Enemies, so that tab stays lit
+    -- the kill-on-sight list lives under Enemies, so that tab stays lit, and
+    -- the heading stays lit for whichever of its own tabs you are on
     b.active = (key == m) or (key == "enemies" and m == "koslist")
+      or (key == GROUP[m])
     b.bg:SetColorTexture(b.active and 0.25 or 0.15, b.active and 0.25 or 0.15,
                          b.active and 0.35 or 0.15, 0.9)
+  end
+  if win and win.subtabs then
+    local shown = GROUP[m] ~= nil
+    for _, b in ipairs(win.subtabs) do
+      b:SetShown(shown)
+      b.active = (b.key == m)
+      b.bg:SetColorTexture(b.active and 0.25 or 0.15, b.active and 0.25 or 0.15,
+                           b.active and 0.35 or 0.15, 0.9)
+    end
+    -- the subtitle steps aside for them rather than being drawn underneath
+    win.subtitle:ClearAllPoints()
+    win.subtitle:SetPoint("TOPLEFT", shown and (10 + (win.subWidth or 0)) or 10,
+                          -54)
+    win.subtitle:SetWidth(640 - (shown and (win.subWidth or 0) or 0))
   end
   Render()
 end
@@ -2002,9 +2039,8 @@ local function Build()
 
   tabs = {}
   local tx = 10
-  for _, def in ipairs({ { "runs", "History" }, { "boosters", "Boosters" },
-                         { "ads", "Sellers" }, { "groups", "Groups" },
-                         { "reported", "Reported" },
+  for _, def in ipairs({ { "runs", "History" }, { "boosting", "Boosting" },
+                         { "groups", "Groups" },
                          { "gold", "Trade" }, { "loot", "Loot" },
                          { "enemies", "Enemies" },
                          { "pvp", "Rank" },
@@ -2019,6 +2055,23 @@ local function Build()
     win.tabs = win.tabs or {}
     table.insert(win.tabs, b)
     tx = tx + 78
+  end
+
+  -- They live on the subtitle line rather than on a row of their own: a row
+  -- of their own costs every other tab a line of height for something only
+  -- three of them use.
+  win.subtabs = {}
+  do
+    local sx = 10
+    for _, def in ipairs(SUBTABS.boosting) do
+      local b = Hint(Button(win, def[2], 62, 16, function() SetMode(def[1]) end),
+        TAB_HINT[def[1]] or "")
+      b:SetPoint("TOPLEFT", sx, -52)
+      b.key = def[1]
+      table.insert(win.subtabs, b)
+      sx = sx + 65
+    end
+    win.subWidth = sx - 10
   end
 
   win.subtitle = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
@@ -2399,6 +2452,16 @@ local function Build()
   -- all in the same frame.
   local SAY_MAX = 8
 
+  -- How much of a level a run gave, at the level you were when you took it.
+  local function Pct(r)
+    local lvl = tonumber(r and r.lvl)
+    local xp = tonumber(r and r.xp)
+    if not lvl or not xp or xp <= 0 then return nil end
+    local span = BT.Span and BT.Span(lvl, lvl + 1)
+    if not span or span <= 0 then return nil end
+    return string.format("%.0f%%", xp / span * 100)
+  end
+
   local function SayLines()
     local list = PickedRuns()                        -- oldest first
     local n = #list
@@ -2414,6 +2477,11 @@ local function Build()
         .. ", " .. BT.T(r.t or 0)
         .. ", " .. (r.k or 0) .. " mobs"
         .. ", " .. BT.N(r.xp or 0) .. " xp"
+        -- and what that experience actually was. A number of xp means
+        -- nothing without knowing what a level costs at that level, and the
+        -- difference between 33,000 at 43 and 33,000 at 20 is the whole
+        -- argument about whether the run was worth the gold.
+        .. (Pct(r) and (", " .. Pct(r) .. " of a level") or "")
     end
     if n > SAY_MAX then
       lines[#lines + 1] = "(+" .. (n - SAY_MAX) .. " older, not listed)"

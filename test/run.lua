@@ -2732,6 +2732,61 @@ do
   BT.Touch() BT.TouchTrades()
 end
 
+-- Elleve faner på tvers av toppen var ein vegg av ord å lese seg gjennom før
+-- ein kunne byrje. Tre av dei er same emnet frå tre vinklar, så dei ligg under
+-- éi overskrift og du vel vinkelen når du fyrst er der.
+do
+  BT.ShowTab("boosting")
+  local wt = _G.ChainWindow
+  eq(BT.WindowMode(), "boosters", "Boosting opnar på Boosters fyrste gong")
+  ok(wt.subtabs and #wt.subtabs == 3, "med tre underfaner")
+  local shown = 0
+  for _, b in ipairs(wt.subtabs or {}) do
+    if b:IsShown() then shown = shown + 1 end
+  end
+  eq(shown, 3, "og dei er framme")
+
+  -- overskrifta er tent så lenge du er inne i ei av dei
+  local head
+  for _, b in ipairs(wt.tabs or {}) do
+    if (b.fs:GetText() or "") == "Boosting" then head = b end
+  end
+  ok(head and head.active, "overskrifta er tent")
+
+  -- og dei tre gamle fanene er borte frå toppen
+  for _, gone in ipairs({ "Boosters", "Sellers", "Reported" }) do
+    local found = false
+    for _, b in ipairs(wt.tabs or {}) do
+      if (b.fs:GetText() or "") == gone then found = true end
+    end
+    ok(not found, gone .. " er ikkje lenger ei fane for seg sjølv")
+  end
+
+  -- den midterste underfana er Sellers
+  wt.subtabs[2].__scripts.OnClick(wt.subtabs[2])
+  eq(BT.WindowMode(), "ads", "andre underfane er Sellers")
+  ok(head.active, "og overskrifta er framleis tent")
+
+  -- og Boosting hugsar kvar du var
+  BT.ShowTab("runs")
+  BT.ShowTab("boosting")
+  eq(BT.WindowMode(), "ads", "han kjem tilbake dit du var")
+
+  -- den tredje heiter Shared
+  eq(wt.subtabs[3].fs:GetText(), "Shared", "den tredje heiter Shared")
+  wt.subtabs[3].__scripts.OnClick(wt.subtabs[3])
+  eq(BT.WindowMode(), "reported", "og er den gamle Reported")
+
+  -- utanfor gruppa er dei borte, og overskrifta tek plassen att
+  BT.ShowTab("runs")
+  local still = 0
+  for _, b in ipairs(wt.subtabs or {}) do
+    if b:IsShown() then still = still + 1 end
+  end
+  eq(still, 0, "på andre faner er underfanene borte")
+  ChainCharDB.boostingTab = nil
+end
+
 -- Kvar knapp seier kva han gjer før du trykkjer. Ei rad med einbokstavs-
 -- knappar er elles ei rad med gjetningar, og ein av dei slettar ting.
 do
@@ -2874,6 +2929,10 @@ do
     ok(line:find("1/1"), "linja er nummerert (" .. line .. ")")
     ok(line:find("%d%d:%d%d%-%d%d:%d%d"), "med klokkeslett frå og til")
     ok(line:find("mobs") and line:find("xp"), "og kva runden gav")
+    -- eit tal xp seier ingenting utan å vite kva eit level kostar der: 33 000
+    -- på level 43 og 33 000 på level 20 er heile diskusjonen om runden var
+    -- verd gullet
+    ok(line:find("%d+%% of a level"), "og kor mykje av eit level det var")
     ok(line:find("%[CHAIN%]"), "og kven som seier det")
 
     -- av att
@@ -3044,9 +3103,13 @@ end
 --   "...'left' is what is still oweshow only"
 do
   local LIMIT = 120
+  -- og fanene som ligg under Boosting deler linja med underfanene sine òg,
+  -- så dei har mindre å ta av
+  local UNDER = { boosters = true, ads = true, reported = true }
   for tab, layout in pairs(BT.LAYOUTS or {}) do
     local t = layout.title or ""
-    ok(#t <= LIMIT, "overskrifta på " .. tab .. " er " .. #t
+    local cap = UNDER[tab] and 78 or LIMIT
+    ok(#t <= cap, "overskrifta på " .. tab .. " er " .. #t
        .. " teikn og går inn i søkeboksen: " .. t)
   end
 end

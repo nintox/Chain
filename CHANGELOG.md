@@ -470,6 +470,14 @@ parts that are not.
   **now** in the when column and counts up. It is not saved, cannot be deleted
   and cannot be marked: it counts for nothing until you finish it.
 
+- **Boosters, Sellers and Reported are one tab now: Boosting.** Eleven
+  headings across the top was a wall of words to read before you could start,
+  and those three are the same subject from three angles - who sells the step
+  you are on, who is advertising right now, and what other people's addons have
+  said. They are sub-tabs inside it, **Reported** renamed **Shared** because
+  that is what it is. The heading stays lit while you are in any of them and
+  opens on whichever you were last in. The slash commands are unchanged.
+
 - **The x asks first.** It sits at the end of every row and it throws things
   away - a run out of the averages, a trade out of the reckoning, somebody off
   the Boosters list - and there is nothing to undo it with. It now puts the
@@ -568,14 +576,17 @@ parts that are not.
   alts included, since the gold often goes to a bank character), and **say in
   party** puts it in chat:
 
-      [CHAIN] - 1/5 with Magecome - 19:52-20:15, 23m, 300 mobs, 33,000 xp
-      [CHAIN] - 2/5 with Magecome - 20:37-21:00, 23m, 300 mobs, 33,000 xp
-      [CHAIN] - 3/5 with Magecome - 20:59-21:22, 23m, 300 mobs, 33,000 xp
+      [CHAIN] - 1/5 with Magecome - 19:52-20:15, 23m, 300 mobs, 33,000 xp, 31% of a level
+      [CHAIN] - 2/5 with Magecome - 20:37-21:00, 23m, 300 mobs, 33,000 xp, 31% of a level
+      [CHAIN] - 3/5 with Magecome - 20:59-21:22, 23m, 300 mobs, 33,000 xp, 31% of a level
 
   One line a run, numbered the way he counts them. A single line of times is a
   list somebody has to match against their own memory; a line each - when it
   started, when it ended, how long it took, how many things died, what it paid
-  - is a receipt, and there is nothing left to disagree about. Eight at most,
+  - is a receipt, and there is nothing left to disagree about. The experience
+  is given as a share of a level too: a number of xp means nothing without
+  knowing what a level costs at that level, and 33,000 at 43 against 33,000 at
+  20 is the whole argument about whether the run was worth the gold. Eight at most,
   then "(+4 older, not listed)", and they go out half a second apart, because
   the game throttles a run of messages hard enough to disconnect you. The marks
   are not saved: it is something you do for ten seconds to settle an argument,
