@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="push/icon.png" width="160" alt="Chain">
+  <img src="push/icons/icon.png" width="160" alt="Chain">
 </p>
 
 <h1 align="center">Chain</h1>
@@ -107,12 +107,28 @@ Type `/chain` on its own to see the rest.
 
 ## Alerts on your phone
 
-Optional. A small helper program can buzz your phone when the instance resets
-or somebody starts a ready check — the moments you're usually looking away.
+Optional, and a separate program rather than part of the addon — a WoW addon
+has **no network access of any kind**, so anything that reaches your phone has
+to run outside the game. It buzzes you when the instance resets or somebody
+starts a ready check: the two moments you are usually looking away.
 
-It's a Dock icon on a Mac and a tray icon on Windows, there's nothing to
-install, and it takes about two minutes to set up.
-**[How to set it up →](push/README.md)**
+### Download it
+
+| | |
+|---|---|
+| **Windows** | [`ChainPush.exe`](../../releases) — double-click it. The icon appears in the tray, by the clock. |
+| **macOS** | [`ChainPush.zip`](../../releases) — unzip, open `ChainPush.app`. The icon appears in the Dock. |
+
+One file. Nothing to install alongside it, nothing to tick, no Python. Both
+are on the [Releases](../../releases) page, built by GitHub's own runners —
+a program can only be built on the system it is for.
+
+The first time, the system will stop you: Windows SmartScreen **More info** →
+**Run anyway**, macOS right-click → **Open** → **Open**. Neither is signed
+with a paid certificate; once is enough. Then it asks where to send — an
+[ntfy](https://ntfy.sh) topic or a Discord webhook — and never asks again.
+
+**[What it is, how it works, and how to run it from source →](push/README.md)**
 
 ---
 
