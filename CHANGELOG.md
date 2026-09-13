@@ -476,8 +476,8 @@ parts that are not.
   instance for three levels you are actually soloing - with its runs, its gold
   and its summoning stone - and every figure on the bar is then about a place
   you are not going to.
-  On the Route tab: pick what it is - **Questing**, **Grinding**, **Dungeons
-  with friends**, **Battlegrounds**, **Professions**, **A break** - or type
+  On the Route tab: pick what it is - **Questing**, **Grinding**, **Dungeons**,
+  **Battlegrounds**, **Professions**, **A break** - or type
   your own words, give it a from and a to, and it is in the plan, sorted in
   among the instances by level. The boxes say what they are for while they are
   empty, the way the rest of them do; three unlabelled boxes in a row is a

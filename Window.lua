@@ -2773,8 +2773,8 @@ local function Build()
 
   -- ...and you should not have to think of the words either. These are the
   -- stretches people actually do between bought ones.
-  local OWN_KINDS = { "Questing", "Grinding", "Dungeons with friends",
-                      "Battlegrounds", "Professions", "A break" }
+  local OWN_KINDS = { "Questing", "Grinding", "Dungeons", "Battlegrounds",
+                      "Professions", "A break" }
   win.ownPick = Button(win, "pick", 40, 18, function(self)
     local items = {}
     for _, k in ipairs(OWN_KINDS) do
