@@ -1726,8 +1726,8 @@ local function Render()
 
   -- and the own-step row belongs to the Route tab
   local routing = (mode == "route")
-  for _, w in ipairs({ win.ownLabel, win.ownName, win.ownFrom, win.ownTo,
-                       win.ownAdd, win.ownNote }) do
+  for _, w in ipairs({ win.ownLabel, win.ownName, win.ownPick, win.ownFrom,
+                       win.ownTo, win.ownAdd, win.ownNote }) do
     if w then w:SetShown(routing) end
   end
 
@@ -2765,23 +2765,31 @@ local function Build()
   win.ownLabel:SetPoint("TOPLEFT", 12, addY)
   win.ownLabel:SetText("a stretch of your own")
 
-  local function OwnBox(width, x, hint, letters)
-    local e = CreateFrame("EditBox", nil, win)
-    e:SetSize(width, 18)
-    e:SetAutoFocus(false)
-    e:SetFontObject("ChainFontHighlightSmall")
-    e:SetMaxLetters(letters or 20)
-    e.bg = Tex(e, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
-    e.bg:SetAllPoints()
-    e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    e:SetPoint("TOPLEFT", x, addY + 3)
-    e.hintText = hint
-    return e
-  end
+  -- the same boxes as everywhere else, which means each one says what it is
+  -- for while it is empty. Three unlabelled boxes in a row is a puzzle.
+  win.ownName = AddBox(150, 150, "what you will be doing", 24)
+  win.ownFrom = AddBox(34, 346, "from", 2)
+  win.ownTo = AddBox(34, 386, "to", 2)
 
-  win.ownName = OwnBox(150, 150, "questing", 24)
-  win.ownFrom = OwnBox(34, 310, "from", 2)
-  win.ownTo = OwnBox(34, 352, "to", 2)
+  -- ...and you should not have to think of the words either. These are the
+  -- stretches people actually do between bought ones.
+  local OWN_KINDS = { "Questing", "Grinding", "Dungeons with friends",
+                      "Battlegrounds", "Professions", "A break" }
+  win.ownPick = Button(win, "pick", 40, 18, function(self)
+    local items = {}
+    for _, k in ipairs(OWN_KINDS) do
+      items[#items + 1] = { text = k, fn = function()
+        win.ownName:SetText(k)
+        win.ownName.hint:SetShown(false)
+      end }
+    end
+    if BT.ShowNearbyMenu then
+      BT.ShowNearbyMenu("what will you be doing?", items, self)
+    end
+  end)
+  Hint(win.ownPick, "pick what the stretch is, or type your own words in the "
+    .. "box - it is only a name, and it is yours")
+  win.ownPick:SetPoint("TOPLEFT", 302, addY + 3)
 
   win.ownAdd = Button(win, "Add", 50, 18, function()
     local from = tonumber(win.ownFrom:GetText())
@@ -2807,7 +2815,7 @@ local function Build()
     .. "a dungeon you run with friends, anything you are not paying for. It "
     .. "costs nothing and borrows no instance's numbers, and while you are on "
     .. "it the bar goes back to being a levelling bar.")
-  win.ownAdd:SetPoint("TOPLEFT", 394, addY + 3)
+  win.ownAdd:SetPoint("TOPLEFT", 428, addY + 3)
   win.ownFrom:SetScript("OnEnterPressed", function()
     win.ownAdd:GetScript("OnClick")(win.ownAdd)
   end)
@@ -2815,7 +2823,7 @@ local function Build()
     win.ownAdd:GetScript("OnClick")(win.ownAdd)
   end)
   win.ownNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
-  win.ownNote:SetPoint("TOPLEFT", 454, addY)
+  win.ownNote:SetPoint("TOPLEFT", 488, addY)
   win.ownNote:SetText(C.dim .. "no runs, no gold, no booster - just levels"
     .. C.off)
 

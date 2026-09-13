@@ -2743,6 +2743,22 @@ do
   local wr2 = _G.ChainWindow
   ok(wr2.ownAdd ~= nil and wr2.ownAdd:IsShown(), "Route-fana har eit felt for det")
 
+  -- Tre umerka boksar på rad er ei gåte. Kvar av dei seier kva han er for så
+  -- lenge han er tom, og du skal heller ikkje måtte finne på orda sjølv.
+  ok(wr2.ownName.hint ~= nil and wr2.ownName.hint:IsShown(),
+     "namnefeltet seier kva det er for")
+  ok((wr2.ownFrom.hint:GetText() or "") == "from", "og frå-feltet")
+  ok((wr2.ownTo.hint:GetText() or "") == "to", "og til-feltet")
+  ok(wr2.ownPick ~= nil and wr2.ownPick:IsShown(), "og det finst ei liste å velje frå")
+  wr2.ownPick.__scripts.OnClick(wr2.ownPick)
+  local mn2 = _G.ChainNearbyMenu
+  ok(mn2 and mn2:IsShown(), "lista kjem opp")
+  local first = mn2.items[1]
+  first.__scripts.OnClick(first)
+  ok((wr2.ownName:GetText() or "") ~= "",
+     "og valet fyller ut namnet (" .. tostring(wr2.ownName:GetText()) .. ")")
+  wr2.ownName:SetText("")
+
   -- eit steg utan levels blir ikkje lagt til
   wr2.ownName:SetText("Questing")
   wr2.ownFrom:SetText("45") wr2.ownTo:SetText("45")

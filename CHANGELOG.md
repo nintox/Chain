@@ -476,8 +476,12 @@ parts that are not.
   instance for three levels you are actually soloing - with its runs, its gold
   and its summoning stone - and every figure on the bar is then about a place
   you are not going to.
-  On the Route tab: a name, a from and a to, and it is in the plan, sorted in
-  among the instances by level. It costs nothing, borrows no instance's
+  On the Route tab: pick what it is - **Questing**, **Grinding**, **Dungeons
+  with friends**, **Battlegrounds**, **Professions**, **A break** - or type
+  your own words, give it a from and a to, and it is in the plan, sorted in
+  among the instances by level. The boxes say what they are for while they are
+  empty, the way the rest of them do; three unlabelled boxes in a row is a
+  puzzle. It costs nothing, borrows no instance's
   numbers, and while you are on it the bar goes back to being a levelling bar
   with the step's name on it: **Questing  42 > 45   step 2/3**. The row says
   how long the stretch takes at your own rate and nothing else, because
