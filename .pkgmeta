@@ -1,0 +1,35 @@
+# How this repository becomes the addon people download.
+#
+# The repository root is the addon folder. That is deliberate: a clone can be
+# symlinked straight into Interface/AddOns and a pull updates the game, with
+# no copy step to forget. The cost is that everything else lives in the same
+# folder - the phone program's source, the tests, the workflow - and all of it
+# would otherwise ride along into somebody's AddOns directory.
+#
+# WoW ignores every bit of it; it loads what Chain.toc lists and nothing else.
+# But a person who installs an addon should not have to work that out, and
+# "why is there a folder of Python in my AddOns" is a question nobody should
+# have to ask. So the package is the addon, and the rest stays in the repo
+# where it belongs.
+package-as: Chain
+
+ignore:
+  # the phone program: source for what Releases ships as a built .exe and app
+  - push
+  # the test suites - 1554 assertions that have no business in a game folder
+  - test
+  # and the build machinery
+  - .github
+  - .gitattributes
+  - .gitignore
+  - github-workflow-chainpush.yml
+  - commit.bat
+
+# The libraries here are committed rather than fetched at package time, so
+# there is nothing to pull in and no separate no-lib build to make.
+enable-nolib-creation: no
+
+# The changelog is written for people, so it is worth showing them.
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown

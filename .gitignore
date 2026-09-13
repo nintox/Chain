@@ -14,3 +14,8 @@ local/
 
 # a folder written to the wrong place; delete it when you see it
 _to_delete/
+
+# The commit message waiting to be used. Written before the commit by whoever
+# made the change, used by commit.bat, and deleted the moment it has been -
+# so it is never committed and never goes stale.
+/commit-msg.txt

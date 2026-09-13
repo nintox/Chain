@@ -367,6 +367,19 @@ ok('-c "import sys"' in bat, "han prøver å faktisk køyre Python")
 ok("py -3" in bat, "og fell tilbake på py-launcheren")
 ok("Store" in bat, "og seier frå om stubben når han ikkje finn noko")
 
+print("== det som faktisk blir pakka ==")
+# Rotnivået i repoet ER addon-mappa, som er heile grunnen til at ein klone kan
+# symlinkast rett inn i AddOns. Prisen er at alt anna ligg i same mappa, og
+# utan denne fila fylgjer det med ned i AddOns-mappa til kven som helst.
+_meta = os.path.join(PUSH, "..", ".pkgmeta")
+ok(os.path.exists(_meta), ".pkgmeta finst")
+_msrc = open(_meta, encoding="utf-8").read()
+ok("package-as: Chain" in _msrc, "pakken heiter Chain")
+for _gone in ("push", "test", ".github"):
+    ok(("\n  - %s\n" % _gone) in _msrc,
+       _gone + " blir halde utanfor det som blir lasta ned")
+ok("CHANGELOG.md" in _msrc, "og endringsloggen blir vist til folk")
+
 print("== ikon ==")
 ok(len(gui.ICON_PNG_BASE64) > 1000, "ikonet ligg inne i programmet")
 for f in ("icon.png", "icon.ico", "icon.icns"):
