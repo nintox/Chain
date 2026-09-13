@@ -1079,6 +1079,11 @@ parts that are not.
   all it took. An advert has to be about a boost now: it says boost, carry or
   powerlevel, or it names an instance and a number of runs. A raid is a raid
   even when it says boost, unless the line also names somewhere you level.
+- **And what is already in the book is read again** rather than only what
+  arrives next. A rule you have just tightened that leaves the list full of
+  what you asked not to see, for another half hour, has not done anything yet.
+  An item link with no instance in the line goes too: that is a man selling
+  the item, whatever else he wrote next to it.
 - **The names the old reading let in are swept up** at login - but only the
   ones that are nothing but a stale advert. A price, a note of yours, a run
   you did with him, anything anyone told you about him, and he stays. That is

@@ -925,8 +925,12 @@ local function AdRows()
   local out = {}
   local now = time()
   for name, info in pairs(ChainDB.boosters) do
+    -- and it has to still read as an advert for a boost. Judged here rather
+    -- than only when it arrived, so a reading that has been tightened clears
+    -- the list at once instead of half an hour from now.
     if (info.adZone or info.adAny) and info.adAt
-       and (now - info.adAt) <= AD_KEEP then
+       and (now - info.adAt) <= AD_KEEP
+       and (not BT.StillAnAd or BT.StillAnAd(info)) then
       local d = info.adZone and BT.BY_ID[info.adZone] or nil
       local where = d and d.label or info.adZone
       local pack = ((info.adPack or 1) > 0) and info.adPack or 1

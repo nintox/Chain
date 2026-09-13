@@ -162,6 +162,10 @@ function BT.LooksLikeAd(msg)
   -- and a raid is a raid even when it says boost, unless it also names an
   -- instance we level in - "SM boost" in a line that mentions MC is still SM.
   if not id and RaidSale(low) then return false end
+  -- An item in the line and no instance in it is a man selling the item. The
+  -- link survives as [Its Name] once the colour codes are off, and that is
+  -- what the row would have shown you.
+  if not id and low:find("%[.-%]") then return false end
   return true
 end
 
@@ -424,6 +428,23 @@ end
 -- price, no note of yours, nothing anybody told you about him, and no
 -- instance named in what he said. Anything you know is knowledge, and
 -- knowledge is not swept up.
+-- Is what he said still an advert for a boost? Asked of a record rather than
+-- of a message, so a reading that has been tightened applies to what is
+-- already in the book and not only to what arrives next. The list was full of
+-- dust and enchant formulas the moment the rule changed, and they would have
+-- sat there until they aged out - half an hour of looking at exactly what you
+-- had just asked not to see.
+function BT.StillAnAd(info)
+  if type(info) ~= "table" then return false end
+  if info.adZone then return true end          -- it named an instance
+  local text = info.adText
+  if type(text) ~= "string" or text == "" then
+    -- nothing kept to judge: an older record, and the name is all we have
+    return info.adAny and true or false
+  end
+  return BT.LooksLikeAd(text) and true or false
+end
+
 function BT.ForgetStaleAds(age)
   if type(ChainDB.boosters) ~= "table" then return 0 end
   age = age or (7 * 24 * 3600)
@@ -439,7 +460,11 @@ function BT.ForgetStaleAds(age)
        and not info.shared and not info.note and not info.adZone
        and not info.zones and (info.price or 0) <= 0
        and (info.adPrice or 0) <= 0
-       and (info.adAt or 0) > 0 and (time() - info.adAt) > age then
+       and (info.adAt or 0) > 0
+       -- old, or not an advert for a boost by today's reading. The second one
+       -- has no age on it: what he said is on the record, and it either reads
+       -- as a boost or it never did.
+       and ((time() - info.adAt) > age or not BT.StillAnAd(info)) then
       ChainDB.boosters[name] = nil
       gone = gone + 1
     end

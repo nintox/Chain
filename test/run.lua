@@ -4279,6 +4279,33 @@ do
   ad("WTS SM boost, also doing MC next week", "Bade-Testrealm")
   ok(ChainDB.boosters["Bade"] ~= nil, "SM-boost i ei linje som nemner MC")
 
+  -- eit item i linja og ingen instance er ein som sel itemet
+  ad("WTS [Arcanite Reaper] cheap", "Reaper-Testrealm")
+  eq(ChainDB.boosters["Reaper"], nil, "eit item er ikkje ein boost")
+  -- og ordet boost i ei linje som sel eit item, gjer han framleis ikkje til ein
+  ad("WTS [Edgemaster's Handguards], also boost service pst", "Kombi-Testrealm")
+  eq(ChainDB.boosters["Kombi"], nil, "eit item med ordet boost attmed er eit item")
+  -- men eit item i ein ekte annonse tek han ikkje ut
+  ad("WTS SM boost, [Illusionary Rod] as prize", "Itemboost-Testrealm")
+  ok(ChainDB.boosters["Itemboost"] ~= nil, "eit item i ein SM-annonse er berre eit item")
+
+  -- Det som alt ligg i boka skal lesast på nytt. Elles blir lista ståande full
+  -- av det du nettopp bad om å sleppe, i ein halv time.
+  do
+    ChainDB.boosters["Gammalsel"] = { adAny = true, adAt = time() - 60,
+      adText = "WTS Magic Dust :)", adPrice = 0, adPack = 1, adFrom = "trade" }
+    ChainDB.boosters["Gammalboost"] = { adAny = true, adAt = time() - 60,
+      adZone = "sm", adText = "WTS SM boost", adPrice = 0, adPack = 1 }
+    BT.ShowTab("ads")
+    local w = _G.ChainWindow
+    local seen = {}
+    for _, r in ipairs(w.rows or {}) do
+      if r:IsShown() then seen[(r.cells and r.cells[2] and r.cells[2]:GetText()) or ""] = true end
+    end
+    ok(not seen["Gammalsel"], "ein gamal item-annonse forsvinn frå lista med ein gong")
+    ok(seen["Gammalboost"], "og boosten blir verande")
+  end
+
   -- og dei som alt står i boka frå den gamle, for vide lesinga skal ut igjen
   ChainDB.boosters["Dustsel"] = { adAny = true, adAt = time() - 8 * 24 * 3600,
                                   adText = "WTS Magic Dust" }
@@ -4287,8 +4314,11 @@ do
   ChainDB.boosters["Gamalpris"] = { adAny = true, price = 40,
                                     adAt = time() - 8 * 24 * 3600 }
   ChainDB.boosters["Ferskdust"] = { adAny = true, adAt = time() - 60 }
-  eq(BT.ForgetStaleAds(), 1, "ein gamal annonse utan noko i seg blir rydda")
-  eq(ChainDB.boosters["Dustsel"], nil, "og det var den rette")
+  -- Dustsel er gamal, Gammalsel er fersk men seier ikkje boost. Begge ut:
+  -- alderen er den eine grunnen, og kva han faktisk sa er den andre.
+  eq(BT.ForgetStaleAds(), 2, "annonsar utan noko i seg blir rydda")
+  eq(ChainDB.boosters["Dustsel"], nil, "den gamle")
+  eq(ChainDB.boosters["Gammalsel"], nil, "og den som aldri var ein boost")
   ok(ChainDB.boosters["Gamalkjent"], "notatet ditt blir verande")
   ok(ChainDB.boosters["Gamalpris"], "og ein pris er kunnskap, ikkje ein annonse")
   ok(ChainDB.boosters["Ferskdust"], "og ein fersk blir ikkje rørt")
