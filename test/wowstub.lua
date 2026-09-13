@@ -254,11 +254,31 @@ S.pvpProgress = 0
 S.weekHonor, S.weekKills = 0, 0
 S.lastHonor, S.lastKills, S.standing = 0, 0, nil
 function UnitPVPRank() return (S.pvpRank > 0) and (S.pvpRank + 4) or 0 end
-function GetPVPRankInfo(idx) return "Rank " .. tostring((idx or 4) - 4), (idx or 4) - 4 end
+-- Every rank has two names, and the client picks by the faction NUMBER it is
+-- handed: 0 is Horde, 1 is Alliance. Hand it anything else - a string, say -
+-- and it quietly gives you the Horde one.
+S.rankNames = {
+  [0] = { "Scout", "Grunt", "Sergeant", "Senior Sergeant", "First Sergeant",
+          "Stone Guard", "Blood Guard", "Legionnaire", "Centurion",
+          "Champion", "Lieutenant General", "General", "Warlord",
+          "High Warlord" },
+  [1] = { "Private", "Corporal", "Sergeant", "Master Sergeant",
+          "Sergeant Major", "Knight", "Knight-Lieutenant", "Knight-Captain",
+          "Knight-Champion", "Lieutenant Commander", "Commander", "Marshal",
+          "Field Marshal", "Grand Marshal" },
+}
+function GetPVPRankInfo(idx, faction)
+  local rank = (idx or 4) - 4
+  if faction == nil then faction = (S.faction == "Horde") and 0 or 1 end
+  if type(faction) ~= "number" then faction = 0 end
+  local list = S.rankNames[faction] or S.rankNames[0]
+  return list[rank] or ("Rank " .. tostring(rank)), rank
+end
 function GetPVPRankProgress() return S.pvpProgress end
 function GetPVPThisWeekStats() return S.weekKills, S.weekHonor end
 function GetPVPLastWeekStats() return S.lastKills, S.lastHonor, S.standing end
-function UnitFactionGroup() return "Alliance" end
+S.faction = "Alliance"
+function UnitFactionGroup() return S.faction end
 
 YES, NO = "Yes", "No"
 StaticPopupDialogs = {}

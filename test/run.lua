@@ -2708,6 +2708,40 @@ do
 end
 
 --------------------------------------------------------------------------
+print("== kva rangen din faktisk heiter ==")
+-- Kvar rang har to namn, og klienten vel etter fraksjons-TALET han får: 0 er
+-- Horde, 1 er Alliance. Vi sende strengen UnitFactionGroup gjev - "Alliance" -
+-- som ikkje er eit tal, så han fall tilbake på null. Ein Alliance-spelar fekk
+-- heile klatringa si fortalt i Horde-namn.
+do
+  local keepF = S.faction
+
+  S.faction = "Alliance"
+  eq(BT.FactionIndex(), 1, "Alliance er 1")
+  eq(BT.RankName(13), "Field Marshal", "rang 13 på Alliance er Field Marshal")
+  eq(BT.RankName(14), "Grand Marshal", "og 14 er Grand Marshal")
+  eq(BT.RankName(1), "Private", "og den fyrste er Private")
+
+  S.faction = "Horde"
+  eq(BT.FactionIndex(), 0, "Horde er 0")
+  eq(BT.RankName(13), "Warlord", "rang 13 på Horde er Warlord")
+  eq(BT.RankName(14), "High Warlord", "og 14 er High Warlord")
+  eq(BT.RankName(1), "Scout", "og den fyrste er Scout")
+
+  -- og det er namnet som står på baren
+  S.faction = "Alliance"
+  ChainCharDB.pvpTarget = 14
+  local pbody = table.concat(BT.AllLines(), "\n")
+  ok(not pbody:find("Warlord"),
+     "ingen Horde-namn på ein Alliance-karakter ("
+     .. (pbody:match("[^|\n]*Marshal[^|\n]*") or pbody:match("[^|\n]*Warlord[^|\n]*")
+         or "ingen rang-linje") .. ")")
+
+  eq(BT.RankName(0), "no rank", "ingen rang er ingen rang")
+  S.faction = keepF
+end
+
+--------------------------------------------------------------------------
 print("== kor lenge du har vore på dette levelet ==")
 -- Vår eiga teljing var veggklokke sidan sist vi såg deg gå opp, og ho var
 -- feil på to måtar. Ho talde timane du sov - eit level du byrja på i går kveld

@@ -246,10 +246,30 @@ function BT.MyRank()
   return idx - 4
 end
 
+-- Which side you are on, as the number GetPVPRankInfo wants.
+--
+-- It takes 0 for Horde and 1 for Alliance. We handed it the string
+-- UnitFactionGroup returns - "Alliance" - which is not a number, so it fell
+-- back to zero and an Alliance player spent his whole climb being told he was
+-- going to be High Warlord. Every rank has two names and we only ever showed
+-- one side's.
+local function FactionIndex()
+  local f = UnitFactionGroup and UnitFactionGroup("player") or nil
+  if f == "Alliance" then return 1 end
+  if f == "Horde" then return 0 end
+  return nil
+end
+BT.FactionIndex = FactionIndex
+
 function BT.RankName(rank)
   if not rank or rank <= 0 then return "no rank" end
   if GetPVPRankInfo then
-    local name = GetPVPRankInfo(rank + 4, UnitFactionGroup and UnitFactionGroup("player") or nil)
+    -- with no faction at all the client uses your own, which is the right
+    -- answer anyway; the argument is only there for asking about the other
+    -- side, and we never do
+    local side = FactionIndex()
+    local name = side and GetPVPRankInfo(rank + 4, side)
+      or GetPVPRankInfo(rank + 4)
     if name and name ~= "" then return name end
   end
   return "rank " .. rank

@@ -1053,6 +1053,12 @@ parts that are not.
   it afterwards. The tooltip answers the two questions you have while he is
   there: who he is, and whether you have beaten him before. The faction line
   went too; the race above it already says which side he is on.
+- **An Alliance character was told he was climbing towards High Warlord.**
+  Every rank has two names and `GetPVPRankInfo` picks between them by the
+  faction *number* it is handed - 0 Horde, 1 Alliance. We handed it the string
+  `UnitFactionGroup` returns, which is not a number, so it fell back to zero
+  and showed the Horde ladder to everybody. Private to Grand Marshal on one
+  side, Scout to High Warlord on the other, and now each sees his own.
 - **"this level 19h 32m" when the game said two and a half hours.** Ours was
   wall-clock since we last saw you level up, and that is wrong twice over. It
   counted the hours you were asleep, so a level started last night read as
