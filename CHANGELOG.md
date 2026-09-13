@@ -1053,6 +1053,13 @@ parts that are not.
   it afterwards. The tooltip answers the two questions you have while he is
   there: who he is, and whether you have beaten him before. The faction line
   went too; the race above it already says which side he is on.
+- **"0.0 runs left" is not a thing worth writing in the corner of the
+  screen.** Square with him - everything settled, nothing bought yet, or a
+  balance you have just typed to zero - is a state you sit in for hours, and
+  it was a number asking to be read and then found to say nothing. The corner
+  goes back to being empty, and so does the tooltip line. What still shows in
+  that case is the one line that explains it: that the figure is counted from
+  a number you set by hand, so you know which row to take back out.
 - **The level column filled in with question marks and stayed that way.** A
   level is only ever learned from a nameplate or from having somebody
   targeted, and a rogue who opens on you out of stealth and vanishes gives

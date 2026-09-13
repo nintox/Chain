@@ -351,7 +351,12 @@ local function BoostText()
           local toGo = total - done + (credit.livePack and 1 or 0)
           local col = (toGo >= 2) and C.good or ((toGo > 0) and C.warn or C.bad)
           runsLeft = col .. done .. "/" .. total .. C.off .. Tail(toGo)
-        else
+        elseif math.abs(credit.left or 0) >= 0.5 then
+          -- Square with him is not news, and it is a state you sit in for
+          -- hours: everything settled, nothing bought yet, or a balance you
+          -- have just typed to zero. "0.0 runs left" in the corner of the
+          -- screen is a number asking to be read and then found to say
+          -- nothing. The corner goes back to being empty.
           local v = credit.left
           local col = (v >= 1) and C.good or ((v > -0.5) and C.warn or C.bad)
           local n = string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
@@ -1306,10 +1311,11 @@ function BT.BarTooltip(owner)
         -- not "owed": that word has two directions and the reader picks the
         -- flattering one. These are runs you have had and not paid for.
         txt = string.format("%.1f", -v) .. " unpaid"
-      else
+      elseif math.abs(v or 0) >= 0.5 then
         txt = string.format("%.1f", v) .. " to come"
       end
-      Pair("runs with " .. who, col .. txt .. C.off)
+      -- nothing outstanding and no pack running: there is no line to write
+      if txt then Pair("runs with " .. who, col .. txt .. C.off) end
       -- A balance counted from a number you typed rather than from your
       -- payments cannot be checked against anything on screen. It is rare, so
       -- it costs a line only when it is true - and when it is true it is the

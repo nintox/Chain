@@ -2296,6 +2296,37 @@ do
         S.now = S.now - 100
       end
 
+      -- Og er du kvitt med han, står det ingenting. "0.0 runs left" i hjørnet
+      -- av skjermen er eit tal som ber om å bli lese og så seier ingenting -
+      -- og det er ein tilstand du sit i i timevis.
+      do
+        ChainDB.trades, ChainDB.runs = {}, {}
+        BT.LogPayment("Overar", 100)                -- fem runs
+        for i = 1, 5 do
+          table.insert(ChainDB.runs, { at = S.now + i, by = "Overar",
+            id = "stock", zone = "The Stockade", xp = 9000, k = 30, t = 500,
+            lvl = 20 })
+        end
+        S.now = S.now + 60                          -- og så, etterpå:
+        BT.SetRunsLeft("Overar", 0)                 -- "vi er kvitt"
+        BT.Touch() BT.TouchTrades()
+        near(BT.BoosterCredit("Overar").left, 0, "du er kvitt med han", 0.01)
+        BT.BarTooltip(GameTooltip)
+        ok(not S.TipText():find("runs with Overar", 1, true),
+           "ingen linje på tooltipen når det ikkje er noko utestående")
+        ok(S.TipText():find("set by hand", 1, true),
+           "men han seier at talet er sett for hand, så du veit kva du skal "
+           .. "fjerne")
+        S.now = S.now - 60
+        local sl = BT.BuildText() or {}
+        local function bare(t)
+          return ((tostring(t or ""):gsub("|c%x%x%x%x%x%x%x%x", ""))
+            :gsub("|r", ""))
+        end
+        ok(not (bare(sl.bottomLeft) .. bare(sl.bottomRight)):find("runs left"),
+           "og ingenting i hjørnet under baren (" .. bare(sl.bottomLeft) .. ")")
+      end
+
       ChainCharDB.lastBy, ChainCharDB.run = keepBy, keepRun
       ChainDB.boosters["Overar"] = nil
       ChainDB.trades, ChainDB.runs = keepT, keepR
