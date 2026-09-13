@@ -1282,19 +1282,30 @@ function BT.BarTooltip(owner)
       local v = (credit.hisLeft ~= nil) and credit.hisLeft or credit.left
       local col = (v >= 2) and C.good or ((v > -0.5) and C.warn or C.bad)
       local txt
+      -- The pack comes first, and it used to come third.
+      --
+      -- Two figures, both true, measuring different things: the pack is what
+      -- the last payment bought and how many of those you have had; the
+      -- balance is every payment against every run, so two runs taken on
+      -- credit before you paid are still in it. A negative balance was
+      -- jumping the queue, so the bar said "2/3" and the tooltip said "1.0
+      -- unpaid" about the same booster at the same second. Whatever the
+      -- arithmetic, a line that disagrees with the line above it is a bug to
+      -- the person reading it. The bar shows the pack, so this shows the pack.
       if credit.hisLeft ~= nil then
         txt = credit.hisDone .. "/" .. credit.hisOf
-      elseif v < -0.5 then
-        -- not "owed": that word has two directions and the reader picks the
-        -- flattering one. These are runs you have had and not paid for.
-        txt = string.format("%.1f", -v) .. " unpaid"
       elseif credit.ofPack and credit.ofPack >= 1
          and (credit.donePack or 0) <= credit.ofPack then
         local total = math.floor(credit.ofPack + 0.5)
         local done = math.max(0, credit.donePack or 0)
         txt = done .. "/" .. total
         local toGo = total - done + (credit.livePack and 1 or 0)
+        if toGo > 0 and toGo <= 1.01 then txt = txt .. " - last run" end
         col = (toGo >= 2) and C.good or ((toGo > 0) and C.warn or C.bad)
+      elseif v < -0.5 then
+        -- not "owed": that word has two directions and the reader picks the
+        -- flattering one. These are runs you have had and not paid for.
+        txt = string.format("%.1f", -v) .. " unpaid"
       else
         txt = string.format("%.1f", v) .. " to come"
       end

@@ -2269,6 +2269,33 @@ do
       ok(t2:find("unpaid", 1, true), "og det står 'unpaid' (" ..
          (t2:match("with Overar%s*([^\n]*)") or "?") .. ")")
       ok(not t2:find(" owed", 1, true), "ikkje 'owed', som peikar begge vegar")
+      -- Men står det ein pakke der, er det pakken som gjeld. To sanne tal som
+      -- måler kvar sitt: baren synte "2/3" og tooltipen "1.0 unpaid" om same
+      -- mann i same sekund, og ei linje som er usamd med linja over seg er
+      -- ein feil for den som les.
+      do
+        ChainDB.trades, ChainDB.runs = {}, {}
+        BT.LogPayment("Overar", 100)                -- fem runs
+        for i = 1, 9 do
+          table.insert(ChainDB.runs, { at = S.now + i, by = "Overar",
+            id = "stock", zone = "The Stockade", xp = 9000, k = 30, t = 500,
+            lvl = 20 })
+        end
+        S.now = S.now + 100                         -- og så, etterpå:
+        BT.LogPayment("Overar", 60)                 -- tre til, oppå gjelda
+        BT.Touch() BT.TouchTrades()
+        local c = BT.BoosterCredit("Overar")
+        near(c.left, -1, "saldoen er ein run i minus")
+        near(c.ofPack or 0, 3, "men pakken du nettopp kjøpte er tre", 0.01)
+        BT.BarTooltip(GameTooltip)
+        local tp = S.TipText()
+        ok(tp:find("0/3", 1, true),
+           "tooltipen syner pakken, som baren gjer")
+        ok(not tp:find("unpaid", 1, true),
+           "og ikkje saldoen oppå han")
+        S.now = S.now - 100
+      end
+
       ChainCharDB.lastBy, ChainCharDB.run = keepBy, keepRun
       ChainDB.boosters["Overar"] = nil
       ChainDB.trades, ChainDB.runs = keepT, keepR
