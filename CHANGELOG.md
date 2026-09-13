@@ -491,7 +491,11 @@ parts that are not.
       this run                 24m   288 mobs   31,400 xp
 
   Where you are, when you ding, what you have left with him, whether you can
-  go back in, and the run you are in. A reset waiting for you gets a line of
+  go back in, and the run you are in - **measured against what the place
+  usually gives you**, because `31,400 xp` is only good news if you know what
+  the usual is. Green a sixth above, red a sixth below, and the elapsed time
+  turns amber with the overrun beside it when the run is running long. Both
+  are things you can still do something about while you are in there. A reset waiting for you gets a line of
   its own, and a run that will not count says so - that one you can still do
   something about. The comparisons live on History, Boosters and Route, which
   is where you go when you are deciding rather than doing. The second column

@@ -4022,6 +4022,45 @@ do
     ok(tip:find("16 mobs"), "og mobsa")
     ok(tip:find("left out of the averages"),
        "og kvifor han ikkje tel, sagt med ord i staden for ein merkelapp")
+  end
+
+  -- "31,400 xp" er berre gode nyhende om du veit kva det plar vere. Ein run
+  -- som går dårleg er noko du framleis kan gjere noko med, så han blir målt
+  -- mot det staden plar gi - og fargen er svaret.
+  do
+    local keepRun, keepRuns = ChainCharDB.run, ChainDB.runs
+    local step = select(2, BT.Stage()) or BT.FocusStep()
+    -- gi staden ein snitt å måle mot
+    if step then
+      ChainDB.runs = {}
+      for i = 1, 5 do
+        table.insert(ChainDB.runs, { at = S.now - 4000 + i * 600, t = 600,
+          zone = step.zone or "The Stockade", id = step.id,
+          by = BT.CurrentBooster(), xp = 9000, k = 60, lvl = 23 })
+      end
+      BT.Touch()
+    end
+    local st = step and BT.StepStats(step)
+    ok(st and (st.xp or 0) > 0, "staden har eit snitt å måle mot")
+    if st and (st.xp or 0) > 0 and (st.t or 0) > 0 then
+      -- ein run som gir halvparten av det vanlege
+      ChainCharDB.run = { zone = "The Stockade", map = 34, id = step.id,
+                          start = S.now - (st.t or 600),
+                          xp = math.floor((st.xp or 9000) / 2), k = 20,
+                          lvl = 23, by = BT.CurrentBooster() }
+      S.tip = {}
+      BT.BarTooltip(BT.bar)
+      local bad = S.TipText() or ""
+      ok(bad:find("%-%d+%%"), "ein treg run seier kor mykje under (" ..
+         (bad:match("this run.-\n") or bad):gsub("\n", "") .. ")")
+
+      -- og ein som gir dobbelt
+      ChainCharDB.run.xp = (st.xp or 9000) * 2
+      S.tip = {}
+      BT.BarTooltip(BT.bar)
+      ok((S.TipText() or ""):find("%+%d+%%"), "og ein rask run kor mykje over")
+    end
+    ChainCharDB.run = keepRun
     ChainCharDB.run = nil
   end
 

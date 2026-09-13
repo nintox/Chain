@@ -1286,12 +1286,28 @@ function BT.BarTooltip(owner)
     end
     Pair("instances", lockTxt)
 
-    -- and the run you are in, while you are in it
+    -- and the run you are in, while you are in it - measured against what
+    -- this place usually gives you, because "31,400 xp" is only good news if
+    -- you know what the usual is, and a run going badly is something you can
+    -- still do something about.
     local r = ChainCharDB.run
     if r and r.zone then
-      Pair("this run", BT.T(math.max(0, time() - (r.start or time())))
+      local dev, over = BT.RunDeviation and BT.RunDeviation(st)
+      local elapsed = math.max(0, time() - (r.start or time()))
+      local timeTxt = BT.T(elapsed)
+      if over and over > 60 then
+        timeTxt = C.alert .. timeTxt .. C.off
+          .. C.dim .. " (+" .. BT.T(over) .. ")" .. C.off
+      end
+      local devTxt = ""
+      if dev then
+        local col = (dev >= 0.15) and C.good
+          or ((dev <= -0.15) and C.bad or C.warn)
+        devTxt = "   " .. col .. string.format("%+.0f%%", dev * 100) .. C.off
+      end
+      Pair("this run", timeTxt
         .. C.dim .. "   " .. (r.k or 0) .. " mobs   "
-        .. BT.N(r.xp or 0) .. " xp" .. C.off)
+        .. BT.N(r.xp or 0) .. " xp" .. C.off .. devTxt)
       -- and whether it is going to count, which you can still do something
       -- about: walk out and come back in properly
       if r.partial then
