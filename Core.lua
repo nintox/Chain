@@ -1083,6 +1083,15 @@ function BT.SayToGroup(text)
   return Tell(text)
 end
 
+-- ...and the same thing said to one person instead. A booster who has left the
+-- group, or one you would rather not correct in front of four other people.
+function BT.WhisperTo(name, text)
+  if not name or name == "" then return false end
+  if type(SendChatMessage) ~= "function" then return false end
+  SendChatMessage(BT.SAY .. text, "WHISPER", nil, name)
+  return true
+end
+
 -- The group cannot see your lockout. They see you standing at the portal not
 -- going in, and somebody asks, and you type it out - every single time. So
 -- the addon says it instead: how many you are at, and how long until that

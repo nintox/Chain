@@ -104,7 +104,9 @@ INSTANCE_RESET_FAILED = "Cannot reset %s.  There are players still inside the in
 INSTANCE_RESET_FAILED_ZONING = "Cannot reset %s.  There are players in your party attempting to zone into an instance."
 INSTANCE_RESET_FAILED_OFFLINE = "Cannot reset %s.  There are players offline in your party."
 S.said = {}
-function SendChatMessage(msg, ch) table.insert(S.said, ch .. ": " .. msg) end
+function SendChatMessage(msg, ch, _, target)
+  table.insert(S.said, ch .. (target and (" " .. target) or "") .. ": " .. msg)
+end
 function IsInRaid() return false end
 function IsInGuild() return true end
 S.channels, S.sent = {}, {}

@@ -580,6 +580,11 @@ parts that are not.
   the game throttles a run of messages hard enough to disconnect you. The marks
   are not saved: it is something you do for ten seconds to settle an argument,
   and a mark surviving a logout would only ever be a surprise.
+  **Or to one person**: a name box and a **whisper** button send the same
+  lines to him alone. A booster who has left the group is out of reach of
+  party chat entirely, and correcting somebody in front of four other people
+  is a different thing from correcting him. The box starts out filled in with
+  whoever the marked runs were with, accents and all.
 
 - **The Windows tray program opened and shut without a word.** `pythonw.exe`
   runs with no console - which is the point, since nobody wants a black window

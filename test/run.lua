@@ -2743,6 +2743,7 @@ do
   end
   Check(wb.sinceButton, "sinceButton")
   Check(wb.sayButton, "sayButton")
+  Check(wb.whisperButton, "whisperButton")
   for i, t in ipairs(wb.tabs or {}) do Check(t, "tab " .. i) end
   for _, r in ipairs(wb.rows or {}) do
     if r:IsShown() then
@@ -2882,6 +2883,39 @@ do
     wq.sayButton.__scripts.OnClick(wq.sayButton)
     eq(#S.said + #S.printed, 0, "og utan hakk blir ingenting sagt")
     if rec then end
+  end
+
+  -- Og det same kan gå til éin person i staden. Ein booster som har forlate
+  -- gruppa er utanfor rekkevidd av party chat, og å rette nokon framfor fire
+  -- andre er ei anna sak enn å rette han.
+  do
+    ok(wq.whisperTo ~= nil and wq.whisperTo:IsShown(),
+       "det er eit namnefelt for kvisk")
+    ok(wq.whisperButton ~= nil and wq.whisperButton:IsShown(),
+       "og ein kvisk-knapp")
+
+    local r1
+    for _, r in ipairs(wq.rows or {}) do
+      if r:IsShown() and r.pick and r.pick:IsShown() and r.pick.rec then
+        r1 = r break
+      end
+    end
+    if r1 then
+      r1.pick.__scripts.OnClick(r1.pick)
+      wq.whisperTo:SetText("Mottakar")
+      S.said, S.timers = {}, {}
+      wq.whisperButton.__scripts.OnClick(wq.whisperButton)
+      for _, fn in ipairs(S.timers) do fn() end
+      local line = S.said[1] or ""
+      ok(line:find("^WHISPER Mottakar:"), "linja går som kvisk (" .. line .. ")")
+      ok(line:find("mobs"), "med same innhaldet som i party")
+
+      wq.whisperTo:SetText("")
+      S.said, S.timers = {}, {}
+      wq.whisperButton.__scripts.OnClick(wq.whisperButton)
+      eq(#S.said, 0, "utan namn blir ingenting sendt")
+      r1.pick.__scripts.OnClick(r1.pick)
+    end
   end
 
   -- "sidan sist betaling" er spørsmålet som faktisk blir stilt: kva har eg

@@ -1648,14 +1648,28 @@ local function Render()
       or (C.dim .. "the tally starts again from there" .. C.off))
   end
 
-  -- and the two settle-up buttons belong to the History tab
+  -- and the settle-up row belongs to the History tab
   local counting = (mode == "runs")
-  for _, w in ipairs({ win.sinceButton, win.sayButton, win.sayNote }) do
+  for _, w in ipairs({ win.sinceButton, win.sayButton, win.sayNote,
+                       win.whisperTo, win.whisperButton }) do
     if w then w:SetShown(counting) end
   end
   if counting and win.sayNote then
     local n = 0
     for _, r in ipairs(ChainDB.runs) do if picked[r] then n = n + 1 end end
+    -- the name to whisper: whoever the marked runs were with, since that is
+    -- the person the argument is with
+    if win.whisperTo and not win.whisperTo:HasFocus() then
+      local who
+      for _, r in ipairs(ChainDB.runs) do
+        if picked[r] and r.by then who = r.by end
+      end
+      who = who or (BT.CurrentBooster and BT.CurrentBooster())
+        or ChainCharDB.lastBy
+      if who and (win.whisperTo:GetText() or "") == "" then
+        win.whisperTo:SetText(who)
+      end
+    end
     win.sayNote:SetText((n > 0)
       and (C.good .. n .. C.off .. C.dim .. " marked - the + on each row"
            .. C.off)
@@ -2385,10 +2399,10 @@ local function Build()
   -- all in the same frame.
   local SAY_MAX = 8
 
-  win.sayButton = Button(win, "say in party", 110, 18, function()
+  local function SayLines()
     local list = PickedRuns()                        -- oldest first
     local n = #list
-    if n == 0 then return end
+    if n == 0 then return nil end
     local lines = {}
     for i = 1, math.min(n, SAY_MAX) do
       local r = list[i]
@@ -2404,23 +2418,65 @@ local function Build()
     if n > SAY_MAX then
       lines[#lines + 1] = "(+" .. (n - SAY_MAX) .. " older, not listed)"
     end
+    return lines, list
+  end
+
+  -- half a second apart whichever way they are going out
+  local function Spread(lines, send)
     for i, text in ipairs(lines) do
       if i == 1 or type(C_Timer) ~= "table" or not C_Timer.After then
-        if BT.SayToGroup then BT.SayToGroup(text) end
+        send(text)
       else
-        C_Timer.After((i - 1) * 0.5, function()
-          if BT.SayToGroup then BT.SayToGroup(text) end
-        end)
+        C_Timer.After((i - 1) * 0.5, function() send(text) end)
       end
     end
+  end
+
+  win.sayButton = Button(win, "say in party", 110, 18, function()
+    local lines = SayLines()
+    if not lines then return end
+    Spread(lines, function(text)
+      if BT.SayToGroup then BT.SayToGroup(text) end
+    end)
   end)
   Hint(win.sayButton, "put the marked runs in party chat, one line each: when "
     .. "it started and ended, how long it took, the mobs and the experience. "
     .. "Eight at most, half a second apart so the game does not throttle you.")
   win.sayButton:SetPoint("TOPLEFT", 170, addY + 3)
 
+  -- And to one person instead. A booster who has left the group is out of
+  -- reach of party chat entirely, and correcting somebody in front of four
+  -- other people is a different thing from correcting him.
+  win.whisperTo = CreateFrame("EditBox", nil, win)
+  win.whisperTo:SetSize(104, 18)
+  win.whisperTo:SetAutoFocus(false)
+  win.whisperTo:SetFontObject("ChainFontHighlightSmall")
+  win.whisperTo:SetMaxLetters(24)
+  win.whisperTo.bg = Tex(win.whisperTo, "BACKGROUND", 0.12, 0.12, 0.14, 0.9)
+  win.whisperTo.bg:SetAllPoints()
+  win.whisperTo:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+  win.whisperTo:SetPoint("TOPLEFT", 290, addY + 3)
+
+  win.whisperButton = Button(win, "whisper", 70, 18, function()
+    local lines = SayLines()
+    if not lines then return end
+    local to = win.whisperTo:GetText()
+    if not to or to == "" then return end
+    Spread(lines, function(text)
+      if BT.WhisperTo then BT.WhisperTo(to, text) end
+    end)
+  end)
+  Hint(win.whisperButton, "send the same lines to one person instead of the "
+    .. "group. The name starts out filled in with whoever the marked runs "
+    .. "were with, accents and all - type over it for anyone else.")
+  win.whisperButton:SetPoint("TOPLEFT", 398, addY + 3)
+  win.whisperTo:SetScript("OnEnterPressed", function(self)
+    self:ClearFocus()
+    win.whisperButton:GetScript("OnClick")(win.whisperButton)
+  end)
+
   win.sayNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
-  win.sayNote:SetPoint("TOPLEFT", 290, addY)
+  win.sayNote:SetPoint("TOPLEFT", 474, addY)
 
   -- Adding somebody by hand, on the Boosters tab: a name you were given in a
   -- whisper is worth keeping before you have ever run with him, and the note
