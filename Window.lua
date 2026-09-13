@@ -107,9 +107,9 @@ local LAYOUTS = {
         .. "back" },
       { "buys",    46, nil, "what that net was worth in runs, at the price "
         .. "he was charging then" },
-      { "to come", 50, nil, "how many runs you still had coming the moment "
-        .. "this was logged - what he owed you after taking the money. It is "
-        .. "frozen at that second; the live figure is on the Boosters tab." },
+      { "to come", 50, nil, "runs he still owed you the moment this trade "
+        .. "was logged. Frozen at that second - the live figure is on the "
+        .. "Boosters tab." },
       { "your items", 104, nil, "items you put in the trade window - not "
         .. "gold. Usually empty." },
       { "his items", 104, nil, "items he put in the trade window - a bag of "
@@ -559,29 +559,29 @@ local function GoldRows()
           .. (BT.ItemsText(t.gaveItems)
               and (((t.gave or 0) > 0 and " and " or "you gave ")
                    .. BT.ItemsText(t.gaveItems)) or ""),
-        ((t.got or 0) > 0 and ("he gave " .. BT.G(BT.Gold(t.got))) or "")
+        ((t.got or 0) > 0 and ("he handed back " .. BT.G(BT.Gold(t.got))) or "")
           .. (BT.ItemsText(t.gotItems)
-              and (((t.got or 0) > 0 and " and " or "he gave ")
+              and (((t.got or 0) > 0 and " and " or "he handed you ")
                    .. BT.ItemsText(t.gotItems)) or ""),
         t.zone or nil,
         (led and led.bought)
           and (string.format("%.1f runs at %s a run", led.bought,
                              BT.G(led.per or 0))
-               .. (((t.perRun or 0) > 0) and "" or " (today's price - this "
-                   .. "trade predates the addon keeping it)"))
+               .. (((t.perRun or 0) > 0) and "" or " - at today's price, "
+                   .. "because this trade is older than the addon's record "
+                   .. "of what he charged"))
           or nil,
         (led and led.left)
           and ((led.left >= 0)
-               and string.format("%.1f runs still owed you after this one",
-                                 led.left)
-               or string.format("%.1f runs past what you have paid for",
-                                -led.left))
+               and string.format("left him owing you %.1f runs", led.left)
+               or string.format("left you %.1f runs ahead of what you had "
+                                .. "paid for", -led.left))
           or nil,
-        t.setTo and ("a balance you set by hand: everything before this line "
-          .. "stops counting, and the tally starts again from "
+        t.setTo and ("you set the balance here by hand. Everything before it "
+          .. "stops counting and the tally starts again at "
           .. string.format("%.1f", t.setTo)) or nil,
         (t.manual and not t.setTo)
-          and "you entered this one yourself - the x removes it" or nil
+          and "you typed this one in yourself - the x removes it" or nil
       }
     })
   end
@@ -1262,13 +1262,13 @@ local function Summary()
           out[#out + 1] = who .. " " .. col
             .. string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
             .. C.off .. C.dim
-            .. ((c.hisLeft ~= nil) and " left (his count)" or " left") .. C.off
+            .. ((c.hisLeft ~= nil) and " runs (his count)" or " runs") .. C.off
         end
       end
       if #out >= 3 then break end
     end
     if #out == 0 then return "no payments on record" end
-    return "still owed you:  " .. table.concat(out, C.dim .. "   -   " .. C.off)
+    return "they owe you:  " .. table.concat(out, C.dim .. "   -   " .. C.off)
   end
   if mode == "loot" then
     local value, byWho, items, coins, unknown = BT.LootTotals()

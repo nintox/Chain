@@ -2539,8 +2539,8 @@ do
   S.tip = {}
   h.__scripts.OnEnter(h)
   local t = S.TipText() or ""
-  ok(t:find("still had coming"), "med forklaringa i tooltipen")
-  ok(t:find("frozen"), "og at han er frosen der, ikkje levande")
+  ok(t:find("still owed you"), "med forklaringa i tooltipen")
+  ok(t:find("Frozen"), "og at han er frosen der, ikkje levande")
   h.__scripts.OnLeave(h)
 
   BT.ShowTab("runs")

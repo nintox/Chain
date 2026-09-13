@@ -470,6 +470,14 @@ parts that are not.
   **now** in the when column and counts up. It is not saved, cannot be deleted
   and cannot be ticked: it counts for nothing until you finish it.
 
+- **The credit lines are written in English now.** "4.0 runs still owed you
+  after this one" is not a sentence anybody says. A trade row now reads
+  **left him owing you 4.0 runs**, or **left you 2.5 runs ahead of what you
+  had paid for** when it went the other way; the bar tooltip says **he owes
+  you** and **you owe him** rather than "still owed you"; the Trade tab's
+  summary says **they owe you: Magecome 4.0 runs**; and a trade the addon
+  watched says **he handed back 1g 20s** rather than "he gave".
+
 - **Every column heading explains itself.** A heading has room for two words,
   and two words cannot say what **after** or **he gave** mean - hover one and
   it says, where you are already looking when you wonder. Two of them were

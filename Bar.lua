@@ -1265,7 +1265,7 @@ function BT.BarTooltip(owner)
               .. credit.hisOf .. C.off)
           end
           local v = credit.left
-          Pair(((v < -0.5) and "you owe" or "still owed you"),
+          Pair(((v < -0.5) and "you owe him" or "he owes you"),
             (((v >= 1) and C.good) or ((v > -0.5) and C.warn) or C.bad)
             .. string.format("%.1f runs", math.abs(v)) .. C.off)
           -- A run on credit is normal; a whole pack of them means money
