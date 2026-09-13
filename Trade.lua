@@ -141,6 +141,14 @@ function BT.TradeComplete()
   BT.TouchTrades()
   if BT.Refresh then BT.Refresh() end
   if BT.RenderWindow then BT.RenderWindow() end
+  -- Money coming the other way, from somebody in your group, is somebody
+  -- buying runs off you. Same trade window, opposite chair.
+  if (t.got or 0) > (t.gave or 0) and t.with and BT.CustomerPaid then
+    local here = BT.GroupNames and BT.GroupNames() or {}
+    if here[BT.ShortName(t.with)] then
+      BT.CustomerPaid(t.with, (t.got or 0) - (t.gave or 0), id)
+    end
+  end
   -- and if that was a stranger while somebody is boosting you, ask whose
   -- purse it was
   if not rec.by and BT.AskIfAlt then BT.AskIfAlt(rec.with) end

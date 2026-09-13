@@ -118,10 +118,11 @@ end
 -- so they sit under one heading and you pick the angle once you are there.
 local SUBTABS = {
   boosting = { { "boosters", "Boosters" }, { "ads", "Sellers" },
-               { "wtb", "Buyers" }, { "reported", "Shared" } }
+               { "wtb", "Buyers" }, { "sell", "My boost" },
+               { "reported", "Shared" } }
 }
 local GROUP = { boosters = "boosting", ads = "boosting",
-                wtb = "boosting", reported = "boosting" }
+                wtb = "boosting", sell = "boosting", reported = "boosting" }
 
 -- What each tab is for, on the tab itself. Eleven tabs is a lot to learn by
 -- clicking them one at a time.
@@ -138,6 +139,8 @@ local TAB_HINT = {
     .. "buying and selling.",
   wtb = "everyone asking to buy a boost. The other side of the Sellers tab, "
     .. "and where you find somebody to split a chain with.",
+  sell = "your side of the counter: what you charge, who has paid you, and "
+    .. "the count that goes into party after every run.",
   boosting = "buying and selling: who sells the step you are on, who is "
     .. "advertising right now, and what other people's addons have said.",
   reported = "what other people's addons have told you, kept apart from your "
@@ -325,6 +328,33 @@ local LAYOUTS = {
       { "heard in", 96, "from" },
       { "what he said", 330, nil },
       { "",         64, nil }        -- the whisper button
+    }
+  },
+  -- The seller's chair. Everything else here is written for the man paying;
+  -- this is the same argument from the other side, and it ends the same way -
+  -- with a count both of you watched go up.
+  sell = {
+    title = "The boost you are running. Somebody in your group trades you "
+      .. "gold and he lands here, with what it bought at your price.",
+    cols = {
+      { "who",      96, "name", "who paid you. Added on his own when he "
+        .. "trades you gold while he is in your group." },
+      { "paid",     70, "paid", "gold he has handed over, all of it, across "
+        .. "however many trades. It does not move when you change your "
+        .. "price." },
+      { "bought",   56, "runs", "what that gold came to in runs at the price "
+        .. "you were charging when he paid." },
+      { "done",     46, "done", "runs he has had. One goes on for everybody "
+        .. "in the group each time a run finishes." },
+      { "left",     56, "left", "what he still has coming. Type over it when "
+        .. "the count is wrong - a wipe you gave him back, a run he sat "
+        .. "out - and what he bought moves to match." },
+      { "per run",  62, "per", "what one run cost him, at the price at the "
+        .. "time" },
+      { "paid at",  74, "at", "when the last of his gold came in" },
+      { "here",     44, nil, "whether he is in your group right now. Runs "
+        .. "only count for the people who are actually in them." },
+      { "",         30, nil }        -- the x
     }
   },
   reported = {
@@ -986,6 +1016,52 @@ local function Record(e)
   return col .. w .. "-" .. l .. C.off, w - l
 end
 
+-- Your customers. One row a man, and a row you can correct: the count is the
+-- thing being argued about, so the number has to be reachable.
+local function SellRows()
+  local out = {}
+  local here = BT.GroupNames and BT.GroupNames() or {}
+  for _, c in ipairs(BT.Customers and BT.Customers() or {}) do
+    local left = (c.runs or 0) - (c.done or 0)
+    local col = (left >= 2) and C.good or ((left > 0.05) and C.warn or C.bad)
+    local inGroup = here[c.name] and true or false
+    out[#out + 1] = {
+      rec = c, name = c.name, who = c.name, at = c.at,
+      paid = c.paid or 0, runs = c.runs or 0, done = c.done or 0,
+      left = left, per = c.per or 0, sell = c.name,
+      cells = {
+        (inGroup and "" or C.dim) .. c.name .. (inGroup and "" or C.off),
+        C.gold .. BT.G(BT.Gold(c.paid or 0)) .. C.off,
+        ((c.runs or 0) > 0) and string.format("%.0f", c.runs + 0.5 - 0.5)
+          or (C.dim .. "-" .. C.off),
+        col .. BT.SellCount(c) .. C.off,
+        "",            -- the editable box sits here
+        ((c.per or 0) > 0) and (C.dim .. BT.G(BT.Gold(c.per)) .. C.off)
+          or (C.dim .. "-" .. C.off),
+        C.dim .. BT.T(time() - (c.at or time())) .. " ago" .. C.off,
+        inGroup and (C.good .. "yes" .. C.off) or (C.bad .. "gone" .. C.off),
+        ""
+      },
+      tip = Lines(
+        c.name,
+        BT.G(BT.Gold(c.paid or 0)) .. " paid"
+          .. (((c.runs or 0) > 0)
+              and ("   " .. BT.Runsish(c.runs) .. " bought") or ""),
+        BT.SellCount(c) .. " done"
+          .. (((c.runs or 0) > 0)
+              and ("   " .. BT.Runsish(math.max(0, left)) .. " to go") or ""),
+        inGroup and "in your group - the next run counts for him"
+          or "not in your group - runs will not count for him",
+        ((c.runs or 0) <= 0)
+          and "no price was set when he paid, so nobody knows what it bought"
+          or nil
+      )
+    }
+  end
+  table.sort(out, function(a, b) return (a.at or 0) > (b.at or 0) end)
+  return out
+end
+
 local function EnemyRows()
   local out = {}
   local now = time()
@@ -1530,6 +1606,7 @@ local function Data()
   if mode == "ads" then return AdRows() end
   if mode == "groups" then return GroupRows() end
   if mode == "wtb" then return BuyerRows() end
+  if mode == "sell" then return SellRows() end
   if mode == "enemies" then return EnemyRows() end
   if mode == "pvp" then return PvPRows() end
   if mode == "koslist" then return KOSRows() end
@@ -1727,6 +1804,35 @@ local function Summary()
       .. C.dim .. "   " .. fresh .. " in the last 15 minutes" .. C.off
       .. ((here > 0 and step)
           and ("   " .. C.good .. here .. " for " .. step.label .. C.off) or "")
+  elseif mode == "sell" then
+    local list = BT.Customers and BT.Customers() or {}
+    local step = BT.FocusStep()
+    local gold, pack = BT.SellPrice(step and step.id)
+    local price = (gold > 0)
+      and (C.gold .. BT.G(gold) .. C.off .. C.dim .. " for " .. pack
+           .. " runs" .. C.off)
+      or (C.bad .. "no price set" .. C.off
+          .. C.dim .. " - gold that comes in cannot be turned into runs"
+          .. C.off)
+    if #list == 0 then
+      return "nobody has paid you yet.  " .. price
+        .. C.dim .. "   trade a man in your group and he lands here" .. C.off
+    end
+    local here = BT.GroupNames and BT.GroupNames() or {}
+    local owed, gone, took = 0, 0, 0
+    for _, c in ipairs(list) do
+      owed = owed + math.max(0, (c.runs or 0) - (c.done or 0))
+      took = took + (c.paid or 0)
+      if not here[c.name] then gone = gone + 1 end
+    end
+    return #list .. " paying"
+      .. C.dim .. "   " .. C.off .. BT.Runsish(owed) .. C.dim .. " to deliver"
+      .. C.off
+      .. C.dim .. "   " .. C.off .. C.gold .. BT.G(BT.Gold(took)) .. C.off
+      .. C.dim .. " taken" .. C.off
+      .. ((gone > 0) and (C.dim .. "   " .. gone .. " not in your group"
+                          .. C.off) or "")
+      .. "   " .. price
   elseif mode == "enemies" then
     local all = BT.SeenList()
     if #all == 0 then
@@ -1900,6 +2006,27 @@ local function Render()
     if w then w:SetShown(routing) end
   end
 
+  -- and the seller's row belongs to My boost
+  local selling = (mode == "sell")
+  for _, w in ipairs({ win.sellLabel, win.sellGold, win.sellPer, win.sellPack,
+                       win.sellRuns, win.sellAd, win.sellPost, win.sellSay }) do
+    if w then w:SetShown(selling) end
+  end
+  if selling then
+    local step = BT.FocusStep()
+    local gold, pack = BT.SellPrice(step and step.id)
+    if not win.sellGold:HasFocus() then
+      win.sellGold:SetText((gold > 0) and tostring(math.floor(gold)) or "")
+    end
+    if not win.sellPack:HasFocus() then
+      win.sellPack:SetText(tostring(pack))
+    end
+    if not win.sellAd:HasFocus() then
+      win.sellAd:SetText(BT.SellAd(step and step.id)
+        or BT.SellAdDefault(step))
+    end
+  end
+
   -- and the rank box belongs to the Rank tab, on the same line
   local planning = (mode == "pvp")
   for _, w in ipairs({ win.targetLabel, win.targetBox, win.targetUp,
@@ -2006,6 +2133,7 @@ local function Render()
         row.pick:Hide()
       end
       row.del.rec, row.del.name, row.del.trade, row.del.own = nil, nil, nil, nil
+      row.del.customer = nil
       -- the first two cells describe the row well enough to name it in the
       -- question: "2h 39m ago   paid  10 runs"
       row.del.what = ((tostring(d.cells and d.cells[1] or "")
@@ -2027,6 +2155,12 @@ local function Render()
         row.del.hint = "remove somebody you added by hand. A booster you "
           .. "have actually run with cannot be removed - that is measured "
           .. "history."
+        row.del:Show()
+      elseif mode == "sell" and d.sell then
+        row.del.customer = d.sell
+        row.del.hint = "take him off the list. What he paid and what he has "
+          .. "had both go; this is the list of who you are boosting now, "
+          .. "not a history."
         row.del:Show()
       elseif mode == "route" and d.own then
         row.del.own = d.own
@@ -2180,10 +2314,31 @@ local function Render()
         -- keeps one fixed width overhangs the moment a column changes size
         row.note:SetWidth(math.max(40, layout.cols[#layout.cols][2] - 4))
         row.note:Show()
+      elseif mode == "sell" and d.sell then
+        -- Column 5 is what he still has coming, and it is a box for the same
+        -- reason the buyer's is: the count is the thing being argued about,
+        -- so the number has to be reachable from the side that knows.
+        local lx = 0
+        for ci, col in ipairs(layout.cols) do
+          if ci < 5 then lx = lx + col[2] end
+        end
+        row.left.by, row.left.sell = nil, d.sell
+        if not row.left:HasFocus() then
+          local v = math.max(0, d.left or 0)
+          row.left:SetText(string.format(
+            (math.abs(v - math.floor(v + 0.5)) < 0.05) and "%.0f" or "%.1f", v))
+        end
+        row.left:ClearAllPoints()
+        row.left:SetPoint("LEFT", row, "LEFT", lx, 0)
+        row.left:SetWidth(math.max(36, layout.cols[5][2] - 6))
+        row.left:Show()
+        row.price:Hide()
+        row.pack:Hide()
       else
         row.price:Hide()
         row.pack:Hide()
         row.left:Hide()
+        row.left.sell = nil
       end
       if not noteShown then row.note:Hide() end
       row:Show()
@@ -2206,6 +2361,11 @@ local function SetMode(m)
   end
   mode = m
   if GROUP[m] then ChainCharDB[GROUP[m] .. "Tab"] = m end
+  -- the label doubles as the answer to your last press; a fresh visit starts
+  -- with the question rather than with last time's answer
+  if m == "sell" and win and win.sellLabel then
+    win.sellLabel:SetText(C.dim .. "your price" .. C.off)
+  end
   -- a line you marked on another tab is not where you are now
   selected = nil
   page = 1
@@ -2576,7 +2736,9 @@ local function Build()
     row.left:SetScript("OnEditFocusLost", function(self)
       -- only when you actually typed something: focus passing through a box
       -- must not rewrite a balance
-      if self.by and self.typed and BT.SetRunsLeft then
+      if self.sell and self.typed and BT.SetCustomerRuns then
+        BT.SetCustomerRuns(self.sell, self:GetText())
+      elseif self.by and self.typed and BT.SetRunsLeft then
         BT.SetRunsLeft(self.by, self:GetText())
       end
       self.typed = nil
@@ -2662,6 +2824,15 @@ local function Build()
       -- what is about to go, named. "Are you sure?" is not a question you can
       -- answer without being told what you are being asked about.
       local trade, name, rec, own = self.trade, self.name, self.rec, self.own
+      if self.customer then
+        local who = self.customer
+        Confirm("Take " .. who .. " off the list?\n\nWhat he paid and what "
+          .. "he has had both go with him.", function()
+            BT.RemoveCustomer(who)
+            Render()
+          end)
+        return
+      end
       if own then
         local step = ChainDB.ownSteps and ChainDB.ownSteps[own]
         Confirm("Take this out of the plan?\n\n"
@@ -3085,6 +3256,69 @@ local function Build()
   win.ownNote:SetPoint("TOPLEFT", 488, addY)
   win.ownNote:SetText(C.dim .. "no runs, no gold, no booster - just levels"
     .. C.off)
+
+  -- Your side of the counter: what you charge, the line you would type in
+  -- LookingForGroup, and the count out loud. Same line as everything else,
+  -- because only one tab's controls are ever on screen.
+  win.sellLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.sellLabel:SetPoint("TOPLEFT", 12, addY)
+  win.sellLabel:SetText("your price")
+
+  win.sellGold = AddBox(46, 12, "gold", 7)
+  win.sellGold:SetPoint("TOPLEFT", 12, addY + 3)
+  win.sellPer = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.sellPer:SetPoint("TOPLEFT", 62, addY + 7)
+  win.sellPer:SetText(C.dim .. "g for" .. C.off)
+  win.sellPack = AddBox(28, 96, "5", 2)
+  win.sellPack:SetPoint("TOPLEFT", 96, addY + 3)
+  win.sellRuns = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.sellRuns:SetPoint("TOPLEFT", 128, addY + 7)
+  win.sellRuns:SetText(C.dim .. "runs" .. C.off)
+
+  local function SaveSellPrice()
+    local step = BT.FocusStep()
+    BT.SetSellPrice(step and step.id, win.sellGold:GetText(),
+                    win.sellPack:GetText())
+    Render()
+  end
+  win.sellGold:SetScript("OnEditFocusLost", SaveSellPrice)
+  win.sellPack:SetScript("OnEditFocusLost", SaveSellPrice)
+  win.sellGold:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  win.sellPack:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+
+  -- The advert, kept per instance. Written by you, sent by you: one press,
+  -- one line, and nothing on a timer.
+  win.sellAd = AddBox(356, 168, "your advert - what you would type yourself")
+  win.sellAd:SetPoint("TOPLEFT", 168, addY + 3)
+  win.sellAd:SetMaxLetters(180)
+  win.sellAd:SetScript("OnEditFocusLost", function(self)
+    local step = BT.FocusStep()
+    BT.SetSellAd(step and step.id, self:GetText())
+  end)
+  win.sellAd:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+
+  win.sellPost = Button(win, "post to LookingForGroup", 168, 18, function()
+    local ok, why = BT.PostAd(win.sellAd:GetText())
+    win.sellLabel:SetText(ok and (C.good .. "posted" .. C.off)
+      or (C.bad .. (why or "no") .. C.off))
+    Render()
+  end)
+  Hint(win.sellPost, "put that line in the LookingForGroup channel, once. "
+    .. "Nothing here posts on its own and nothing repeats: an addon that "
+    .. "talks in a channel by itself is what gets everybody's addon thrown "
+    .. "out of it. Press it again when you want it said again.")
+  win.sellPost:SetPoint("TOPLEFT", 530, addY + 3)
+
+  win.sellSay = Button(win, "say the count", 108, 18, function()
+    if not BT.SaySellCount() then
+      win.sellLabel:SetText(C.bad .. "nobody on the list is in your group"
+        .. C.off)
+    end
+  end)
+  Hint(win.sellSay, "put everybody's count into party or raid now - the same "
+    .. "line that goes out on its own after each run. It is the thing that "
+    .. "ends the argument before it starts.")
+  win.sellSay:SetPoint("TOPLEFT", 706, addY + 3)
 
   -- The rank you are aiming at, on the same line and in the same place as the
   -- add-someone row, because only one of the two is ever on screen.

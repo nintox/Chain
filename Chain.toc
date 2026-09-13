@@ -25,6 +25,7 @@ Stats.lua
 Decay.lua
 Core.lua
 Trade.lua
+Selling.lua
 Loot.lua
 PvP.lua
 Enemy.lua

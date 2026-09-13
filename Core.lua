@@ -1576,6 +1576,8 @@ function BT.EndRun()
   if r.by then c.lastBy = r.by end
   BT.lastRecord = rec
   if r.by and BT.CheckDebt then BT.CheckDebt(r.by) end
+  -- and if you were the one clearing it, everybody who paid you has had one
+  if not r.by and BT.SellRunDone then BT.SellRunDone() end
 end
 
 -- A run past what is logged as paid for is normal - you take one on credit and

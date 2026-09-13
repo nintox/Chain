@@ -99,8 +99,31 @@ end
 -- Never while it is under the cursor. The readout refreshes once a second,
 -- and re-applying the anchor mid-drag pulls the frame out of your hand - the
 -- same thing that made the nearby list impossible to place.
+-- Docked to the tracker, which is where it belongs by default: two boxes of
+-- glanceable numbers stacked into one thing to look at beats two boxes in two
+-- corners. It rides the header's edge rather than the frame's top, so it does
+-- not end up on the far side of the list when the list grows upwards.
+function BT.MeterDocked()
+  if ChainDB.meterDock == false then return nil end
+  local nb = _G.ChainNearby
+  if not nb then return nil end
+  if not (ChainDB.watchEnemies and ChainDB.nearbyList ~= false) then return nil end
+  return nb
+end
+
 local function Anchor()
   if not meter or dragging then return end
+  local nb = BT.MeterDocked()
+  if nb then
+    local up = (ChainDB.nearbyGrow == "up")
+    meter:ClearAllPoints()
+    if up then
+      meter:SetPoint("TOPRIGHT", nb, "BOTTOMRIGHT", 0, -2)
+    else
+      meter:SetPoint("BOTTOMRIGHT", nb, "TOPRIGHT", 0, 2)
+    end
+    return
+  end
   local pos = ChainDB.meterPos
   meter:ClearAllPoints()
   if not pos then
@@ -132,6 +155,13 @@ function BT.BuildMeter()
   meter:RegisterForDrag("LeftButton")
   meter:SetScript("OnDragStart", function(self)
     if ChainDB.meterLocked then return end
+    -- Pulling it off the tracker is how you detach it. Asking you to find a
+    -- menu item first, to do the thing you are plainly already doing, is a
+    -- step that exists only because it was easier to write.
+    if BT.MeterDocked() then
+      ChainDB.meterDock = false
+      self:Backdrop()
+    end
     dragging = true
     self:StartMoving()
   end)
@@ -153,6 +183,14 @@ function BT.BuildMeter()
   meter.bg = meter:CreateTexture(nil, "BACKGROUND")
   meter.bg:SetAllPoints()
   if meter.bg.SetColorTexture then meter.bg:SetColorTexture(0, 0, 0, 0.45) end
+
+  -- Sitting on the tracker it is part of the tracker, so it brings no box of
+  -- its own: two dark panels with a seam between them read as two things.
+  -- Loose on the screen it needs one, or the numbers float on the landscape.
+  function meter:Backdrop()
+    if not self.bg.SetColorTexture then return end
+    self.bg:SetColorTexture(0, 0, 0, BT.MeterDocked() and 0 or 0.45)
+  end
 
   meter.fs = meter:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
   meter.fs:SetPoint("CENTER")
@@ -190,6 +228,7 @@ function BT.RefreshMeter()
     -- a black bar where it used to be
     local w = (meter.fs.GetStringWidth and meter.fs:GetStringWidth()) or 60
     meter:SetWidth(math.max(40, w + 14))
+    meter:Backdrop()
     Anchor()
   end
   meter:Show()
@@ -217,6 +256,14 @@ end
 function BT.MeterMenu()
   if not BT.ShowNearbyMenu then return nil end
   return BT.ShowNearbyMenu(nil, {
+    { text = BT.MeterDocked()
+             and ("On the tracker" .. C.dim .. " - set it loose" .. C.off)
+             or ("Loose" .. C.dim .. " - put it back on the tracker" .. C.off),
+      fn = function()
+        if ChainDB.meterDock == false then ChainDB.meterDock = nil
+        else ChainDB.meterDock = false end
+        BT.RefreshMeter()
+      end },
     { text = ChainDB.meterLocked
              and (C.warn .. "Locked" .. C.off .. C.dim .. " - unlock" .. C.off)
              or (C.dim .. "Unlocked" .. C.off .. " - lock"),

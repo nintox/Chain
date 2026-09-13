@@ -988,7 +988,42 @@ parts that are not.
   own; the box shrinks to fit rather than leaving a black bar where the other
   one was.
 
+**The other side of the counter**
+
+- **A My boost tab**, under Boosting. Everything else in Chain is written for
+  the man paying; this is the same argument from the other chair, and it ends
+  the same way - with a count both of you watched go up.
+- Somebody in your group trades you gold and he lands on the list on his own,
+  with what that gold came to in runs **at the price you were charging when he
+  paid**. Change your price afterwards and what he bought does not move.
+- Your price is per instance, because Maraudon and the Stockades are not the
+  same job. An instance you have not priced starts from the last figure you
+  typed rather than from zero.
+- Each time a run finishes, everybody on the list **who is still in your
+  group** has had one, and one line goes into party or raid: `Ola 2/5   Kari
+  4/5`. One line and not one each - four names after every run is twenty lines
+  an hour in somebody else's chat window. When a man's pack runs out the line
+  says so.
+- The count is editable, the same way the buyer's is. Type what he has left
+  and what he bought moves to match; a wipe you gave him back is not something
+  the addon can see.
+- **Your advert, kept per instance**, with a button that posts it to
+  LookingForGroup. One press, one line. Nothing here posts on its own, nothing
+  repeats, and the button will not be pressed twice inside half a minute - an
+  addon that talks in a channel by itself is what gets everybody's addon
+  thrown out of it.
+
 **Smaller things**
+
+- **The frames and latency readout sits on the enemy tracker.** Two boxes of
+  numbers you skim, stacked into one thing to look at rather than two corners
+  to hunt in - and with no box of its own up there, since two dark panels with
+  a seam between them read as two things. It rides the tracker's header, so it
+  is above the list when the list grows down and below it when it grows up.
+  Drag it and it comes off: pulling it away is the gesture, and being made to
+  find a menu item first, to do the thing you are plainly already doing, is a
+  step that exists only because it was easier to write. The right-click menu
+  puts it back.
 
 - **The run you are standing in is counted.** The pack line under the bar read
   `1/5` while you were halfway through the second run, because it counted what

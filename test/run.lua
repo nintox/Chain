@@ -28,7 +28,7 @@ local function loadFile(name)
 end
 
 -- the .toc order
-for _, f in ipairs({ "Data.lua", "Stats.lua", "Decay.lua", "Core.lua", "Trade.lua", "Loot.lua",
+for _, f in ipairs({ "Data.lua", "Stats.lua", "Decay.lua", "Core.lua", "Trade.lua", "Selling.lua", "Loot.lua",
                      "PvP.lua", "Enemy.lua", "Roster.lua", "Meter.lua", "Bar.lua", "Minimap.lua", "Window.lua",
                      "Options.lua" }) do
   loadFile(f)
@@ -2905,12 +2905,12 @@ do
   BT.ShowTab("boosting")
   local wt = _G.ChainWindow
   eq(BT.WindowMode(), "boosters", "Boosting opnar på Boosters fyrste gong")
-  ok(wt.subtabs and #wt.subtabs == 4, "med fire underfaner")
+  ok(wt.subtabs and #wt.subtabs == 5, "med fem underfaner")
   local shown = 0
   for _, b in ipairs(wt.subtabs or {}) do
     if b:IsShown() then shown = shown + 1 end
   end
-  eq(shown, 4, "og dei er framme")
+  eq(shown, 5, "og dei er framme")
 
   -- overskrifta er tent så lenge du er inne i ei av dei
   local head
@@ -2943,9 +2943,14 @@ do
   wt.subtabs[3].__scripts.OnClick(wt.subtabs[3])
   eq(BT.WindowMode(), "wtb", "og er WTB-lista")
 
-  -- den fjerde heiter Shared
-  eq(wt.subtabs[4].fs:GetText(), "Shared", "den fjerde heiter Shared")
+  -- den fjerde er di eiga side av disken
+  eq(wt.subtabs[4].fs:GetText(), "My boost", "den fjerde heiter My boost")
   wt.subtabs[4].__scripts.OnClick(wt.subtabs[4])
+  eq(BT.WindowMode(), "sell", "og er seljarsida")
+
+  -- den femte heiter Shared
+  eq(wt.subtabs[5].fs:GetText(), "Shared", "den femte heiter Shared")
+  wt.subtabs[5].__scripts.OnClick(wt.subtabs[5])
   eq(BT.WindowMode(), "reported", "og er den gamle Reported")
 
   -- utanfor gruppa er dei borte, og overskrifta tek plassen att
@@ -3252,6 +3257,110 @@ do
 end
 
 -- annonse-fana: alle som har annonsert, uansett instans, med kvisk-knapp
+--------------------------------------------------------------------------
+print("== di eiga side av disken ==")
+-- Alt anna her er skrive for han som betaler. Dette er den same krangelen
+-- frå den andre stolen, og han endar likt: med eit tal begge har sett gå opp.
+do
+  local keepRun, keepTrades = ChainCharDB.run, ChainDB.trades
+  ChainCharDB.customers = {}
+  ChainDB.sell = nil
+  local keepParty = S.party
+  S.party = { { name = "Kunde" }, { name = "Annan" } }
+
+  -- prisen din, per instans
+  BT.SetSellPrice("mara", 300, 5)
+  local g, pk = BT.SellPrice("mara")
+  eq(g, 300, "prisen din er hugsa")
+  eq(pk, 5, "og kor mange runs han dekkjer")
+  near(BT.SellPerRun("mara"), 60 * 10000, "ein run er ein femtedel av prisen", 1)
+  -- ein instans du ikkje har prisa fell tilbake på det siste du skreiv
+  eq(select(1, BT.SellPrice("zf")), 300, "ein uprisa instans arvar talet ditt")
+
+  -- nokon i gruppa tradar deg gull
+  S.said = {}
+  BT.CustomerPaid("Kunde", 300 * 10000, "mara")
+  local c = BT.Customer("Kunde")
+  ok(c ~= nil, "han hamnar på lista")
+  near(c.runs, 5, "300g til 60g runden er fem runs", 0.01)
+  eq(c.done, 0, "og ingen er kjørde enno")
+  ok((S.said[1] or ""):find("Kunde 0/5"), "og det blir sagt i party ("
+     .. tostring(S.said[1]) .. ")")
+
+  -- ein run blir ferdig, og alle i gruppa som har betalt har hatt ein
+  S.said = {}
+  BT.SellRunDone()
+  eq(BT.Customer("Kunde").done, 1, "runden tel for han")
+  ok((S.said[1] or ""):find("Kunde 1/5"), "og telinga går ut ("
+     .. tostring(S.said[1]) .. ")")
+
+  -- ein som ikkje er i gruppa skal ikkje bli talt
+  BT.CustomerPaid("Borte", 300 * 10000, "mara")
+  S.party = { { name = "Kunde" } }
+  BT.SellRunDone()
+  eq(BT.Customer("Borte").done, 0, "ein som har gått frå gruppa får ingen run")
+  eq(BT.Customer("Kunde").done, 2, "men han som står der får")
+
+  -- og den siste runden blir sagt
+  S.said = {}
+  BT.Customer("Kunde").done = 4
+  BT.SellRunDone()
+  ok((S.said[1] or ""):find("is done"), "siste runden blir sagt hogt ("
+     .. tostring(S.said[1]) .. ")")
+
+  -- du kan rette talet: du skriv kor mange han har att
+  BT.SetCustomerRuns("Kunde", 2)
+  eq(BT.Customer("Kunde").done, 5, "det han har hatt står")
+  near(BT.Customer("Kunde").runs, 7, "og det han kjøpte flyttar seg", 0.01)
+
+  -- annonsen: eitt trykk, ei linje, og ingenting på klokke
+  S.said = {}
+  local ok1, why = BT.PostAd("WTS Maraudon boost")
+  ok(not ok1, "utan kanalen skjer det ingenting")
+  ok((why or ""):find("LookingForGroup"), "og han seier kvifor (" .. tostring(why) .. ")")
+  JoinTemporaryChannel("LookingForGroup")
+  ok(BT.PostAd("WTS Maraudon boost"), "med kanalen går linja ut")
+  eq(#S.said, 1, "ei linje, ikkje to")
+  ok((S.said[1] or ""):find("CHANNEL"), "i kanalen")
+  ok(not (S.said[1] or ""):find("CHAIN", 1, true),
+     "og annonsen din går ut slik du skreiv han")
+  -- og han kan ikkje lenast på
+  local ok2, why2 = BT.PostAd("WTS Maraudon boost")
+  ok(not ok2, "to trykk på rad blir stoppa")
+  ok((why2 or ""):find("wait"), "med kor lenge du må vente")
+  eq(#S.said, 1, "og ingen andre linje gjekk ut")
+
+  -- fana teiknar dei
+  BT.ShowTab("sell")
+  eq(BT.WindowMode(), "sell", "fana er der")
+  local ws = _G.ChainWindow
+  local row
+  for _, r in ipairs(ws.rows or {}) do
+    if r:IsShown() and (r.cells[1]:GetText() or ""):find("Kunde") then row = r end
+  end
+  ok(row ~= nil, "kunden står på fana")
+  ok((row.cells[2]:GetText() or ""):find("300"), "med det han har betalt")
+  ok((row.cells[4]:GetText() or ""):find("5/7"), "og telinga (" ..
+     tostring(row.cells[4]:GetText()) .. ")")
+  ok(row.left:IsShown(), "og ein boks du kan rette i")
+  ok(row.del:IsShown(), "og han kan takast av lista")
+  ok(ws.sellGold:IsShown() and ws.sellAd:IsShown() and ws.sellPost:IsShown(),
+     "prisen og annonsen ligg under tabellen")
+
+  -- og boksen skriv til rett mann
+  row.left:SetText("3")
+  row.left.typed = true
+  row.left.__scripts.OnEditFocusLost(row.left)
+  near(BT.Customer("Kunde").runs, 8, "det du skriv er kor mange han har att", 0.01)
+
+  ChainCharDB.customers = {}
+  ChainCharDB.run, ChainDB.trades = keepRun, keepTrades
+  S.party = keepParty
+  LeaveChannelByName("LookingForGroup")
+  BT.ShowTab("runs")
+end
+
+--------------------------------------------------------------------------
 print("== annonse-fana ==")
 do
   ChainDB.boosters = {}
@@ -4990,6 +5099,48 @@ do
   m.__scripts.OnDragStart(m)
   ok(not BT.MeterDragging(), "låst lar seg ikkje dra")
   ChainDB.meterLocked = nil
+
+  -- Han høyrer heime oppå enemy-trackeren: to boksar med tal du skummar,
+  -- stabla til éin ting å sjå på i staden for to hjørne å leite i.
+  do
+    ChainDB.meterPos, ChainDB.meterDock = nil, nil
+    ChainDB.watchEnemies, ChainDB.nearbyList = true, true
+    BT.NoteEnemy("Dokk", { level = 40, class = "MAGE" })
+    BT.RefreshNearby()
+    BT.RefreshMeter()
+    local nb = _G.ChainNearby
+    ok(BT.MeterDocked() == nb, "han er festa til trackeren")
+    eq(select(2, m:GetPoint(1)), nb, "og hengjer i den ramma")
+    eq(m:GetPoint(1), "BOTTOMRIGHT", "over han når lista veks nedover")
+    eq(m.bg.__alpha, 0, "og han har ingen eigen boks - han er gjennomsiktig")
+
+    -- veks lista oppover, skal han flytte seg til den andre sida
+    ChainDB.nearbyGrow = "up"
+    BT.RefreshMeter()
+    eq(m:GetPoint(1), "TOPRIGHT", "under han når lista veks oppover")
+    ChainDB.nearbyGrow = nil
+    BT.RefreshMeter()
+
+    -- og du løyser han ved å dra i han, ikkje ved å finne eit menyval fyrst
+    m.__scripts.OnDragStart(m)
+    eq(ChainDB.meterDock, false, "eit drag løyser han frå trackeren")
+    m.__left, m.__top = 400, 600
+    m.__scripts.OnDragStop(m)
+    BT.RefreshMeter()
+    eq(BT.MeterDocked(), nil, "og no står han for seg sjølv")
+    ok((m.bg.__alpha or 0) > 0, "med sin eigen boks att")
+
+    -- og han kan settast tilbake
+    ChainDB.meterDock = nil
+    BT.RefreshMeter()
+    ok(BT.MeterDocked() == nb, "og settast tilbake på trackeren")
+
+    -- er trackeren av, har han ingenting å henge i
+    ChainDB.nearbyList = false
+    eq(BT.MeterDocked(), nil, "utan tracker er det ingenting å feste seg til")
+    ChainDB.nearbyList = true
+    ChainDB.meterDock, ChainDB.meterPos = nil, nil
+  end
 
   ChainDB.meterPos = nil
   ChainDB.meter = false
