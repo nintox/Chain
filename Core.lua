@@ -1076,6 +1076,13 @@ local function Tell(text)
   return true
 end
 
+-- Anything else that wants to say something to the group goes through here,
+-- so it carries the same tag and falls back to your own chat frame the same
+-- way when there is nobody to tell.
+function BT.SayToGroup(text)
+  return Tell(text)
+end
+
 -- The group cannot see your lockout. They see you standing at the portal not
 -- going in, and somebody asks, and you type it out - every single time. So
 -- the addon says it instead: how many you are at, and how long until that

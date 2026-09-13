@@ -41,6 +41,7 @@ function UnitName(u)
 end
 function UnitExists(u)
   if S.units[u] then return true end
+  if u == "target" and S.guid then return true end
   local i = tonumber(tostring(u):match("party(%d)"))
   return (i and S.party[i]) and true or false
 end
@@ -53,6 +54,13 @@ function UnitXP() return S.xp end
 function UnitXPMax() return S.xpMax end
 function GetXPExhaustion() return S.rested end
 function UnitGUID() return S.guid end
+-- whether the target is still breathing. The run code refuses to read an
+-- instance id off a corpse - a mob you dragged along in the target frame is
+-- from the wing you just left - and a stub that never answers would let that
+-- go untested.
+function UnitIsDead(unit)
+  return (unit == "target") and (S.targetDead == true) or false
+end
 function IsInInstance() return S.inInstance, S.inInstance and "party" or "none" end
 S.map = nil
 function GetInstanceInfo()
@@ -301,18 +309,75 @@ function GetPlayerInfoByGUID(guid)
   return g.class, g.class, g.race, g.race, g.sex, g.name, g.realm
 end
 
+-- what the addon said in chat, so a test can read it back. Still printed:
+-- the suite's own output is the transcript of a session.
+S.printed = {}
+S.mouseOver = nil
+
+function wipe(t)
+  for k in pairs(t) do t[k] = nil end
+  return t
+end
+
+-- Font-objekt. Eit font-objekt er delt av alle strengane som brukar det, så
+-- å byte ansikt på eit av dei endrar alt som er skrive i det - og det er heile
+-- poenget med at addonen har sine eigne fem.
+local fontMeta = {}
+fontMeta.__index = fontMeta
+function fontMeta:SetFont(path, size, flags)
+  self.path, self.size, self.flags = path, size, flags
+end
+function fontMeta:GetFont() return self.path, self.size, self.flags end
+function fontMeta:SetFontObject(o)
+  if o and o.GetFont then self.path, self.size, self.flags = o:GetFont() end
+end
+function CreateFont(name)
+  local o = setmetatable({ fontName = name }, fontMeta)
+  _G[name] = o
+  return o
+end
+for name, size in pairs({ GameFontNormal = 12, GameFontNormalSmall = 10,
+                          GameFontNormalLarge = 16, GameFontHighlightSmall = 10,
+                          GameFontDisableSmall = 10 }) do
+  _G[name] = setmetatable({ fontName = name, path = "Fonts\\FRIZQT__.TTF",
+                            size = size, flags = "" }, fontMeta)
+end
+local realPrint = print
+function print(...)
+  local bits = {}
+  for i = 1, select("#", ...) do bits[i] = tostring((select(i, ...))) end
+  local line = table.concat(bits, " ")
+  table.insert(S.printed, (line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")))
+  realPrint(...)
+end
+function S.Said(pattern)
+  for _, line in ipairs(S.printed) do
+    if line:find(pattern) then return line end
+  end
+  return nil
+end
+
 SlashCmdList = {}
 function StaticPopup_Show() end
 S.whispered = {}
 DEFAULT_CHAT_FRAME = {}
 function ChatFrame_SendTell(name) table.insert(S.whispered, name) end
 function ChatFrame_OpenChat(text) table.insert(S.whispered, text) end
+S.chatLinks = {}
+function IsModifiedClick(what) return (what == "CHATLINK") and (S.shiftDown == true) or false end
+function ChatEdit_InsertLink(link) table.insert(S.chatLinks, link) return true end
 -- The tooltip records what it was told, so a test can read it back. Anything
 -- we did not bother to implement is still a no-op.
 S.tip = {}
 local tipMeta = { __index = function() return function() end end }
 GameTooltip = setmetatable({
   SetOwner = function(self) S.tip = {} end,
+  -- the client's own item tooltip. Recorded as one line naming the item, so a
+  -- test can tell "we asked the game for the real tooltip" from "we wrote the
+  -- name out ourselves".
+  SetHyperlink = function(self, link)
+    table.insert(S.tip, "[hyperlink] " .. tostring(link or ""))
+  end,
   AddLine = function(self, text) table.insert(S.tip, tostring(text or "")) end,
   AddDoubleLine = function(self, left, right)
     table.insert(S.tip, tostring(left or "") .. "\t" .. tostring(right or ""))
@@ -380,9 +445,30 @@ function frameMeta:SetAttribute(k, v)
   self.__attrs[k] = v
 end
 function frameMeta:GetAttribute(k) return self.__attrs and self.__attrs[k] end
+-- Kvar peikaren er. S.mouseOver er ramma han står over, om nokon.
+function frameMeta:IsMouseOver() return S.mouseOver == self end
+-- Kva klikk knappen er meld på for. Ein secure knapp som berre er meld på
+-- for "LeftButtonUp" gjer ingenting på denne klienten, så det er verdt å
+-- kunne sjekke.
+function frameMeta:RegisterForClicks(...) self.__clicks = { ... } end
+function frameMeta:ClicksFor()
+  return table.concat(self.__clicks or {}, ",")
+end
 function frameMeta:GetScript(name) return self.__scripts[name] end
-function frameMeta:Show() self.__shown = true end
-function frameMeta:Hide() self.__shown = false end
+-- Show og Hide køyrer OnShow/OnHide, slik spelet gjer. Utan det kan ein
+-- ikkje teste noko som heng på at eit vindauge blir opna eller lukka.
+function frameMeta:Show()
+  local was = self.__shown
+  self.__shown = true
+  local fn = not was and self.__scripts and self.__scripts.OnShow
+  if fn then fn(self) end
+end
+function frameMeta:Hide()
+  local was = self.__shown
+  self.__shown = false
+  local fn = was and self.__scripts and self.__scripts.OnHide
+  if fn then fn(self) end
+end
 function frameMeta:IsShown() return self.__shown end
 function frameMeta:IsVisible() return self.__shown end
 function frameMeta:GetWidth() return self.__w or 380 end
@@ -406,10 +492,13 @@ function frameMeta:SetColorTexture(r, g, b, a) self.__alpha = a end
 function frameMeta:SetFrameStrata(v) self.__strata = v end
 function frameMeta:GetTexture() return self.__tex end
 function frameMeta:GetText() return self.__text or "" end
--- rough but monotonic: enough for the layout to make the same decisions
+-- rough but monotonic: enough for the layout to make the same decisions.
+-- S.charW er kor brei ein bokstav er - eit anna ansikt er eit anna tal, og
+-- det er heile grunnen til at baren må måle i staden for å hugse.
+S.charW = 6
 function frameMeta:GetStringWidth()
   local t = tostring(self.__text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-  return #t * 6
+  return #t * (S.charW or 6)
 end
 function frameMeta:SetShown(v) self.__shown = v and true or false end
 function frameMeta:SetChecked(v) self.__checked = v end
@@ -464,6 +553,20 @@ function frameMeta:GetParent() return self.__parent end
 
 function CreateFrame(kind, name, parent, template)
   local f = newObject(kind, parent)
+  -- A second tooltip is a real thing an addon can make, and its lines are as
+  -- much a part of what the user sees as GameTooltip's. It records into the
+  -- same buffer, so S.TipText() covers both columns.
+  if kind == "GameTooltip" then
+    f.AddLine = function(_, text) table.insert(S.tip, tostring(text or "")) end
+    f.AddDoubleLine = function(_, l, r)
+      table.insert(S.tip, tostring(l or "") .. "\t" .. tostring(r or ""))
+    end
+    f.SetHyperlink = function(_, link)
+      table.insert(S.tip, "[hyperlink] " .. tostring(link or ""))
+    end
+    f.ClearLines = function() end
+    f.SetOwner = function() end
+  end
   if name then _G[name] = f end
   return f
 end

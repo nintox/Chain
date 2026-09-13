@@ -50,6 +50,74 @@ local function near(a, b, msg, tol)
      .. ", venta " .. tostring(b) .. ")")
 end
 
+-- Tooltipen på baren vaks ut av éin kolonne: på ein 1080 høg skjerm gjekk han
+-- frå topp til botn, og då er det ikkje ein tooltip lenger, det er ei side.
+-- Delinga går etter emne, ikkje etter linjetal: det du gjer til venstre, kven
+-- du gjer det med og kvar du står til høgre.
+local function TwoColumns(what)
+  local tip = BT.SideTooltip and BT.SideTooltip()
+  ok(tip ~= nil, "det finst ein kolonne to")
+  if not tip then return end
+  -- tel linjene i kvar kolonne kvar for seg
+  local left, right = 0, 0
+  -- med ein run i gang, som er når tooltipen er på sitt lengste
+  local keepRun = ChainCharDB.run
+  ChainCharDB.run = { zone = "The Stockade", map = 34, id = "stock",
+                      start = S.now - 300, xp = 6000, k = 40, lvl = 23,
+                      by = BT.CurrentBooster() }
+  tip.__lines = 0
+  local realAdd, realDouble = tip.AddLine, tip.AddDoubleLine
+  local gAdd, gDouble = GameTooltip.AddLine, GameTooltip.AddDoubleLine
+  local leftText, rightText = {}, {}
+  tip.AddLine = function(self, t, ...) right = right + 1
+    rightText[#rightText + 1] = tostring(t or "") return realAdd(self, t, ...) end
+  tip.AddDoubleLine = function(self, l, ...) right = right + 1
+    rightText[#rightText + 1] = tostring(l or "")
+    return realDouble(self, l, ...) end
+  GameTooltip.AddLine = function(self, t, ...) left = left + 1
+    leftText[#leftText + 1] = tostring(t or "") return gAdd(self, t, ...) end
+  GameTooltip.AddDoubleLine = function(self, l, ...) left = left + 1
+    leftText[#leftText + 1] = tostring(l or "")
+    return gDouble(self, l, ...) end
+  BT.BarTooltip(GameTooltip)
+  tip.AddLine, tip.AddDoubleLine = realAdd, realDouble
+  GameTooltip.AddLine, GameTooltip.AddDoubleLine = gAdd, gDouble
+
+  ChainCharDB.run = keepRun
+  ok(right > 0, (what or "tooltipen") .. " brukar begge kolonnane")
+  -- og dei skal vere omtrent like høge: ein kolonne som er dobbelt så lang
+  -- som den andre les som ein tooltip som har sprukke, ikkje som eit oppsett
+  -- Kva kolonne eit avsnitt hamnar i er ei vurdering av avsnittet, ikkje av
+  -- kor mykje plass som er att: runen du står i høyrer saman med det du gjer,
+  -- ikkje med kven du gjer det med.
+  local function inColumn(list, needle)
+    for _, t in ipairs(list) do if t:find(needle, 1, true) then return true end end
+    return false
+  end
+  ok(inColumn(leftText, "this run"), "runen du står i står i fyrste kolonne")
+  ok(inColumn(rightText, "xp per hour"), "og boosteren sine tal i den andre")
+
+  local tall, short = math.max(left, right), math.min(left, right)
+  ok(short * 2 >= tall, (what or "tooltipen") .. " er skeiv: "
+     .. left .. " mot " .. right .. " linjer")
+end
+
+-- Dei to hjørna under baren er EI linje: ein fontstring festa i venstre enden
+-- og ein i høgre, med ingenting mellom seg enn breidda på baren. Tekst som
+-- ikkje får plass der brytar ikkje - den blir teikna rett oppå det andre
+-- hjørnet. Linjelengd-testen sjekkar kvar linje for seg, så to hjørne som
+-- kvar for seg er korte nok gjekk rett forbi han.
+local function CornersFit(what)
+  local sl = BT.BuildText() or {}
+  local l = BT.VisLen(sl.bottomLeft or "")
+  -- farta ligg mellom dei og tel med i det som skal få plass på linja
+  local r = BT.VisLen(sl.bottomRight or "") + BT.VisLen(sl.bottomCenter or "")
+  local cap = (BT.Budget and BT.Budget()) or 74
+  ok(l + r + 3 <= cap, (what or "hjørna") .. " kolliderer: " .. (l + r + 3)
+     .. " teikn av " .. cap .. " - \"" .. tostring(sl.bottomLeft) .. "\" / \""
+     .. tostring(sl.bottomRight) .. "\"")
+end
+
 --------------------------------------------------------------------------
 print("== oppsett ==")
 ok(ChainDB ~= nil, "DB laga")
@@ -310,17 +378,17 @@ ok(ratio < 0.75, "høge boostier kostar deg xp (" .. string.format("%.2f", ratio
 print("== instance-lockout ==")
 ChainDB.entries = {}
 ChainCharDB.entrySeq = 0
-for i = 1, 5 do BT.NoteEntry() end
+for i = 1, 5 do S.now = S.now + 180 BT.NoteEntry() end
 local count, freeOne, freeAll, fromNIT, daily = BT.Lockout()
 eq(count, 5, "fem instansar")
 eq(daily, 5, "fem i døgnet òg")
 eq(fromNIT, false, "utan NIT brukar vi vår eigen logg")
-ok(freeOne and freeOne > 3500, "nedteljing til neste ledige")
+ok(freeOne and freeOne > 2500, "nedteljing til neste ledige")
 
 -- timesgrensa er per karakter, døgngrensa er kontovid
 for i = 1, 7 do
   table.insert(ChainDB.entries,
-    { t = S.now - 7200 - i * 60, seq = "Alt:" .. i, char = "Alt" })
+    { t = S.now - 7200 - i * 300, seq = "Alt:" .. i, char = "Alt" })
 end
 table.insert(ChainDB.entries, { t = S.now - 300, seq = "Alt:x", char = "Alt" })
 count, freeOne, freeAll, fromNIT, daily = BT.Lockout()
@@ -336,8 +404,9 @@ eq(daily, 13, "eldre enn 24 timar tel ikkje")
 -- inngangar frå før addonen blei installert - så dei blir henta over i vår
 -- eigen logg ein gong, og etter det treng vi den ikkje.
 _G.NIT = { data = { instances = {
-  { enteredTime = S.now - 100, zone = "The Stockade", playerName = "Tester" },
-  { enteredTime = S.now - 200, zone = "The Stockade", playerName = "Tester" },
+  -- godt bak våre eigne, så minutt-nøkkelen i importen ikkje kolliderer
+  { enteredTime = S.now - 1000, zone = "The Stockade", playerName = "Tester" },
+  { enteredTime = S.now - 1200, zone = "The Stockade", playerName = "Tester" },
   { enteredTime = S.now - 4000, zone = "SM", playerName = "Tester" },
   { enteredTime = S.now - 50000, zone = "SM", playerName = "Tester" } } } }
 ChainDB.useNIT = false
@@ -385,17 +454,435 @@ count, freeOne, freeAll, fromNIT, daily, fromGame = BT.Lockout()
 eq(count, 5, "men spelet seier fem, og då er det fem")
 eq(fromGame, true, "og det er merka som spelet sitt svar")
 ok(freeOne and freeOne > 0, "med ei øvre grense for når det losnar")
+-- "+1 in 9m" ved sida av 3/5 les som ei venting, og det er inga venting: du
+-- har to i handa. Klokka svarar berre på eit spørsmål du faktisk stiller når
+-- døra er stengd.
+do
+  local before = ChainDB.entries
+  ChainDB.entries = { { t = S.now - 100, seq = "u1", char = "Tester" },
+                      { t = S.now - 200, seq = "u2", char = "Tester" } }
+  ChainCharDB.lockedAt, ChainCharDB.lockMissing = nil, nil
+  S.level, S.xp, S.xpMax = 23, 12000, 31700
+  local body = table.concat(BT.AllLines(), "\n")
+  ok(body:find("inst 2/5"), "baren seier kor mange du har brukt")
+  ok(body:find("3 to go"), "og kor mange du har att, ikkje ei nedteljing")
+  ok(not body:find("%+1 in"), "for det er ingenting å vente på")
+  ChainDB.entries = before
+end
+
+ok(freeAll and freeOne <= freeAll,
+   "ein blir ledig før alle blir det (" .. tostring(freeOne) .. " <= "
+   .. tostring(freeAll) .. ")")
+
+-- Og det spelet la til skal ikkje bli liggjande. Slepp spelet deg inn, var
+-- du ikkje på taket likevel - same beviset den andre vegen. Utan dette stod
+-- gjettinga i timen og baren klatra til 7/5, som er eit tal spelet ikkje gjev
+-- deg.
+do
+  eq(BT.Lockout(), 5, "fem no")
+  S.zone, S.map, S.inInstance = "Stormwind Stockade", 34, true
+  S.now = S.now + 60
+  BT.NoteEntry()
+  local n = BT.Lockout()
+  eq(n, 5, "og fem etter at spelet slapp deg inn - ikkje seks")
+  S.now = S.now + 60
+  BT.NoteEntry()
+  eq(BT.Lockout(), 5, "og framleis fem")
+  local one, all = select(2, BT.Lockout())
+  ok(one <= all, "og klokkene står framleis rett veg")
+  S.inInstance = false
+end
+
+-- Nedteljinga, sagt høgt. Ei gruppe som står ved summoning-steinen ventar på
+-- det talet nokon må spørje om heile tida. Så det blir sagt på ein rytme i
+-- staden for kvar gong noko dultar borti det: kvart femte minutt medan det er
+-- langt fram, ein gong på eitt minutt, og ein gong når det losnar.
+do
+  local before = ChainDB.entries
+  local oldAnnounce = ChainDB.announceLock
+  ChainDB.announceLock = true
+  ChainCharDB.toldLocked, ChainCharDB.toldMark = nil, nil
+  ChainCharDB.lockedAt, ChainCharDB.lockMissing = nil, nil
+  S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
+
+  local function said()
+    local out = S.said[#S.said]
+    S.said = {}
+    return out
+  end
+  local function lockAt(secondsLeft)
+    -- fem inngangar, den eldste akkurat så gammal at det er så lenge att
+    ChainDB.entries = {}
+    for i = 1, 5 do
+      table.insert(ChainDB.entries,
+        { t = S.now - (3600 - secondsLeft) + (i - 1), seq = "l" .. i,
+          char = "Tester" })
+    end
+  end
+
+  -- Inne i instansen seier han ingenting. Du kjem på taket ved å gå inn, så
+  -- det var akkurat då linja kom - til fire som nettopp såg deg gjere det.
+  S.said = {}
+  lockAt(16 * 60)
+  S.inInstance = true
+  ChainCharDB.toldLocked = nil
+  BT.AnnounceLock()
+  eq(said(), nil, "seier ingenting om lockouten medan du er inne")
+  S.inInstance = false
+  BT.AnnounceLock()
+  ok((said() or ""):find("5/5"), "men seier det når du kjem ut")
+
+  -- Åleine er det ingen å seie det til, men talet er verdt å ha likevel: då
+  -- går same linja til ditt eige chat-vindauge i staden for ingen stad.
+  do
+    local wasParty = S.party
+    S.party = {}
+    S.said, S.printed = {}, {}
+    lockAt(16 * 60)
+    ChainCharDB.toldLocked, ChainCharDB.toldMark = nil, nil
+    BT.AnnounceLock(true)
+    eq(#S.said, 0, "åleine går det ikkje til party")
+    ok(S.Said("%[CHAIN%] %- 5/5"), "men det står i ditt eige vindauge")
+    S.party = wasParty
+    S.said, S.printed = {}, {}
+  end
+
+  -- Den eine linja som er verdt å seie innanfrå: ein plass er ledig. Det er
+  -- nettopp gjengen som står inne som ventar på den.
+  S.inInstance = true
+  ChainDB.entries = {}
+  BT.AnnounceLock()
+  ok((said() or ""):find("instance unlocked"), "men at ein plass er ledig blir sagt inne òg")
+  S.inInstance = false
+
+  S.said = {}
+  lockAt(16 * 60)
+  ChainCharDB.toldLocked, ChainCharDB.toldMark = nil, nil
+  BT.AnnounceLock(true)
+  local first = said()
+  ok(first and first:find("5/5"), "den seier frå at du er låst")
+  ok(first and first:find("16m"), "og kor lenge det er att")
+  -- og det står kven som seier det, så det ikkje ser ut som nokon som skriv
+  ok(first and first:find("^PARTY: %[CHAIN%] %- "),
+     "med namnet framfor (" .. tostring(first) .. ")")
+
+  -- ingenting mellom merka
+  lockAt(15 * 60 + 30)
+  BT.AnnounceLock()
+  eq(said(), nil, "og gjentek seg ikkje mellom merka")
+
+  -- femminutt-merka blir sagde, nedover, med den ekte tida
+  lockAt(15 * 60)
+  BT.AnnounceLock()
+  ok((said() or ""):find("instance free in 15m"), "femten minutt blir sagt")
+  lockAt(12 * 60)
+  BT.AnnounceLock()
+  eq(said(), nil, "og ikkje ein gong til før neste merke")
+  lockAt(10 * 60)
+  BT.AnnounceLock()
+  ok((said() or ""):find("instance free in 10m"), "ti minutt blir sagt")
+  lockAt(5 * 60)
+  BT.AnnounceLock()
+  ok((said() or ""):find("instance free in 5m"), "fem minutt blir sagt")
+
+  -- eitt minutt er det ein reiser seg på
+  lockAt(50)
+  BT.AnnounceLock()
+  -- heile minutt, aldri sekund: "free in 50s" er ei anna eining du må rekne
+  -- om før du kan samanlikne med linja før
+  ok((said() or ""):find("instance free in 1m"), "og eitt minutt for seg sjølv")
+  lockAt(20)
+  BT.AnnounceLock()
+  eq(said(), nil, "berre ein gong")
+
+  -- og når det losnar
+  ChainDB.entries = {}
+  BT.AnnounceLock()
+  ok((said() or ""):find("instance unlocked"), "og ein gong når det losnar")
+  BT.AnnounceLock()
+  eq(said(), nil, "og ikkje meir enn det")
+
+  ChainDB.entries = before
+  ChainDB.announceLock = oldAnnounce
+  ChainCharDB.toldLocked, ChainCharDB.toldMark = nil, nil
+  S.party = {}
+  S.said = {}
+end
+
+-- Og ein rekonstruksjon som pressar talet over ei grense spelet framleis
+-- handhevar, er vist feil. Både spøkelse og inngangar bygde opp att frå
+-- runloggen er gjetting; ein inngang vi faktisk såg skje blir aldri kasta for
+-- å få eit tal til å sjå rett ut.
+do
+  local before = ChainDB.entries
+  ChainCharDB.lockedAt, ChainCharDB.lockMissing = nil, nil
+  ChainDB.entries = {}
+  for i = 1, 4 do
+    table.insert(ChainDB.entries, { t = S.now - i * 300, seq = "real" .. i,
+                                    char = "Tester" })
+  end
+  table.insert(ChainDB.entries, { t = S.now - 30, seq = "guess",
+                                  char = "Tester", fromRun = true })
+  eq(BT.Lockout(), 5, "fem i loggen, og ein av dei er gjetta")
+  S.zone, S.map, S.inInstance = "Stormwind Stockade", 34, true
+  S.now = S.now + 10
+  BT.NoteEntry()
+  ok(BT.Lockout() <= 5, "spelet slapp deg inn, så gjettinga ryk ut ("
+     .. BT.Lockout() .. ")")
+  local realsLeft, guessLeft = 0, 0
+  for _, e in ipairs(ChainDB.entries) do
+    if tostring(e.seq):find("^real") then realsLeft = realsLeft + 1 end
+    if e.seq == "guess" then guessLeft = guessLeft + 1 end
+  end
+  eq(realsLeft, 4, "og det vi faktisk såg står att")
+  eq(guessLeft, 0, "medan gjettinga er borte")
+  S.inInstance = false
+  ChainDB.entries = before
+end
+
+-- Ein /reload er ikkje ein instansinngang.
+--
+-- Dette er den som kosta mest: ved reload kasta vi runen og lét Sync starte
+-- ein ny - og å starte ein run skriv ein inngang mot fem-i-timen. Så kvart
+-- einaste /reload medan du stod inne i ein dungeon talde som å gå inn i ein ny,
+-- og ein dag med reloading for å hente endringar la talet fleire over sanninga.
+-- NIT skriv "UI Reload detected, loading last instance data instead of
+-- creating new" av nettopp denne grunnen.
+do
+  local before = ChainDB.entries
+  ChainDB.entries = {}
+  ChainCharDB.entrySeq = 0
+  ChainCharDB.lockedAt, ChainCharDB.lockMissing = nil, nil
+  ChainCharDB.run = nil
+  BT.reloadedAt = 0
+  S.zone, S.map, S.inInstance = "Scarlet Monastery", 189, true
+  S.now = S.now + 600
+  S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+  eq(BT.Lockout(), 1, "å gå inn tel ein")
+  ChainCharDB.run.xp = 9000
+
+  -- og så laster han om, ståande på same staden
+  S.printed = {}
+  S.now = S.now + 120
+  S.Fire(frame, "PLAYER_ENTERING_WORLD", false, true)
+  eq(BT.Lockout(), 1, "reload tel ikkje som ein ny instans")
+  ok(ChainCharDB.run ~= nil, "og runen held fram")
+  eq(ChainCharDB.run.xp, 9000, "med det den alt hadde samla")
+
+  -- og om klienten melder verda før han vedgår instansen, tek vakta det
+  ChainCharDB.run = nil
+  S.now = S.now + 5
+  S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+  eq(BT.Lockout(), 1, "og heller ikkje når runen blei borte i lastinga")
+  ok(S.Said("back from a reload"), "og den seier kvifor")
+
+  -- Og det motsette, som er den som kosta ein inngang: du laster om i byen og
+  -- går inn i instansen rett etterpå. Vakta spurde om siste sona var den same
+  -- - og det er ho framleis eit halvt minutt etter at du gjekk ut - så den
+  -- ekte inngangen blei kasta og talet stod eitt for lågt resten av timen.
+  do
+    local keep, keepRun = ChainDB.entries, ChainCharDB.run
+    ChainDB.entries = {}
+    ChainCharDB.run = nil
+    ChainCharDB.seenInst = {}
+    S.guid = nil
+    BT.reloadedAt, BT.reloadRunZone = 0, nil
+    -- han har vore inne, og går ut
+    S.zone, S.map, S.inInstance = "Scarlet Monastery", 189, true
+    S.now = S.now + 600
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    eq(BT.Lockout(), 1, "inne ein gong")
+    -- han drep noko, så inngangen ikkje blir kasta som "såg aldri nokon"
+    ChainCharDB.run.xp, ChainCharDB.run.k = 9000, 60
+    S.zone, S.inInstance = "Tirisfal Glades", false
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+
+    -- laster om ute
+    S.now = S.now + 60
+    S.Fire(frame, "PLAYER_ENTERING_WORLD", false, true)
+    eq(BT.reloadRunZone, nil, "ingen run var i gang, så ingenting å halde på")
+
+    -- og går inn med det same
+    S.now = S.now + 5
+    S.zone, S.inInstance = "Scarlet Monastery", true
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    eq(BT.Lockout(), 2, "inngangen rett etter ein reload i byen tel")
+
+    S.zone, S.inInstance = "Tirisfal Glades", false
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    ChainCharDB.seenInst = {}
+    BT.reloadedAt, BT.reloadRunZone = 0, nil
+    -- legg tilbake det blokka over dreiv med
+    ChainDB.entries, ChainCharDB.run = keep, keepRun
+  end
+
+  -- men eit ekte opphald etterpå er ein ekte inngang
+  BT.reloadedAt = 0
+  S.now = S.now + 600
+  S.zone, S.inInstance = "Tirisfal Glades", false
+  S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+  S.now = S.now + 60
+  S.zone, S.inInstance = "Scarlet Monastery", true
+  S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+  eq(BT.Lockout(), 2, "ein ny instans etterpå tel som før")
+
+  S.zone, S.inInstance = "Tirisfal Glades", false
+  S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+  ChainDB.entries = before
+  ChainCharDB.seenInst = {}
+end
+
+-- Loggen hans, rad for rad, slik Instances-fana viste han då den sa 7/5.
+-- Dette er ikkje eit tenkt tilfelle: det er dataa, og dei seier kva som var
+-- gale. To "entered SM" eitt minutt frå kvarandre klokka 44 minutt sidan, og
+-- ingenting mellom dei. Eitt oppmøte, meldt to gonger.
+do
+  local before, beforeR = ChainDB.entries, ChainDB.resets
+  local me = UnitName("player")
+  ChainCharDB.lockedAt, ChainCharDB.lockMissing = nil, nil
+  local function ago(m) return S.now - math.floor(m * 60) end
+  ChainDB.entries = {
+    { t = ago(59),   seq = "n1", zone = "Scarlet Monastery", char = me },
+    { t = ago(44.4), seq = "n2", zone = "Scarlet Monastery", char = me },
+    { t = ago(44),   seq = "n3", zone = "Scarlet Monastery", char = me },
+    { t = ago(35),   seq = "n4", zone = "Scarlet Monastery", char = me,
+      from = "NIT" },
+    { t = ago(30),   seq = "n5", zone = "Scarlet Monastery", char = me },
+    { t = ago(8),    seq = "n6", zone = "Scarlet Monastery", char = me },
+    { t = ago(1),    seq = "n7", zone = "Scarlet Monastery", char = me },
+  }
+  ChainDB.resets = {
+    { at = ago(59.2), zone = "Scarlet Monastery", by = "Berreta", char = me },
+    { at = ago(45),   zone = "Scarlet Monastery", by = "Berreta", char = me },
+    { at = ago(30.5), zone = "Scarlet Monastery", by = "Berreta", char = me },
+    { at = ago(11),   zone = "Scarlet Monastery", by = "Berreta", char = me },
+  }
+  eq(BT.Lockout(), 7, "loggen hans las sju, og sju finst ikkje")
+
+  S.printed = {}
+  local gone = BT.DedupeEntries()
+  eq(gone, 1, "eitt oppmøte var meldt to gonger")
+  eq(BT.Lockout(), 6, "og då er det seks")
+  ok(S.Said("duplicate arrival"), "og den seier kva den fjerna")
+
+  -- Og det er resetet som skil dei to tilfella, ikkje klokka. To inngangar
+  -- like tett på kvarandre, men med eit reset imellom, er to instansar: det
+  -- er heile mekanikken. Ein rask kjede ser nettopp slik ut.
+  local rescue = {
+    { t = ago(20),    seq = "r1", zone = "Scarlet Monastery", char = me },
+    { t = ago(19),    seq = "r2", zone = "Scarlet Monastery", char = me },
+  }
+  ChainDB.entries = rescue
+  ChainDB.resets = { { at = ago(19.5), zone = "Scarlet Monastery",
+                       by = "Berreta", char = me } }
+  eq(BT.DedupeEntries(), 0, "eit reset imellom gjer dei til to instansar")
+  eq(#ChainDB.entries, 2, "og begge blir ståande")
+
+  -- ta resetet vekk, og då er dei same oppmøtet
+  ChainDB.entries = {
+    { t = ago(20), seq = "r1", zone = "Scarlet Monastery", char = me },
+    { t = ago(19), seq = "r2", zone = "Scarlet Monastery", char = me },
+  }
+  ChainDB.resets = {}
+  eq(BT.DedupeEntries(), 1, "utan reset er dei eitt")
+
+  eq(BT.DedupeEntries(), 0, "og den finn ikkje på fleire")
+
+  ChainDB.entries, ChainDB.resets = before, beforeR
+end
+
+-- To zone-ins innan nokre sekund kan ikkje begge vere instansinngangar. Å gå
+-- ut av ein instans og inn i ein fersk er to lasteskjermar og eit reset
+-- imellom; spelet gjer ikkje det på ti sekund, kva enn sone-eventa seier. Så
+-- ein inngang så tett på den førre er same ankomst meldt to gonger.
+do
+  local before = ChainDB.entries
+  ChainDB.entries = {}
+  ChainCharDB.entrySeq = 0
+  ChainCharDB.lockedAt, ChainCharDB.lockMissing = nil, nil
+  S.zone, S.map, S.inInstance = "Stormwind Stockade", 34, true
+  S.now = S.now + 100
+  BT.NoteEntry()
+  eq(BT.Lockout(), 1, "fyrste ankomsten tel")
+  S.printed = {}
+  S.now = S.now + 3
+  BT.NoteEntry()
+  eq(BT.Lockout(), 1, "same ankomst tre sekund seinare tel ikkje igjen")
+  ok(S.Said("same arrival twice"), "og den seier frå at den let vere")
+  -- men eit skikkeleg opphald er ein ny instans
+  S.now = S.now + 60
+  BT.NoteEntry()
+  eq(BT.Lockout(), 2, "eit minutt seinare er det ein ny ein")
+  S.inInstance = false
+  ChainDB.entries = before
+end
+
+-- Og det må skje utan at du soner inn. Å stå utanfor med eit tal som ikkje kan
+-- stemme er det eine tilfellet ei zone-in aldri fiksar, for du prøver ikkje:
+-- baren seier at døra er stengd.
+do
+  local before = ChainDB.entries
+  ChainCharDB.lockedAt, ChainCharDB.lockMissing = nil, nil
+  ChainDB.entries = {}
+  for i = 1, 5 do
+    table.insert(ChainDB.entries, { t = S.now - i * 300, seq = "ekte" .. i,
+                                    char = "Tester" })
+  end
+  table.insert(ChainDB.entries, { t = S.now - 20, seq = "gjetta",
+                                  char = "Tester", fromRun = true })
+  eq(BT.Lockout(), 6, "seks i loggen, og seks finst ikkje")
+  S.printed = {}
+  S.now = S.now + 10
+  BT.PollLock()
+  eq(BT.Lockout(), 5, "tikken ryddar det utan at du rører deg")
+  ok(S.Said("could not have been right"), "og seier at den gjorde det")
+  local left = 0
+  for _, e in ipairs(ChainDB.entries) do
+    if tostring(e.seq):find("^ekte") then left = left + 1 end
+  end
+  eq(left, 5, "og det vi faktisk såg står att")
+  ChainDB.entries = before
+end
+
 -- og det går ut av seg sjølv
 S.now = S.now + 3700
 eq(BT.LockedByGame(), nil, "svaret frå spelet varer ikkje evig")
 S.now = S.now - 3700
 ChainCharDB.lockedAt, ChainCharDB.lockMissing = nil, nil
 
+-- Runloggen er betre bevis enn inngangsloggen: ein lagra run er prov på at du
+-- var inne, ein inngang er berre eit notat vi tok på vegen inn - og feilen med
+-- instans-ID-en sletta det notatet som eit falskt gjensyn. Ni runs den siste
+-- timen ved sida av "2/5" er ikkje eit reknestykke som går opp.
+do
+  local oldEntries, oldRuns = ChainDB.entries, ChainDB.runs
+  ChainDB.entries, ChainDB.runs = {}, {}
+  ChainCharDB.lockedAt, ChainCharDB.lockMissing = nil, nil
+  local me = "Tester"
+  for i = 1, 4 do
+    table.insert(ChainDB.runs, { at = S.now - i * 400, zone = "Scarlet Monastery",
+                                 id = "sm", xp = 9000, k = 60, t = 300,
+                                 char = me })
+  end
+  -- ein av dei var eit gjensyn, og det talde ikkje den gongen heller
+  ChainDB.runs[2].reentry = true
+  -- og éin inngang overlevde
+  table.insert(ChainDB.entries, { t = ChainDB.runs[1].at, seq = "x1",
+                                  zone = "Scarlet Monastery", char = me })
+  eq(BT.Lockout(), 1, "loggen har berre den eine att")
+  local back = BT.ReconcileEntries()
+  eq(back, 2, "to blir henta tilbake frå runloggen")
+  eq(BT.Lockout(), 3, "og då stemmer talet med runane")
+  eq(BT.ReconcileEntries(), 0, "og ein gong til gjev ingen dublettar")
+
+  ChainDB.entries, ChainDB.runs = oldEntries, oldRuns
+end
+
 -- instansloggen, slik Instances-fana les den
 ChainDB.entries = {}
 ChainCharDB.entrySeq = 0
 S.zone, S.map, S.inInstance = "Stormwind Stockade", 34, true
-for i = 1, 3 do BT.NoteEntry() end
+for i = 1, 3 do S.now = S.now + 180 BT.NoteEntry() end
 S.inInstance = false
 local log = BT.InstanceLog()
 eq(#log, 3, "tre oppføringar i loggen")
@@ -410,7 +897,7 @@ eq(log[#log].left, 0, "og har ingen nedteljing")
 -- døgntalet er informasjon, ikkje eit tak
 ChainDB.daily = 0
 ChainDB.entries = {}
-for i = 1, 5 do BT.NoteEntry() end
+for i = 1, 5 do S.now = S.now + 180 BT.NoteEntry() end
 
 --------------------------------------------------------------------------
 print("== reset-varsel ==")
@@ -490,7 +977,7 @@ end
 ChainDB.entries = {}
 ChainCharDB.entrySeq = 0
 ChainCharDB.run = nil
-for i = 1, 5 do BT.NoteEntry() end
+for i = 1, 5 do S.now = S.now + 180 BT.NoteEntry() end
 ChainCharDB.resetAt = S.now
 ChainCharDB.resetZone = "The Stockade"
 local full = table.concat(BT.AllLines(), "\n")
@@ -500,7 +987,7 @@ ok(not full:find("reset by Boostar %- go in"), "ingen 'go in' på 5/5")
 ChainDB.entries = {}
 full = table.concat(BT.AllLines(), "\n")
 ok(full:find("go in"), "go in når det er plass")
-for i = 1, 5 do BT.NoteEntry() end
+for i = 1, 5 do S.now = S.now + 180 BT.NoteEntry() end
 
 S.now = S.now + 300
 eq(BT.ResetReady(), nil, "varselet går ut når du står utanfor")
@@ -528,7 +1015,8 @@ ChainDB.announce = true
 local heldEntries = ChainDB.entries
 ChainDB.entries = {}                 -- ingen lockout: då er "go in" rett
 S.Fire(frame, "CHAT_MSG_SYSTEM", "The Stockade has been reset.")
-eq(S.said[1], "PARTY: Stockades reset - go in", "kunngjer når det er på")
+eq(S.said[1], "PARTY: [CHAIN] - Stockades reset - go in",
+   "kunngjer når det er på, med namnet framfor")
 
 -- gruppa ser ikkje lockouten din. Dei ser at du ikkje går inn, og så spør
 -- nokon. Difor seier addonen det sjølv - ei linje når du står fast, og ei
@@ -545,10 +1033,10 @@ do
   S.now = S.now + 60
   ChainCharDB.resetAt = nil
   S.Fire(frame, "CHAT_MSG_SYSTEM", "The Stockade has been reset.")
-  ok((S.said[1] or ""):find("locked 5/5"),
+  ok((S.said[1] or ""):find("%[CHAIN%] %- 5/5"),
      "på 5/5 seier han lockouten i staden for 'go in' (" ..
      tostring(S.said[1]) .. ")")
-  ok((S.said[1] or ""):find("free in"), "og kor lenge det er att")
+  ok((S.said[1] or ""):find("instance free in"), "og kor lenge det er att")
 
   -- og ikkje ein gong til med det same
   S.said = {}
@@ -561,7 +1049,7 @@ do
   S.said = {}
   S.now = S.now + 3700
   BT.PollLock()
-  ok((S.said[1] or ""):find("free again"),
+  ok((S.said[1] or ""):find("instance unlocked"),
      "og seier frå når det losnar (" .. tostring(S.said[1]) .. ")")
   S.said = {}
   BT.PollLock()
@@ -617,9 +1105,15 @@ do
   S.level = 30
   S.party = { { name = "Halvar-Stonefell", lvl = 60 } }
 
-  local function visit(instance)
+  -- Ein ekte GUID: Creature-0-<server>-<map>-<kopi>-<npc>-<spawn>. Kartet er
+  -- 189 for Scarlet Monastery i kvar einaste kopi som har funnest - det er
+  -- feltet etter som skil den eine kopien frå den andre. Testen stod før med
+  -- kartfeltet som det som varierte, og det var akkurat feilen: med berre det
+  -- feltet såg den andre Stockade-runen på dagen ut som eit gjensyn med den
+  -- fyrste, og talde ikkje mot dei fem i timen.
+  local function visit(copy, map)
     S.zone, S.map, S.inInstance = "Scarlet Monastery", 189, true
-    S.guid = "Creature-0-1-" .. instance .. "-4321-0000"
+    S.guid = "Creature-0-4672-" .. (map or 189) .. "-" .. copy .. "-3975-0000A1"
     S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
     S.Fire(frame, "PLAYER_TARGET_CHANGED")
     local re = ChainCharDB.run and ChainCharDB.run.reentry
@@ -630,12 +1124,142 @@ do
     return re
   end
 
-  ok(visit("189A") == nil, "Cathedral tel")
-  ok(visit("189B") == nil, "Armory tel som ein instans til")
-  ok(visit("189C") == nil, "og Library med")
+  ok(visit(7771) == nil, "Cathedral tel")
+  ok(visit(7772) == nil, "Armory tel som ein instans til")
+  ok(visit(7773) == nil, "og Library med")
   eq(BT.Lockout(), 3, "tre instansar den timen")
-  ok(visit("189A") == true, "men tilbake i same Cathedral tel ikkje på nytt")
+  ok(visit(7771) == true, "men tilbake i same Cathedral tel ikkje på nytt")
   eq(BT.Lockout(), 3, "framleis tre")
+
+  -- og same kopinummeret i ein annan instans er ikkje same instansen
+  ok(visit(7771, 33) == nil, "same nummer i Shadowfang er ein annan stad")
+  eq(BT.Lockout(), 4, "fire")
+
+  -- NIT seier begge halvdelane høgt:
+  --   "New instance Scarlet Monastery (5 this hour)"
+  --   "Same instance ID as last detected (4 this hour), merging"
+  -- Talet flyttar seg to gonger på veg inn - opp når du soner, ned att når
+  -- mobbane viser at det er den same du nettopp var i - og eit tal som rettar
+  -- seg sjølv i stille er eit tal du endar opp med å krangle med. Det er
+  -- nettopp difor NIT går an å kontrollere.
+  do
+    ChainDB.entries = {}
+    ChainCharDB.seenInst = {}
+    ChainCharDB.run = nil
+    S.targetDead = false
+    S.printed = {}
+    S.zone, S.map, S.inInstance = "Scarlet Monastery", 189, true
+    S.guid = "Creature-0-4672-189-7100-3975-0000A1"
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.Fire(frame, "PLAYER_TARGET_CHANGED")
+    ok(S.Said("new instance"), "den seier frå når ein instans blir talt")
+    ok(S.Said("1/5 this hour"), "og kva talet står på")
+
+    -- ut og inn att i den same instansen: talet skal gå ned igjen, og seie det
+    S.zone, S.inInstance = "Tirisfal Glades", false
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.now = S.now + 60
+    S.printed = {}
+    S.zone, S.inInstance = "Scarlet Monastery", true
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.Fire(frame, "PLAYER_TARGET_CHANGED")
+    ok(S.Said("same instance as the last one"), "og når den slår dei saman att")
+    eq(BT.Lockout(), 1, "og då står det på ein, ikkje to")
+
+    -- og den kan skruast av
+    ChainDB.sayCount = false
+    S.printed = {}
+    ChainCharDB.seenInst = {}
+    S.zone, S.inInstance = "Tirisfal Glades", false
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.now = S.now + 60
+    S.zone, S.inInstance = "Scarlet Monastery", true
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    eq(S.Said("new instance"), nil, "og den kan skruast av")
+    ChainDB.sayCount = nil
+
+    S.zone, S.inInstance = "Tirisfal Glades", false
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.guid = nil
+    ChainDB.entries = {}
+    ChainCharDB.seenInst = {}
+  end
+
+  -- Freistinga her er å splitte runen når mob-ID-ane sluttar å stemme: alle
+  -- fire SM-vengjene heiter "Scarlet Monastery", så sonenamnet rører seg
+  -- ikkje. Det blei prøvd, og baren gjekk til 6/5 - eit tal spelet ikkje gjev
+  -- deg, så det den talde var ikkje ein instans. NIT gjer det ikkje heller:
+  -- den brukar mob-ID-en berre til å avgjere om ein run som nettopp har
+  -- STARTA eigentleg er den førre som held fram, aldri til å avslutte ein som
+  -- er i gang.
+  do
+    ChainDB.entries = {}
+    ChainCharDB.seenInst = {}
+    ChainCharDB.run = nil
+    S.targetDead = false
+    S.zone, S.map, S.inInstance = "Scarlet Monastery", 189, true
+    S.guid = "Creature-0-4672-189-8001-3975-0000A1"
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.Fire(frame, "PLAYER_TARGET_CHANGED")
+    eq(BT.Lockout(), 1, "instansen tel ein")
+    eq(ChainCharDB.run.instId, "189:8001", "og runen veit kvar han er")
+
+    -- mobbar med ein annan ID midt i runen skal ikkje kunne lage ein til
+    for i = 1, 6 do
+      BT.NoteInstance("Creature-0-4672-189-8002-3975-0000B" .. i)
+    end
+    eq(BT.Lockout(), 1, "og framleis berre ein, uansett kva mobbane seier")
+    eq(ChainCharDB.run.instId, "189:8001", "runen held på ID-en sin")
+
+    S.zone, S.inInstance = "Tirisfal Glades", false
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.guid = nil
+    ChainDB.entries = {}
+    ChainCharDB.seenInst = {}
+  end
+
+  -- Og eit lik du dreg med deg i target-ramma er den same fella i sakte film:
+  -- går du ut og inn att med den døde moben frå førre instans framleis
+  -- markert, blir den nye runen stempla som eit gjensyn med den gamle og
+  -- inngangen kasta. Ein død target får ikkje seie noko.
+  do
+    ChainDB.entries = {}
+    ChainCharDB.seenInst = {}
+    ChainCharDB.run = nil
+    S.targetDead = false
+    S.zone, S.map, S.inInstance = "Scarlet Monastery", 189, true
+    S.guid = "Creature-0-4672-189-9001-3975-0000A1"
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.Fire(frame, "PLAYER_TARGET_CHANGED")
+    eq(BT.Lockout(), 1, "fyrste instansen tel")
+    ChainCharDB.run.xp = 9000
+
+    -- ut, og moben er død og framleis markert
+    S.targetDead = true
+    S.zone, S.inInstance = "Tirisfal Glades", false
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.now = S.now + 60
+
+    -- inn i ein heilt ny instans, med liket framleis i ramma
+    S.zone, S.inInstance = "Scarlet Monastery", true
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    eq(BT.Lockout(), 2, "den nye instansen tel, trass i liket i ramma")
+    eq(ChainCharDB.run.reentry, nil, "og blir ikkje stempla som eit gjensyn")
+
+    S.targetDead = false
+    S.zone, S.inInstance = "Tirisfal Glades", false
+    S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+    S.guid = nil
+    ChainDB.entries = {}
+    ChainCharDB.seenInst = {}
+  end
+
+  -- ein GUID utan noko å kjenne den att på skal ikkje gje eit falskt gjensyn
+  eq(BT.InstIdFrom("Creature-0-4672-189-0-3975-0000A1"), nil, "tom kopi-id tel ikkje")
+  eq(BT.InstIdFrom("Player-4672-00A1B2C3"), nil, "og ein spelar er ikkje ein instans")
+  eq(BT.InstIdFrom(nil), nil, "og ingenting er ingenting")
+  eq(BT.InstIdFrom("Creature-0-4672-189-7771-3975-0000A1"), "189:7771",
+     "kart og kopi saman er kva vi kjenner ein instans på")
   ChainDB.entries = {}
   ChainCharDB.seenInst = {}
   S.guid = nil
@@ -774,12 +1398,52 @@ for line in (body .. "\n"):gmatch("([^\n]*)\n") do
   if clean ~= "" then
     print(string.format("   %-62s (%d)", clean, #clean))
     if #clean > worst then worst = #clean end
-    ok(#clean <= 74, "linje over 74 teikn: " .. clean)
+    local cap = (BT.Budget and BT.Budget()) or 74
+    ok(#clean <= cap, "linje over " .. cap .. " teikn: " .. clean)
   end
+end
+CornersFit()
+
+-- Budsjettet er i teikn fordi teksten blir bygd lenge før det finst ei ramme
+-- å måle han i - men kor mange teikn som får plass kjem heilt an på ansiktet.
+-- Fireogsytti var målt éin gong, i den skrifta addonen brukte den gongen; med
+-- ei breiare skrift teikna dei same fireogsytti rett over kvarandre.
+do
+  local wide = BT.Budget()
+  eq(wide, 74, "med den gamle breidda er budsjettet det gamle")
+
+  S.charW = 9
+  BT.ForgetBudget()
+  local tight = BT.Budget()
+  ok(tight < wide, "ei breiare skrift gir eit mindre budsjett (" .. tight .. ")")
+  CornersFit("hjørna med brei skrift")
+
+  S.charW = 4
+  BT.ForgetBudget()
+  ok(BT.Budget() > wide, "og ei smalare gir eit større")
+  CornersFit("hjørna med smal skrift")
+
+  S.charW = 6
+  BT.ForgetBudget()
+  eq(BT.Budget(), 74, "og tilbake der vi var")
 end
 
 --------------------------------------------------------------------------
 print("== leveling-modus ==")
+-- Same ordlyd som i boost: kva level du er på står alt i den andre enden av
+-- baren, så talet er einaste nytt.
+local function DingWording()
+  local sl = BT.BuildText() or {}
+  local r = ((tostring(sl.barRight or ""):gsub("|c%x%x%x%x%x%x%x%x", ""))):gsub("|r", "")
+  ok(r:find("^ding in") or r:find("xp$"),
+     "høgre ende seier når du dingar (" .. r .. ")")
+  ok(not r:find(" to %d+$"), "og ikkje 'to 32' i ei anna form enn boost-linja")
+  -- Farta står midt mellom dei to hjørna under baren, ikkje midt i baren:
+  -- ho høyrer til på linja ho blir målt saman med.
+  local c = ((tostring(sl.bottomCenter or ""):gsub("|c%x%x%x%x%x%x%x%x", ""))):gsub("|r", "")
+  ok(c:find("xp/h") or c:find("no xp for") or c:find("measuring"),
+     "og farta står midt mellom hjørna (" .. c .. ")")
+end
 S.party = {}
 S.zone, S.inInstance = "Elwynn Forest", false
 S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
@@ -788,6 +1452,34 @@ S.quests = { { title = "Q1", done = true, xp = 1200, level = 20 },
              { title = "Q2", done = true, xp = 900, level = 19 } }
 BT.questScan = nil
 BT.ScanQuests()
+DingWording()
+
+-- Er du åleine og borte i fem minutt, sluttar farta å telje. I gruppe er eit
+-- opphald eit reset, ein summon eller nokon sin hund; åleine er det du som
+-- ikkje er der, og ei fart som tel vidare ved postkassa seier at du dingar om
+-- fem minutt.
+do
+  local wasParty = S.party
+  S.party = {}
+  ChainCharDB.buckets = {}
+  for _ = 1, 10 do
+    S.now = S.now + 60
+    S.xp = S.xp + 700
+    S.Fire(frame, "PLAYER_XP_UPDATE")
+  end
+  ok((BT.Rate() or 0) > 0, "med xp inn er det ei fart")
+
+  S.now = S.now + 6 * 60
+  eq(BT.Rate(), nil, "åleine er ho borte etter fem minutt stille")
+
+  S.party = { { name = "Kompis", lvl = 30 } }
+  ok((BT.Rate() or 0) > 0, "i gruppe tel han framleis - eit opphald er noko anna")
+
+  S.now = S.now + 6 * 60
+  eq(BT.Rate(), nil, "men ikkje etter tolv")
+  S.party = wasParty
+end
+
 eq(BT.questCount, 2, "to ferdige quests")
 eq(BT.questXP, 2100, "quest-xp summert")
 
@@ -831,6 +1523,7 @@ for line in (body .. "\n"):gmatch("([^\n]*)\n") do
     ok(#clean <= 74, "linje over 74 teikn: " .. clean)
   end
 end
+CornersFit()
 
 --------------------------------------------------------------------------
 print("== vindauge, opsjonar og eksport ==")
@@ -1030,8 +1723,55 @@ local csv = BT.BuildCSV()
 ok(csv:find("^at,date,zone"), "CSV har overskrift")
 local lines = select(2, csv:gsub("\n", "\n")) + 1
 eq(lines, #ChainDB.runs + 1, "ei CSV-linje per run")
+-- Alt addonen skriv går gjennom fem font-objekt av våre eigne. Eit font-objekt
+-- er delt av alle strengane som brukar det, så eit byte slår gjennom overalt
+-- med ein gong - utan reload, og utan å røre resten av spelet.
+do
+  local small = _G.ChainFontHighlightSmall
+  ok(small ~= nil, "addonen har sine eigne font-objekt")
+  local path, size = small:GetFont()
+  ok(path:find("DejaVuSans"), "og skriv i skrifta som fylgjer med addonen")
+  eq(size, 9, "eit hakk mindre, sidan ho er breiare enn spelet si eiga")
+
+  BT.SetFace("game")
+  path, size = _G.ChainFontHighlightSmall:GetFont()
+  ok(path:find("FRIZQT"), "spelet sitt eige ansikt er eitt val unna")
+  eq(size, 10, "og då er storleiken spelet sin òg")
+
+  -- storleiken kjem frå spelet sitt objekt med same namn, så eit byte av
+  -- ansikt endrar ikkje kor stor halve addonen er
+  local _, big = _G.ChainFontNormalLarge:GetFont()
+  eq(big, 16, "kvart objekt held sin eigen storleik")
+
+  -- og knappen i opsjonane seier kva du har og byter til neste
+  BT.ShowOptionsPage("share")
+  BT.RenderOptions()
+  if _G.ChainOptions and _G.ChainOptions.face then
+    local btn = _G.ChainOptions.face
+    eq(btn.fs:GetText(), "Game default", "knappen seier kva ansikt du har")
+    btn.__scripts.OnClick(btn)
+    ok((BT.Face().name or "") ~= "Game default", "og eit trykk byter til neste")
+  end
+
+  BT.SetFace("sans")
+end
+
 SlashCmdList["CHAIN"]("stats")
 SlashCmdList["CHAIN"]("help")
+
+-- Begge kunngjeringane er av til du slår dei på, og begge skal kunne slåast
+-- på utan å finne fram i opsjonane.
+do
+  local was, wasLock = ChainDB.announce, ChainDB.announceLock
+  ChainDB.announce, ChainDB.announceLock = false, false
+  SlashCmdList["CHAIN"]("announce")
+  eq(ChainDB.announce, true, "/chain announce slår på reset-kunngjeringa")
+  SlashCmdList["CHAIN"]("lockout")
+  eq(ChainDB.announceLock, true, "/chain lockout slår på nedteljinga")
+  SlashCmdList["CHAIN"]("lockout")
+  eq(ChainDB.announceLock, false, "og av igjen")
+  ChainDB.announce, ChainDB.announceLock = was, wasLock
+end
 
 --------------------------------------------------------------------------
 print("== gull og trade-logg ==")
@@ -1086,12 +1826,70 @@ do
   BT.TouchTrades()
 end
 
--- ein avbroten trade skal ikkje loggast
+-- Ein avbroten trade skal ikkje loggast. Eit avbrot melder alltid frå om seg
+-- sjølv - TRADE_REQUEST_CANCEL kjem etter TRADE_CLOSED når du avbryt og før
+-- det når den andre gjer det - så det er fråværet av den meldinga som skil ein
+-- fullført handel frå ein forlaten.
 S.playerMoney, S.targetMoney = 999 * 10000, 0
 S.Fire(tf, "TRADE_SHOW")
 S.Fire(tf, "TRADE_MONEY_CHANGED")
 S.Fire(tf, "TRADE_CLOSED")
+S.Fire(tf, "TRADE_REQUEST_CANCEL")
+S.RunTimers(10)
 eq(#ChainDB.trades, 3, "avbroten trade blir ikkje lagra")
+
+-- og den andre rekkjefølgja, når det er den andre parten som avbryt
+S.Fire(tf, "TRADE_SHOW")
+S.Fire(tf, "TRADE_MONEY_CHANGED")
+S.Fire(tf, "TRADE_REQUEST_CANCEL")
+S.Fire(tf, "TRADE_CLOSED")
+S.RunTimers(10)
+eq(#ChainDB.trades, 3, "og når avbrotet kjem først")
+
+-- Classic Era sender ikkje alltid "Trade complete." i det heile. Då er det
+-- to hakar og eit lukka vindauge som er beskjeden - utan dette blei logga
+-- ståande tom etter ein handel som openbert hadde skjedd.
+do
+  local before = #ChainDB.trades
+  S.tradeTarget = "Boostar-Testrealm"
+  S.playerMoney, S.targetMoney = 40 * 10000, 0
+  S.Fire(tf, "TRADE_SHOW")
+  S.Fire(tf, "TRADE_MONEY_CHANGED")
+  S.Fire(tf, "TRADE_ACCEPT_UPDATE", 1, 1)
+  S.Fire(tf, "TRADE_CLOSED")
+  eq(#ChainDB.trades, before, "ingenting blir skrive med det same")
+  S.RunTimers(10)
+  eq(#ChainDB.trades, before + 1, "men eit augeblink seinare er den logga")
+  eq(ChainDB.trades[before + 1].gave, 400000, "med beløpet")
+  ok((ChainDB.trades[before + 1].perRun or 0) > 0, "og prisen den blei kjøpt på")
+
+  -- Og utan hakar i det heile: eit vindauge som lukkar seg og aldri nemner
+  -- eit avbrot er ein handel som gjekk gjennom. Å krevje at begge hakane kom
+  -- i eitt event var framleis for strengt - når den andre aksepterer blir
+  -- handelen utført og vindauget rive ned, og det siste eventet kjem ikkje
+  -- påliteleg fram. Handlar gjekk framleis ulogga.
+  S.playerMoney, S.targetMoney = 77 * 10000, 0
+  S.Fire(tf, "TRADE_SHOW")
+  S.Fire(tf, "TRADE_MONEY_CHANGED")
+  S.Fire(tf, "TRADE_CLOSED")
+  S.RunTimers(10)
+  eq(#ChainDB.trades, before + 2, "lukka utan avbrot: det er ein handel")
+  eq(ChainDB.trades[before + 2].gave, 770000, "med beløpet")
+
+  -- og avbryt du etter at begge har akseptert, rekk avbrytinga å stoppe det
+  S.Fire(tf, "TRADE_SHOW")
+  S.Fire(tf, "TRADE_MONEY_CHANGED")
+  S.Fire(tf, "TRADE_ACCEPT_UPDATE", 1, 1)
+  S.Fire(tf, "TRADE_CLOSED")
+  S.Fire(tf, "TRADE_REQUEST_CANCEL")
+  S.RunTimers(10)
+  eq(#ChainDB.trades, before + 2, "avbrytinga rekk å stoppe det")
+
+  table.remove(ChainDB.trades)
+  table.remove(ChainDB.trades)
+  BT.TouchTrades()
+  S.now = S.now + 60
+end
 
 -- ein handel med nokon som ikkje er booster
 S.party = {}
@@ -1117,18 +1915,361 @@ ok(tcsv:find("^at,date,traded_with"), "trade-CSV har overskrift")
 eq(select(2, tcsv:gsub("\n", "\n")) + 1, #ChainDB.trades + 1, "ei linje per trade")
 SlashCmdList["CHAIN"]("gold")
 
+--------------------------------------------------------------------------
+print("== kva pengane kjøpte ==")
+-- Du betaler 400g for ti runs og så tel du på fingrane. Det er akkurat den
+-- rekninga addonet skal gjere: den veit kva ein run kostar hos han, den veit
+-- kva du betalte, og den veit kor mange runs du har fått.
+do
+  local oldTrades, oldRuns = ChainDB.trades, ChainDB.runs
+  local oldBoosters = ChainDB.boosters
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainDB.boosters = { Paidar = { price = 200, pack = 5 } }   -- 40g per run
+  BT.Touch() BT.TouchTrades()
+
+  local t0 = S.now
+  table.insert(ChainDB.trades, { at = t0, with = "Paidar", gave = 400 * 10000,
+                                 got = 0, id = "stock", by = "Paidar",
+                                 perRun = 40, lvl = 22 })
+  BT.TouchTrades()
+
+  local c = BT.BoosterCredit("Paidar")
+  ok(c ~= nil, "det finst ei rekning med han")
+  near(c.runsPaid, 10, "400g til 40g per run er ti runs")
+  eq(c.runsDone, 0, "ingen runs gått enno")
+  near(c.left, 10, "ti runs til gode")
+
+  -- fire runs seinare
+  for i = 1, 4 do
+    table.insert(ChainDB.runs, { at = t0 + i * 600, by = "Paidar", id = "stock",
+                                 zone = "The Stockade", xp = 9000, k = 30, t = 500 })
+  end
+  BT.Touch()
+  c = BT.BoosterCredit("Paidar")
+  eq(c.runsDone, 4, "fire runs gått")
+  near(c.left, 6, "seks igjen - og det er talet du slepp å telje")
+
+  -- går du forbi det du har betalt for, snur talet
+  for i = 5, 12 do
+    table.insert(ChainDB.runs, { at = t0 + i * 600, by = "Paidar", id = "stock",
+                                 zone = "The Stockade", xp = 9000, k = 30, t = 500 })
+  end
+  BT.Touch()
+  c = BT.BoosterCredit("Paidar")
+  near(c.left, -2, "to runs meir enn du har betalt for")
+
+  -- og betaler du att, står den rett igjen
+  table.insert(ChainDB.trades, { at = t0 + 8000, with = "Paidar",
+                                 gave = 200 * 10000, got = 0, id = "stock",
+                                 by = "Paidar", perRun = 40, lvl = 23 })
+  BT.TouchTrades()
+  c = BT.BoosterCredit("Paidar")
+  near(c.runsPaid, 15, "600g totalt er femten runs")
+  near(c.left, 3, "tre til gode att")
+  near(BT.Gold(c.paid), 600, "og totalen står i gull")
+
+  -- runs du gjekk før du nokon gong betalte han skal ikkje telje: elles
+  -- skuldar du tjue runs til ein booster du aldri har handla med før i dag
+  table.insert(ChainDB.runs, 1, { at = t0 - 86400, by = "Paidar", id = "stock",
+                                  zone = "The Stockade", xp = 9000, k = 30, t = 500 })
+  BT.Touch()
+  eq(BT.BoosterCredit("Paidar").runsDone, 12, "runs frå i går tel ikkje med")
+
+  -- men ein run same kvelden, rett før du gjorde opp, gjer det
+  table.insert(ChainDB.runs, 1, { at = t0 - 1800, by = "Paidar", id = "stock",
+                                  zone = "The Stockade", xp = 9000, k = 30, t = 500 })
+  BT.Touch()
+  eq(BT.BoosterCredit("Paidar").runsDone, 13, "same økta tel med")
+
+  -- den som aldri har fått ei krone har inga rekning i det heile
+  eq(BT.BoosterCredit("Ukjend"), nil, "ingen handel, inga rekning")
+  eq(BT.BoosterCredit(nil), nil, "og ingen booster heller")
+
+  -- hovudboka gjev same svar, men frose ved kvar betaling
+  local led = BT.CreditLedger()
+  local first, second = ChainDB.trades[1], ChainDB.trades[2]
+  ok(led[first] ~= nil, "første betalinga står i boka")
+  near(led[first].bought, 10, "og kva den kjøpte")
+  near(led[first].left, 9, "ein run var gått då pengane skifta hender")
+  near(led[second].bought, 5, "andre betalinga kjøpte fem")
+  near(led[second].left, 2, "og då stod det to att")
+
+  -- og det skal stå på baren
+  S.party = { { name = "Paidar-Testrealm", lvl = 60 } }
+  ChainCharDB.lastBy = "Paidar"
+  S.level, S.xp, S.xpMax = 23, 12000, 31700
+  S.zone, S.map, S.inInstance = "The Stockade", 34, true
+  S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
+  local cbody = table.concat(BT.AllLines(), "\n")
+  ok(cbody:find("runs left") or cbody:find("runs owed") or cbody:find("/%d+ runs"),
+     "baren seier kor mange runs som står att")
+  BT.BarTooltip(GameTooltip)
+  local ctip = S.TipText()
+  ok(ctip:find("your account with Paidar"), "tooltipen viser heile rekninga")
+  ok(ctip:find("that buys"), "kva pengane kjøpte")
+  ok(ctip:find("runs since"), "kor mange runs du har hatt")
+
+  -- og i trade-loggen, ei rad per betaling med kva den kjøpte og kva som stod att
+  BT.ToggleWindow()
+  BT.ShowTab("gold")
+  do
+    local wg = _G.ChainWindow
+    local withRuns = 0
+    for _, row in ipairs(wg.rows or {}) do
+      if row:IsShown() then
+        local buys = row.cells and row.cells[6]
+        local rest = row.cells and row.cells[7]
+        local bt = buys and (buys:GetText() or "") or ""
+        local rt = rest and (rest:GetText() or "") or ""
+        if bt:find("%d") and rt:find("%d") then withRuns = withRuns + 1 end
+      end
+    end
+    eq(withRuns, 2, "begge betalingane seier kva dei kjøpte og kva som stod att")
+  end
+  -- og på booster-rada, så du ser det der du vel kven du skal gå med
+  BT.ShowTab("boosters")
+  do
+    local wb = _G.ChainWindow
+    local found = false
+    for _, row in ipairs(wb.rows or {}) do
+      if row:IsShown() and row.cells and row.cells[1]
+         and (row.cells[1]:GetText() or ""):find("Paidar") then
+        local left = row.cells[12] and (row.cells[12]:GetText() or "") or ""
+        if left:find("%d") then found = true end
+      end
+    end
+    ok(found, "booster-rada seier kor mange runs du har til gode hos han")
+  end
+  BT.ToggleWindow()
+
+  -- Ein handel addonet ikkje fekk med seg skal kunne skrivast inn. Utan det
+  -- er balansen feil frå fyrste dag, og eit tal du veit er feil er eit tal du
+  -- sluttar å lese.
+  do
+    -- du skriv det inn no, etter alt som står over
+    S.now = t0 + 9000
+    local before = #ChainDB.trades
+    local leftBefore = BT.BoosterCredit("Paidar").left
+    local rec, why = BT.LogPayment("  paidar-Testrealm ", 200)
+    ok(rec ~= nil, "betaling skriven inn for hand (" .. tostring(why) .. ")")
+    eq(#ChainDB.trades, before + 1, "og den står i logga")
+    eq(rec.with, "Paidar", "namnet reinska")
+    ok(rec.manual, "merka som skriven inn")
+    near(BT.BoosterCredit("Paidar").left, leftBefore + 5,
+         "200g til 40g per run er fem runs meir")
+
+    -- og ut att om du skreiv feil
+    ok(BT.ForgetTrade(rec), "og den kan fjernast")
+    eq(#ChainDB.trades, before, "logga er som før")
+    near(BT.BoosterCredit("Paidar").left, leftBefore, "og balansen med")
+
+    eq(BT.LogPayment("", 100), nil, "utan namn skjer ingenting")
+    eq(BT.LogPayment("Paidar", 0), nil, "og utan beløp heller")
+    -- ein du aldri har sett pris på fell tilbake på instansen sin pris, slik
+    -- alt anna i addonet gjer
+    local fb = BT.LogPayment("Utanpris", 100)
+    ok(fb ~= nil and (fb.perRun or 0) > 0, "utan eigen pris gjeld instansen sin")
+    BT.ForgetTrade(fb)
+  end
+
+  -- Halve gullet i ein boost blir levert til ein bank-alt og ikkje til
+  -- boosteren sjølv. Handelen er ekte og pengane er borte; dei landar berre
+  -- på eit namn som aldri har køyrt noko for deg - så boosteren ser ubetalt ut
+  -- og alten ser ut som ein framand som skuldar deg tjue runs.
+  do
+    S.now = t0 + 9500
+    local leftBefore = BT.BoosterCredit("Paidar").left
+    BT.LogPayment("Banken", 200)
+    eq(BT.BoosterCredit("Paidar").left, leftBefore,
+       "gull til ein framand tel ikkje for boosteren")
+
+    BT.SetPaysFor("Banken", "Paidar")
+    near(BT.BoosterCredit("Paidar").left, leftBefore + 5,
+         "men peikar du alten mot han, tel det")
+    eq(BT.PaysFor("Banken"), "Paidar", "og den hugsar kven han betaler for")
+
+    -- og det kan gjerast om
+    BT.SetPaysFor("Banken", nil)
+    near(BT.BoosterCredit("Paidar").left, leftBefore, "og det kan gjerast om")
+    eq(BT.SetPaysFor("Paidar", "Paidar"), nil, "ein kan ikkje vere sin eigen alt")
+
+    -- frå slash-linja òg
+    SlashCmdList["CHAIN"]("alt banken paidar")
+    eq(BT.PaysFor("Banken"), "Paidar", "og frå slash-linja")
+    SlashCmdList["CHAIN"]("alt banken")
+    eq(BT.PaysFor("Banken"), nil, "og tilbake igjen")
+
+    -- Namn skal ikkje måtte skrivast. Halvparten heiter Zånzå og Cartèr.
+    S.party = { { name = "Berreta-Testrealm", lvl = 60 },
+                { name = "Cartèr-Testrealm", lvl = 60 } }
+    local names = BT.PayableNames()
+    local found = {}
+    for _, p in ipairs(names) do found[p.name] = p.why end
+    ok(found["Berreta"], "gruppa du står i er med")
+    ok(found["Cartèr"], "aksentar og alt")
+    ok(found["Paidar"], "og dei du har handla med før")
+    eq(found["Tester"], nil, "men ikkje deg sjølv")
+    S.party = {}
+  end
+
+  -- Og den blunte varianten, den du treng den dagen du installerer dette
+  -- midt i ei avtale: sju runs igjen, og ferdig med det.
+  do
+    local rec = BT.SetRunsLeft("Paidar", 7)
+    ok(rec ~= nil, "balansen kan settast direkte")
+    local c = BT.BoosterCredit("Paidar")
+    near(c.left, 7, "sju runs igjen, uansett kva som stod før")
+    eq(c.setTo, 7, "og den hugsar at du sa det")
+
+    -- runs frå før tel ikkje lenger med
+    near(c.runsDone, 0, "teljinga startar på nytt")
+
+    -- ein run etterpå trekk frå
+    table.insert(ChainDB.runs, { at = S.now + 10, by = "Paidar", id = "stock",
+                                 zone = "The Stockade", xp = 9000, k = 30, t = 500 })
+    BT.Touch()
+    near(BT.BoosterCredit("Paidar").left, 6, "ein run seinare står det seks")
+
+    -- og betaler du meir oppå, legg det seg til
+    BT.LogPayment("Paidar", 120)                    -- tre runs
+    near(BT.BoosterCredit("Paidar").left, 9, "tre kjøpte runs oppå dei seks")
+
+    -- hovudboka viser same tala, og seier kva lina er
+    local led = BT.CreditLedger()
+    local setRow
+    for _, t in ipairs(ChainDB.trades) do if t.setTo then setRow = t end end
+    ok(setRow and led[setRow] and led[setRow].setTo == 7,
+       "lina som sette balansen står som det i boka")
+
+    -- slash-vegen inn, for når vindauget er lukka
+    -- og frå slash-linja. Runen over ligg eit augeblink etter, så den blir
+    -- trekt frå med det same - som den skal: du sa fire, og så gjekk du ein.
+    SlashCmdList["CHAIN"]("left paidar 4")
+    near(BT.BoosterCredit("Paidar").left, 3, "og /chain left set den òg")
+    SlashCmdList["CHAIN"]("paid paidar 80")
+    near(BT.BoosterCredit("Paidar").left, 5, "og /chain paid legg til")
+    SlashCmdList["CHAIN"]("left paidar")
+    SlashCmdList["CHAIN"]("paid")
+  end
+
+  -- og raden for å skrive det inn skal stå på Trade-fana, og berre der
+  do
+    BT.ToggleWindow()
+    BT.ShowTab("gold")
+    local wp = _G.ChainWindow
+    ok(wp.payName and wp.payName:IsShown(), "namnefeltet står på Trade")
+    ok(wp.payRunsButton and wp.payRunsButton:IsShown(), "og knappen for runs")
+    ok(not (wp.addName and wp.addName:IsShown()),
+       "og add-someone-raden ligg ikkje oppå den")
+    -- x-en skal stå på lina du skreiv inn sjølv, og ikkje på dei andre
+    local manual, watched = 0, 0
+    for _, row in ipairs(wp.rows or {}) do
+      if row:IsShown() and row.del and row.del:IsShown() then manual = manual + 1 end
+      if row:IsShown() and row.del and not row.del:IsShown() then watched = watched + 1 end
+    end
+    ok(manual > 0, "x-en står på linene du skreiv inn")
+    -- og på dei addonet såg sjølv òg: deteksjonen er ein slutning no - eit
+    -- vindauge som lukka seg og aldri nemnde eit avbrot - og det som er
+    -- slutta seg til må kunne rettast av den som faktisk var der
+    eq(watched, 0, "og på dei addonet såg sjølv òg")
+    BT.ShowTab("boosters")
+    ok(not (wp.payName and wp.payName:IsShown()), "og er borte på dei andre fanene")
+    BT.ToggleWindow()
+  end
+
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = oldTrades, oldRuns, oldBoosters
+  ChainCharDB.lastBy = nil
+  S.party = {}
+  BT.Touch() BT.TouchTrades()
+end
+
 -- og det skal synast på baren, i begge modus
 S.party = { { name = "Boostar-Testrealm", lvl = 60 } }
 S.level, S.xp, S.xpMax = 23, 12000, 31700
 S.zone, S.map, S.inInstance = "The Stockade", 34, true
 S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
 local bbody = table.concat(BT.AllLines(), "\n")
-ok(bbody:find("paid "), "boost-modus viser kva steget har kosta")
+-- Gullet høyrer ikkje heime på baren. Under baren står to ting - kor mange
+-- runs du har att og kor lenge til du dinger - og kva steget har kosta står
+-- på tooltipen, der det er plass til å seie kva det tyder.
+ok(not bbody:find("paid "), "baren pakkar ikkje gullet inn under seg")
+S.tip = {}
+BT.BarTooltip(GameTooltip)
+ok((S.TipText() or ""):find("paid"), "men tooltipen seier kva steget har kosta")
 for line in (bbody .. "\n"):gmatch("([^\n]*)\n") do
   local clean = (line:gsub("|c%x%x%x%x%x%x%x%x", "")); clean = (clean:gsub("|r", ""))
   if clean ~= "" then
     print(string.format("   %-62s (%d)", clean, #clean))
     ok(#clean <= 74, "linje over 74 teikn: " .. clean)
+  end
+end
+CornersFit()
+
+-- Under baren står to ting når du er i ein boost, og berre to: kor mange runs
+-- du har att, og kor lenge til du dinger. Det er det du er der for.
+local function Plain(t)
+  return ((tostring(t or ""):gsub("|c%x%x%x%x%x%x%x%x", ""))):gsub("|r", "")
+end
+do
+  -- Rett under baren, og ingenting anna på den linja: kor mange runs du har
+  -- att i den eine enden, når du dingar i den andre. Baren sjølv held fram med
+  -- å seie kvar du er og kor langt det er.
+  local sl = BT.BuildText() or {}
+  ok(Plain(sl.bottomLeft):find("^ding in"),
+     "utan noko kjøpt er ding-linja åleine (" .. Plain(sl.bottomLeft) .. ")")
+  eq(sl.bottomRight, nil, "og ingenting i det andre hjørnet")
+
+  local who = BT.CurrentBooster() or "Boostar"
+  BT.SetPrice(who, 100, 10)
+  BT.LogPayment(who, 100)
+  BT.Touch()
+  local s2 = BT.BuildText() or {}
+  ok(Plain(s2.bottomLeft):find("runs"),
+     "med noko kjøpt er venstre kor mange runs du har att ("
+     .. Plain(s2.bottomLeft) .. ")")
+  ok(Plain(s2.bottomRight):find("^ding in"),
+     "og høgre når du dingar (" .. Plain(s2.bottomRight) .. ")")
+  ok(not Plain(s2.bottomLeft):find("xp/run")
+     and not Plain(s2.bottomRight):find("xp/run"),
+     "xp per run er ikkje der - det står på tooltipen")
+  ok(not Plain(s2.bottomLeft):find("paid ")
+     and not Plain(s2.bottomRight):find("paid "),
+     "og ikkje gullet heller")
+  CornersFit("hjørna under baren i boost")
+
+  -- Farta står midt i baren, i begge modus. Det er talet du fylgjer medan du
+  -- held på, det er like breitt heile tida, og midten er den eine staden
+  -- ingenting anna slåst om.
+  -- utan ei måling står det ingenting der, og baren seier avstanden som før
+  eq(s2.bottomCenter, nil, "utan ei måling står det ingenting mellom dei")
+  ok(Plain(s2.barCenter):find(" to %d+$"),
+     "og baren seier avstanden som før (" .. Plain(s2.barCenter) .. ")")
+  for _ = 1, 8 do
+    S.now = S.now + 120
+    S.xp = math.min(S.xpMax - 100, S.xp + 900)
+    S.Fire(frame, "PLAYER_XP_UPDATE")
+  end
+  BT.Touch()
+  local s4 = BT.BuildText() or {}
+  ok((BT.Rate() or 0) > 0, "og no har han ei måling")
+  ok(Plain(s4.bottomCenter):find("xp/h"),
+     "farta står midt mellom hjørna i boost òg (" .. Plain(s4.bottomCenter) .. ")")
+
+  -- Eit tal åleine seier ingenting: 56 000 xp/h er bra i SM og elendig i
+  -- Strat. Difor blir det målt mot det steget faktisk plar gi, og fargen er
+  -- svaret. Utan noko å måle mot står det kvitt - ein grøn farge ingen har
+  -- sjekka er verre enn ingen farge.
+  local stepNow2 = select(5, BT.StageSpan())
+  local st2 = stepNow2 and BT.StepStats(stepNow2)
+  if st2 and (st2.xp or 0) > 0 and (st2.t or 0) > 0 then
+    local ref = st2.xp / st2.t * 3600
+    ok((s4.bottomCenter or ""):find("|cff%x%x%x%x%x%x"),
+       "farta har ein farge når det finst noko å måle mot")
+    local got = BT.Rate() or 0
+    local want = (got / ref >= 0.95) and BT.COL.good
+      or ((got / ref >= 0.80) and BT.COL.warn or BT.COL.bad)
+    ok((s4.bottomCenter or ""):find(want:gsub("|", "%%|"), 1) ~= nil,
+       "og det er rett farge for " .. string.format("%.0f%%", got / ref * 100))
   end
 end
 
@@ -1145,6 +2286,7 @@ for line in (lbody .. "\n"):gmatch("([^\n]*)\n") do
     ok(#clean <= 74, "linje over 74 teikn: " .. clean)
   end
 end
+CornersFit()
 
 -- gull-fana skal teikne
 BT.ToggleWindow(); BT.ToggleWindow()
@@ -1277,8 +2419,13 @@ S.zone, S.map, S.inInstance = "The Stockade", 34, true
 S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
 local vbody = table.concat(BT.AllLines(), "\n")
 ok(not vbody:find("xp/g"), "verdien står ikkje på baren")
-ok(not vbody:find("xp/h"), "og heller ikkje boosteren sin rate")
+ok(not vbody:find("Gammal"), "og ikkje namnet hans heller")
+-- xp/h står no midt i baren, med vilje: det er talet du fylgjer medan du held
+-- på. Det er di eiga fart, ikkje boosteren si vurdering.
+ok(vbody:find("xp/h") or vbody:find("measuring") or vbody:find("no xp for"),
+   "farta står der derimot")
 ok(not vbody:find("grp "), "gruppa heller ikkje")
+TwoColumns("med ein booster")
 BT.BarTooltip(GameTooltip)
 local vtip = S.TipText()
 ok(vtip:find("xp per gold"), "men verdien står på tooltipen")
@@ -1291,6 +2438,47 @@ for line in (vbody .. "\n"):gmatch("([^\n]*)\n") do
     ok(#clean <= 74, "linje over 74 teikn: " .. clean)
   end
 end
+CornersFit()
+
+-- baren skal seie at gullet er heile pakkar. Reknestykket har alltid runda
+-- opp til pakkar, men "~3 200g" ser likt ut anten det er per run eller per
+-- ti - og då må ein spørje i staden for å sjå det.
+do
+  local who = BT.CurrentBooster()
+  local oldPack = ChainDB.pack
+  ChainDB.pack = 10
+  BT.SetPrice(who or "Boostar", 100, 10)
+  BT.Touch()
+  S.tip = {}
+  BT.BarTooltip(GameTooltip)
+  local body = ((S.TipText() or ""):gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+  local packs, size = body:match("(%d+) x (%d+)")
+  ok(packs ~= nil, "tooltipen seier kor mange pakkar gullet er")
+  eq(size, "10", "og kor mange runs det er i ein")
+  -- talet skal vere det same som utrekninga faktisk brukar
+  local remain, _, curStep = select(3, BT.StageSpan()), nil, select(5, BT.StageSpan())
+  local st = curStep and BT.StepStats(curStep)
+  if remain and remain > 0 and st and (st.xp or 0) > 0 then
+    local _, want = BT.Cost(curStep, remain / st.xp, who)
+    eq(tonumber(packs), want, "og det er dei pakkane du betaler for")
+  end
+  -- tooltipen skal seie kor mange runs du då har kjøpt
+  BT.BarTooltip(GameTooltip)
+  local tip = S.TipText()
+  ok(tip:find("you pay for"), "tooltipen seier kor mange runs pakkane dekker")
+
+  -- ein pakke på éin run har ingenting å seie frå seg
+  ChainDB.pack = 1
+  BT.SetPrice(who or "Boostar", 12, 1)
+  BT.Touch()
+  local one = table.concat(BT.AllLines(), "\n")
+  ok(not one:find("x1%)"), "og seier ingenting når ein pakke er ein run")
+
+  ChainDB.pack = oldPack
+  BT.SetPrice(who or "Boostar", 60, 5)
+  BT.Touch()
+end
+
 -- historikk-rader skal og kunne haldast over
 do
   BT.ShowTab("runs")
@@ -1301,6 +2489,109 @@ do
   local t = S.TipText()
   ok(t:find("xp,", 1, true), "med tala i klartekst")
   r1.__scripts.OnLeave(r1)
+end
+
+-- Den runden du er inne i høyrer heime øvst i lista. Han dukka fyrst opp når
+-- du hadde gått ut, som er det eine augeblikket du ikkje treng å bli fortalt
+-- om han - og når boosteren seier "det er fem" midt i kjeda, er runden du står
+-- i nettopp den det er usemje om.
+do
+  local keepRun = ChainCharDB.run
+  ChainCharDB.run = { start = S.now - 240, zone = "The Stockade", map = 34,
+                      id = "sm", by = "Teljar", xp = 4200, k = 31, lvl = 22 }
+  BT.ShowTab("runs")
+  local wl = _G.ChainWindow
+  local top = wl.rows[1]
+  local when = ((top.cells[1]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""))
+  when = (when:gsub("|r", ""))
+  eq(when, "now", "runden du er i står øvst, og seier 'now'")
+  ok((top.cells[3]:GetText() or ""):find("4,200"), "med xp så langt")
+  ok(not top.del:IsShown(), "han kan ikkje slettast - han er ikkje lagra enno")
+  ok(not top.pick:IsShown(), "og ikkje hakkast av - han tel ikkje for noko enno")
+
+  -- og når du går ut, er han borte att: han er lagra som ein vanleg run då,
+  -- og skal ikkje stå der to gonger
+  ChainCharDB.run = nil
+  BT.ShowTab("runs")
+  local nowRows = 0
+  for _, r in ipairs(wl.rows or {}) do
+    local txt = ((r.cells[1]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""))
+    if r:IsShown() and (txt:gsub("|r", "")) == "now" then nowRows = nowRows + 1 end
+  end
+  eq(nowRows, 0, "ute av instansen er han borte frå lista att")
+  ChainCharDB.run = keepRun
+end
+
+-- Å gjere opp teljinga med boosteren.
+--
+-- Han seier fem, du talde fire, og ingen av dykk kan bevise noko fordi begge
+-- tel i hovudet - han på tvers av tre kundar samtidig. Addonen tel ikkje i
+-- hovudet, så han kan legge tidene i party chat og saka er ute av verda.
+do
+  BT.ShowTab("runs")
+  local wq = _G.ChainWindow
+  ok(wq.sinceButton ~= nil and wq.sinceButton:IsShown(),
+     "historikk-fana har ein knapp for 'sidan sist betaling'")
+  ok(wq.sayButton ~= nil and wq.sayButton:IsShown(), "og ein for å seie det")
+
+  -- ei rad har eit hakk, og hakket slår av og på
+  local picky
+  for _, r in ipairs(wq.rows or {}) do
+    if r:IsShown() and r.pick and r.pick:IsShown() and r.pick.rec then
+      picky = r break
+    end
+  end
+  ok(picky ~= nil, "og kvar rad har eit hakk")
+  if picky then
+    local rec = picky.pick.rec
+    picky.pick.__scripts.OnClick(picky.pick)
+    ok((wq.sayNote:GetText() or ""):find("1"), "eitt hakk er sett")
+
+    -- og det blir sagt i party, med tidene i
+    S.said, S.printed = {}, {}
+    wq.sayButton.__scripts.OnClick(wq.sayButton)
+    local line = S.said[1] or S.printed[1] or ""
+    ok(line:find("1 run"), "linja seier kor mange (" .. line .. ")")
+    ok(line:find("ago"), "og kor lenge sidan")
+    ok(line:find("%[CHAIN%]"), "og kven som seier det")
+
+    -- av att
+    picky.pick.__scripts.OnClick(picky.pick)
+    ok(not (wq.sayNote:GetText() or ""):find("1 "), "hakket kan takast av")
+    S.said, S.printed = {}, {}
+    wq.sayButton.__scripts.OnClick(wq.sayButton)
+    eq(#S.said + #S.printed, 0, "og utan hakk blir ingenting sagt")
+    if rec then end
+  end
+
+  -- "sidan sist betaling" er spørsmålet som faktisk blir stilt: kva har eg
+  -- fått som eg ikkje har betalt for
+  do
+    local who = "Teljar"
+    ChainDB.trades = ChainDB.trades or {}
+    table.insert(ChainDB.trades, { at = S.now - 3000, with = who,
+      gave = 100 * 10000, got = 0, id = "sm", perRun = 20, char = "Tester" })
+    ChainDB.runs = ChainDB.runs or {}
+    local before = { at = S.now - 3600, t = 300, zone = "The Stockade",
+                     id = "sm", by = who, xp = 9000, k = 60, lvl = 20 }
+    table.insert(ChainDB.runs, before)
+    local a1 = { at = S.now - 2000, t = 300, zone = "The Stockade", id = "sm",
+                 by = who, xp = 9000, k = 60, lvl = 20 }
+    local a2 = { at = S.now - 1000, t = 300, zone = "The Stockade", id = "sm",
+                 by = who, xp = 9000, k = 60, lvl = 20 }
+    table.insert(ChainDB.runs, a1)
+    table.insert(ChainDB.runs, a2)
+    BT.Touch() BT.TouchTrades()
+    BT.ShowTab("runs")
+    wq.sinceButton.__scripts.OnClick(wq.sinceButton)
+    ok((wq.sayNote:GetText() or ""):find("2"),
+       "berre dei to etter betalinga blir hakka av ("
+       .. (wq.sayNote:GetText() or "") .. ")")
+    S.said, S.printed = {}, {}
+    wq.sayButton.__scripts.OnClick(wq.sayButton)
+    local line = S.said[1] or S.printed[1] or ""
+    ok(line:find("2 runs with " .. who), "og linja namngir han (" .. line .. ")")
+  end
 end
 
 -- ingen kolonne skal vere for smal for innhaldet sitt: "1h 42m ago" braut
@@ -1347,6 +2638,26 @@ do
   ok(whisperRow and whisperRow.whisper:IsShown(), "kvisk-knappen er synleg")
   -- nyaste øvst
   ok((w3.rows[1].cells[2]:GetText() or ""):find("Kviskar"), "nyaste annonse øvst")
+  -- Ein annonse er ein som står i ei by og seier han er ledig no. Ein halv
+  -- time seinare er han tre level inn i ei anna kjede, og linja er ei liste
+  -- over folk som skal skuffe deg.
+  do
+    S.now = S.now + 1900
+    BT.ShowTab("ads")
+    local left = 0
+    for _, r in ipairs(w3.rows or {}) do
+      if r:IsShown() and (r.cells[2]:GetText() or "") ~= "" then left = left + 1 end
+    end
+    eq(left, 0, "ein halvtime gamal annonse er av lista")
+    -- men det han lærte om prisen hans står att: det er kunnskap om han, og
+    -- den blir ikkje gammal slik tilbodet gjer
+    ok((ChainDB.boosters["Kviskar"] or {}).adPrice ~= nil
+       or (ChainDB.boosters["Kviskar"] or {}).price ~= nil,
+       "men prisen hans er ikkje gløymd")
+    S.now = S.now - 1900
+    BT.ShowTab("ads")
+  end
+
   -- og han skal faktisk opne eit kvisk
   S.whispered = {}
   whisperRow.whisper.__scripts.OnClick(whisperRow.whisper)
@@ -1368,6 +2679,19 @@ do
   BT.ShowTab("runs")
   ok(not w3.rows[1].whisper:IsShown(), "kvisk-knappen berre på annonse-fana")
   ChainDB.boosters = {}
+end
+
+-- Overskrifta på fana deler linje med "show only"-boksen, og ein fontstring
+-- som ikkje får plass klipper ikkje - han blir teikna rett inn i han. Det er
+-- same feilen som dei to hjørna under baren, og han såg slik ut:
+--   "...'left' is what is still oweshow only"
+do
+  local LIMIT = 120
+  for tab, layout in pairs(BT.LAYOUTS or {}) do
+    local t = layout.title or ""
+    ok(#t <= LIMIT, "overskrifta på " .. tab .. " er " .. #t
+       .. " teikn og går inn i søkeboksen: " .. t)
+  end
 end
 
 -- kvar einaste fane skal teikne utan å kaste
@@ -2431,10 +3755,29 @@ do
   S.Fire(lf, "CHAT_MSG_LOOT", "Kompis says something about loot")
   eq(#ChainDB.loot, before, "ei linje utan item er ikkje loot")
 
-  -- mynt, med klienten sine eigne einingsord
-  S.Fire(lf, "CHAT_MSG_MONEY", "You loot 2 Gold 15 Silver 3 Copper")
-  eq(ChainDB.loot[#ChainDB.loot].copper, 2 * 10000 + 15 * 100 + 3,
-     "mynt blir rekna om til kopar")
+  -- Mynt, med klienten sine eigne einingsord. Men mynt er ikkje loot slik eit
+  -- item er: det dett av nesten kvart lik, og ei linje per plukk gøymer dei
+  -- femten grøne inne i fire hundre linjer med "3s 95c". NIT ber det som eitt
+  -- tal per instans, og det høyrer til runen, ikkje til loggen.
+  eq(BT.ParseCoins("You loot 2 Gold 15 Silver 3 Copper"),
+     2 * 10000 + 15 * 100 + 3, "mynt blir rekna om til kopar")
+  do
+    local rowsBefore = #ChainDB.loot
+    ChainCharDB.run = { zone = "The Stockade", start = S.now, xp = 0, k = 0,
+                        id = "stock" }
+    S.Fire(lf, "CHAT_MSG_MONEY", "You loot 2 Gold 15 Silver 3 Copper")
+    eq(#ChainDB.loot, rowsBefore, "og det blir ikkje ei linje i loggen")
+    eq(ChainCharDB.run.coin, 2 * 10000 + 15 * 100 + 3, "det legg seg på runen")
+    S.Fire(lf, "CHAT_MSG_MONEY", "You loot 45 Silver")
+    eq(ChainCharDB.run.coin, 2 * 10000 + 15 * 100 + 3 + 4500, "og summerer seg")
+    eq(BT.RunCoin(), ChainCharDB.run.coin, "totalen tel runen du står i")
+    ChainCharDB.run = nil
+    -- utanfor ein run er det ikkje pengar instansen gav deg
+    local loose = BT.RunCoin()
+    S.Fire(lf, "CHAT_MSG_MONEY", "You loot 9 Gold")
+    eq(BT.RunCoin(), loose, "mynt utanfor ein run tel ikkje med")
+    eq(#ChainDB.loot, rowsBefore, "og lagar framleis inga linje")
+  end
 
   -- verdi kjem frå klienten, og "ikkje lasta enno" skal seiast som ukjent og
   -- ikkje som null - ein null i ein pengekolonne er ein påstand
@@ -2446,7 +3789,7 @@ do
   -- summane
   local value, byWho, items, coins, unknown = BT.LootTotals()
   eq(items, 6, "alle gjenstandane er talde (1 + 1 + 4)")
-  ok(coins > 0, "og myntane for seg")
+  eq(coins, BT.RunCoin(), "og myntane kjem frå runane, ikkje frå loggen")
   ok(value > 0, "det blir ein sum av det")
   ok(byWho[1] and byWho[1].who, "og ei liste over kven som fekk mest")
 
@@ -2473,17 +3816,16 @@ do
     S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK .. ".")
     eq(ChainDB.loot[#ChainDB.loot].from, nil, "ukjend lik gjev ingen kjelde")
 
-    -- Mynt kjem av same liket som resten i det vindauget. Utan dette hamna
-    -- pengane og tøyet frå éin mob på to linjer som ikkje såg i slekt ut.
+    -- Mynt har inga kjelde å få lenger, fordi det ikkje er ei linje. Det som
+    -- betyr noko er at itemet frå same vindauget framleis får si.
     BT.NoteCorpse("Creature-0-1-1-1-731-0003", "Riverpaw Mystic")
     S.lootSlots = { "Creature-0-1-1-1-731-0003" }
     BT.NoteLootSource()
+    local n0 = #ChainDB.loot
     S.Fire(lf, "CHAT_MSG_MONEY", "You loot 16 Copper")
     S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK2 .. "x3.")
-    local coinRow = ChainDB.loot[#ChainDB.loot - 1]
-    local itemRow = ChainDB.loot[#ChainDB.loot]
-    eq(coinRow.from, "Riverpaw Mystic", "myntane får kjelda si")
-    eq(itemRow.from, coinRow.from, "og same mob står på begge")
+    eq(#ChainDB.loot, n0 + 1, "berre itemet blei ei linje")
+    eq(ChainDB.loot[#ChainDB.loot].from, "Riverpaw Mystic", "og det fekk kjelda si")
 
     -- og ei gammal kjelde skal ikkje henge att på neste lik
     BT.NoteCorpse("Creature-0-1-1-1-731-0002", "Defias Bandit")
@@ -2494,6 +3836,59 @@ do
     eq(ChainDB.loot[#ChainDB.loot].from, nil,
        "ei gammal kjelde blir ikkje hengande att")
     S.lootSlots = {}
+  end
+
+  -- Og dei fire hundre linjene som alt ligg der skal ryddast, ikkje berre
+  -- sluttast å lage. Dei blir folda inn i runen dei skjedde i, ved klokka.
+  do
+    local oldLoot, oldRuns = ChainDB.loot, ChainDB.runs
+    local t0 = S.now
+    ChainDB.runs = {
+      { at = t0, t = 600, zone = "The Stockade", id = "stock", xp = 9000, k = 30 },
+      { at = t0 + 1200, t = 600, zone = "The Stockade", id = "stock",
+        xp = 9000, k = 30 },
+    }
+    ChainDB.loot = {
+      { at = t0 - 7200, copper = 111 },                       -- før alt
+      { at = t0 + 60, copper = 500 },                         -- i fyrste
+      { at = t0 + 120, copper = 250 },                        -- i fyrste
+      { at = t0 + 900, copper = 77 },                         -- mellom to runs
+      { at = t0 + 1300, copper = 1000 },                      -- i andre
+      { at = t0 + 1350, id = 12345, link = "x", n = 1 },      -- eit item
+    }
+    ChainDB.coinFolded, ChainDB.coinLoose = nil, nil
+    local moved, loose = BT.FoldCoins()
+    eq(#ChainDB.loot, 1, "berre itemet står att i loggen")
+    eq(ChainDB.runs[1].coin, 750, "myntane frå fyrste runen hamna der")
+    eq(ChainDB.runs[2].coin, 1000, "og frå den andre der")
+    eq(moved, 1750, "det som fann ein heim")
+    eq(loose, 111 + 77, "og det som ikkje gjorde det")
+    eq(ChainDB.coinLoose, 188, "blir lagt til side i staden for å forsvinne")
+    eq(BT.RunCoin(), 750 + 1000 + 188, "totalen er alt saman")
+
+    -- og den gjer det berre éin gong
+    eq(select(1, BT.FoldCoins()), 0, "og ikkje ein gong til")
+
+    -- historikk-fana skal vise det per run, slik NIT gjer per instans
+    BT.Touch()
+    BT.ToggleWindow()
+    BT.ShowTab("runs")
+    do
+      local wr, withGold = _G.ChainWindow, 0
+      for _, row in ipairs(wr.rows or {}) do
+        if row:IsShown() then
+          local g = (row.cells[7]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", "")
+          g = g:gsub("|r", "")
+          if g:find("%d") and g ~= "-" then withGold = withGold + 1 end
+        end
+      end
+      eq(withGold, 2, "begge runane viser kva mobbane gav i rått gull")
+    end
+    BT.ToggleWindow()
+
+    ChainDB.loot, ChainDB.runs = oldLoot, oldRuns
+    ChainDB.coinFolded, ChainDB.coinLoose = nil, nil
+    BT.Touch()
   end
 
   -- Mynt skal ikkje runde seg vekk. Femten sølv kom ut som "0g", og ein
@@ -2507,9 +3902,9 @@ do
 
 
   -- Ei rad per lik. Loggen lagrar éi oppføring per ting, som er rett -
-  -- eksport og summar vil ha det slik - men ein mob som gav deg ei jakke,
-  -- tre tøy og trettifem kopar er éi hending, og å lese det som tre linjer
-  -- som tilfeldigvis står ved sida av kvarandre er å lese det feil.
+  -- eksport og summar vil ha det slik - men ein mob som gav deg ei jakke og
+  -- tre tøy er éi hending, og å lese det som to linjer som tilfeldigvis står
+  -- ved sida av kvarandre er å lese det feil.
   do
     ChainDB.loot = {}
     BT.NoteCorpse("Creature-0-1-1-1-731-0007", "Riverpaw Taskmaster")
@@ -2518,7 +3913,7 @@ do
     S.Fire(lf, "CHAT_MSG_MONEY", "You loot 35 Copper")
     S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK .. ".")
     S.Fire(lf, "CHAT_MSG_LOOT", "You receive loot: " .. LINK2 .. "x3.")
-    eq(#ChainDB.loot, 3, "loggen har framleis tre oppføringar")
+    eq(#ChainDB.loot, 2, "loggen har to oppføringar - myntane er ikkje ei")
 
     BT.ShowTab("loot")
     local wg, rows = _G.ChainWindow, {}
@@ -2529,11 +3924,40 @@ do
     local cell = (rows[1].cells[2]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
     ok(cell:find("Krol Blade"), "med gjenstanden")
     ok(cell:find("3x"), "og talet på dei det var fleire av")
-    ok(cell:find("35c"), "og myntane, sist")
+    ok(not cell:find("35c"), "og myntane står ikkje der - dei ligg på runen")
     eq((rows[1].cells[3]:GetText() or ""), "4", "og n er alt som fall (1 + 3)")
-    local worth = (rows[1].cells[6]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-    -- 15000 + 3 * 500 + 35
-    eq(worth, BT.Coin(15000 + 1500 + 35), "og verdien er summen av heile liket")
+    local worth = (rows[1].cells[7]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    eq(worth, BT.Coin(15000 + 1500), "og verdien er summen av heile liket")
+    -- og kvaliteten på det beste som fall, som eige felt: sortert på talet,
+    -- ikkje på ordet, så epic hamnar over rare og ikkje alfabetisk mellom dei
+    local q = (rows[1].cells[4]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    eq(q, BT.QualityWord(4), "kvaliteten på det beste liket gav")
+
+    -- Tooltipen skal vere klienten sin eigen for gjenstanden - stats, level,
+    -- binding, alt ei liste med namn ikkje kan seie - og vår eiga under, ikkje
+    -- i staden: resten av det liket gav, kven som tok det og kvar.
+    rows[1].__scripts.OnEnter(rows[1])
+    local t = S.TipText()
+    ok(t:find("%[hyperlink%]"), "vi spør spelet om den ekte tooltipen")
+    ok(t:find("Krol Blade"), "og det er den beste gjenstanden vi spør om")
+    ok(t:find("picked it up"), "vår eiga står under, ikkje i staden")
+    ok(t:find("Shift%-click"), "og den seier korleis du får den i chatten")
+
+    -- shift-klikk legg lenka i det du skriv, slik det verkar elles i spelet
+    S.chatLinks = {}
+    S.shiftDown = false
+    rows[1].__scripts.OnMouseUp(rows[1], "LeftButton")
+    eq(#S.chatLinks, 0, "eit vanleg klikk gjer ingenting")
+    S.shiftDown = true
+    rows[1].__scripts.OnMouseUp(rows[1], "LeftButton")
+    eq(#S.chatLinks, 1, "shift-klikk legg den i chatten")
+    ok(tostring(S.chatLinks[1]):find("Krol Blade"), "og det er rett gjenstand")
+    S.shiftDown = false
+
+    -- og sortering på kvalitet er på talet, ikkje på ordet
+    ok(BT.QualityWord(4) ~= nil, "kvaliteten har eit ord klienten eig")
+    eq(BT.QualityWord(2), _G.ITEM_QUALITY2_DESC or "Uncommon",
+       "og det er klienten sitt, ikkje vårt")
 
     -- eit anna lik skal ikkje slåast saman med det
     S.now = S.now + 30
@@ -2716,6 +4140,57 @@ do
   BT.NoteCombatLogUnit("Creature-0-1-1-1-99", "Ulv", 0x440)
   eq(ChainDB.enemies["Ulv"], nil, "mobs er ikkje spelarar")
   BT.NoteCombatLogUnit("Player-4-0003", "Snill-Testrealm", 0x400)   -- ikkje fiendtleg
+
+  -- Ein som snik seg. Dette blei lese berre av auraene på ein unit klienten
+  -- alt teikna - eit nameplate, targetet ditt - altså måtte du kunne SJÅ han
+  -- før vi fortalde deg at du ikkje kunne. Spy les det av kamploggen, som
+  -- kunngjer auraen i det den landar, to rom unna. Det er det varselet som er
+  -- verdt noko.
+  do
+    local ab = BT.alertFrame and BT.alertFrame()
+    if ab then ab:Hide() end
+    ChainDB.stealthQuiet = {}
+    S.guids["Player-4-0050"] = { class = "ROGUE", race = "Human", name = "Snik" }
+    BT.NoteCombatLogUnit("Player-4-0050", "Snik-Testrealm", 0x440,
+                         1784, "SPELL_AURA_APPLIED", "Stealth", true)
+    ok(ChainDB.enemies["Snik"], "han blir sett")
+    eq(ChainDB.enemies["Snik"].stealth, true, "og merkt som snikande")
+    ab = BT.alertFrame and BT.alertFrame()
+    ok(ab and ab:IsShown(), "og varselet kjem opp")
+    ok(ab and (ab.head:GetText() or ""):find("Stealth"),
+       "og seier kva slags varsel")
+
+    -- id-en er svaret som ikkje kan vere feil: namnet er ulikt på kvar
+    -- klient, og tabellen var fem engelske ord - altså slo den ikkje til i
+    -- det heile på ein tysk klient
+    ok(BT.StealthSpell(5215, nil), "Prowl blir kjent att på id åleine")
+    ok(BT.StealthSpell(nil, "Stealth"), "og på namn når vi har namnet")
+    ok(not BT.StealthSpell(1111, "Frostbolt"), "og ein vanleg spell gjer ikkje")
+
+    -- og han som svingar er han du kan sjå, kva enn den siste auraen sa
+    BT.NoteCombatLogUnit("Player-4-0050", "Snik-Testrealm", 0x440,
+                         nil, "SWING_DAMAGE", nil, true)
+    eq(ChainDB.enemies["Snik"].stealth, false, "eit slag tek han ut av snikinga")
+
+    -- og auraen som fell av gjer det same
+    BT.NoteCombatLogUnit("Player-4-0050", "Snik-Testrealm", 0x440,
+                         1784, "SPELL_AURA_APPLIED", "Stealth", true)
+    eq(ChainDB.enemies["Snik"].stealth, true, "han snik seg att")
+    BT.NoteCombatLogUnit("Player-4-0050", "Snik-Testrealm", 0x440,
+                         1784, "SPELL_AURA_REMOVED", "Stealth", true)
+    eq(ChainDB.enemies["Snik"].stealth, false, "og auraen som fell av tel òg")
+
+    -- det som blir gjort MOT nokon seier ingenting om dei: berre kjelda
+    BT.NoteCombatLogUnit("Player-4-0051", "Offer-Testrealm", 0x440,
+                         1784, "SPELL_AURA_APPLIED", "Stealth")
+    eq(ChainDB.enemies["Offer"].stealth, nil,
+       "målet for ein spell blir ikkje merkt som snikande")
+    if ab then ab:Hide() end
+    ChainDB.stealthQuiet = {}
+    -- rydd etter oss: lista under blir målt i høgd, og to ekstra namn i ho
+    -- er nok til å gjere den målinga til noko anna
+    ChainDB.enemies["Snik"], ChainDB.enemies["Offer"] = nil, nil
+  end
 
   -- Kamploggen ber ingen klasse, og difor sat alle som blei funne der som eit
   -- grått namn med spørsmålsteikn. GUID-en er nok til å spørje klienten,
@@ -2944,6 +4419,36 @@ do
         ok(mn:IsShown(), "menyen er oppe")
         BT.RefreshNearby()
         ok(mn:IsShown(), "og lista si oppdatering lukkar han ikkje")
+
+        -- eit klikk utanfor menyen legg han vekk, slik alle andre menyar i
+        -- spelet gjer. Ein meny som blir ståande les som om han har hengt seg.
+        ok(mn.closer ~= nil and mn.closer:IsShown(),
+           "med menyen oppe ligg det eit klikkfelt over resten av skjermen")
+        mn.closer.__scripts.OnMouseDown(mn.closer)
+        ok(not mn:IsShown(), "og eit klikk der lukkar menyen")
+        ok(not mn.closer:IsShown(), "og klikkfeltet er borte med han")
+
+        -- Klikkfeltet held på at klikket landar hos oss og ikkje på ei anna
+        -- ramme over heile skjermen, og det kan ein ikkje vere sikker på. So
+        -- menyen gir opp av seg sjølv når peikaren har gått frå han.
+        BT.AlertMenu()
+        ok(mn:IsShown(), "menyen er oppe igjen")
+        S.mouseOver = mn
+        mn.__scripts.OnUpdate(mn, 30)
+        ok(mn:IsShown(), "han står så lenge peikaren er på han")
+        S.mouseOver = nil
+        mn.__scripts.OnUpdate(mn, 2)
+        ok(mn:IsShown(), "og eit par sekund etter at han gjekk")
+        mn.__scripts.OnUpdate(mn, 4)
+        ok(not mn:IsShown(), "men ikkje fem")
+
+        -- og bed du om han att på det same, er det du som legg han vekk
+        BT.AlertMenu()
+        ok(mn:IsShown(), "opp att")
+        BT.AlertMenu()
+        ok(not mn:IsShown(), "og eit trykk til på same staden lukkar han")
+
+        BT.AlertMenu()
         ChainDB.nearbyList = true
         mn:Hide()
         -- det skal ikkje forsvinne av seg sjølv medan du held på
@@ -2959,6 +4464,101 @@ do
         BT.PlaceAlert(false)
       end
 
+      -- Ei liste som berre finst medan nokon er i nærleiken er ei liste du
+      -- ikkje kan sjå på: ein tom skjerm og eit øydelagt addon ser heilt like
+      -- ut, og du finn ut kva det var når ein rogue alt er oppå deg.
+      do
+        S.inCombat = false
+        ChainDB.enemies = {}
+        ChainDB.nearbyAlways = nil
+        BT.RefreshNearby()
+        local nb6 = _G.ChainNearby
+        ok(not nb6:IsShown(), "utan nokon i nærleiken er ho borte som før")
+
+        BT.ToggleNearbyAlways(true)
+        ok(nb6:IsShown(), "men slår du det på, står ho der")
+        -- Tom seier ho kva ho er, ikkje kva ho ikkje har. "nobody about" er
+        -- svar på eit spørsmål ingen stilte.
+        ok((nb6.title:GetText() or ""):find("Enemy tracker"),
+           "tom står namnet der, ikkje '0 nearby' og ikkje 'nobody about'")
+        ok(not (nb6.title:GetText() or ""):find("nobody"),
+           "og ikkje eit ord om kven som ikkje er der")
+
+        -- og ein veg inn til resten: lista er eit hjørne av Enemies-fana
+        ok(nb6.open ~= nil, "det er ein knapp i toppen")
+        BT.ShowTab("runs")
+        nb6.open.__scripts.OnClick(nb6.open)
+        eq(BT.WindowMode and BT.WindowMode(), "enemies",
+           "og han tek deg til Enemies-fana")
+        local headOnly = nb6:GetHeight()
+
+        -- og ho veks når nokon dukkar opp
+        BT.NoteEnemy("Nykomar", { level = 40, class = "MAGE" })
+        BT.RefreshNearby()
+        ok(nb6:GetHeight() > headOnly, "og veks når nokon dukkar opp")
+        ok((nb6.title:GetText() or ""):find("1 nearby"), "og tel dei")
+
+        -- Dra-merket høyrer til den tilstanden der du faktisk kan dra. Det
+        -- stod på den låste, som er akkurat feil veg.
+        ChainDB.nearbyLocked = nil
+        BT.RefreshNearby()
+        ok((nb6.title:GetText() or ""):find("drag me"),
+           "ulåst seier at du kan dra henne")
+        BT.ToggleNearbyLock()
+        ok(not (nb6.title:GetText() or ""):find("drag me"),
+           "og låst seier ingenting - du har alt bestemt deg")
+        ok(not (nb6.title:GetText() or ""):find("locked"),
+           "heller ikkje ordet 'locked'")
+        ChainDB.nearbyLocked = nil
+        BT.ToggleNearbyAlways(false)
+        ChainDB.enemies = {}
+        BT.RefreshNearby()
+      end
+
+      -- Varselet sjølv skal og kunne klikkast. Det er der auget ditt er i det
+      -- augeblinket, og å måtte finne fram til lista i staden er akkurat den
+      -- ekstra sekundet ein rogue treng.
+      do
+        S.inCombat = false
+        ChainDB.enemies = {}
+        BT.AddKOS("Zanza")
+        BT.NoteEnemy("Zanza", { level = 60, class = "ROGUE" })
+        local ab2 = BT.alertFrame()
+        ok(ab2.target ~= nil, "varselet har ein secure knapp over seg")
+        eq(ab2.target:GetAttribute("macrotext1"), "/targetexact Zanza",
+           "og den peikar på den varselet ropar om")
+        eq(ab2.target:ClicksFor(), "AnyDown,AnyUp",
+           "meld på for både ned og opp, elles gjer knappen ingenting")
+        -- og han peikar seg sjølv i det du klikkar, same kva siste
+        -- oppfrisking rakk
+        ab2.target:SetAttribute("macrotext1", nil)
+        ab2.target.__scripts.PreClick(ab2.target)
+        eq(ab2.target:GetAttribute("macrotext1"), "/targetexact Zanza",
+           "og peikar seg sjølv på veg inn")
+        ok((ab2.hint:GetText() or ""):find("click to target"),
+           "og det står kva eit klikk gjer")
+
+        -- I kamp er attributtet fryst. Eit sett frå før verkar framleis, så
+        -- knappen er ikkje daud - han peikar berre på den han peika på. Å
+        -- seie kven er det einaste ærlege: eit varsel som ropar eitt namn
+        -- medan klikket targetar eit anna er verre enn eitt som innrømmer det.
+        S.inCombat = true
+        BT.AddKOS("Ocoka")
+        BT.NoteEnemy("Ocoka", { level = 34, class = "SHAMAN" })
+        eq(ab2.target:GetAttribute("macrotext1"), "/targetexact Zanza",
+           "i kamp blir makroen ståande")
+        ok((ab2.hint:GetText() or ""):find("targets Zanza"),
+           "og varselet seier kven klikket faktisk tek")
+
+        -- ute av kampen tek det att med det same, ikkje ved neste tikk
+        S.inCombat = false
+        BT.CombatEnded()
+        eq(ab2.target:GetAttribute("macrotext1"), "/targetexact Ocoka",
+           "etter kampen peikar det på rett person")
+        BT.RemoveKOS("Zanza") BT.RemoveKOS("Ocoka")
+        ab2:Hide()
+      end
+
       -- Targeting er protected: TargetUnit kan ikkje kallast frå ein addon i
       -- det heile, heller ikkje utanfor kamp. Einaste vegen er at sjølve
       -- klikket køyrer ein /target-makro på ein secure knapp.
@@ -2970,7 +4570,12 @@ do
         local nb5 = _G.ChainNearby
         local r = nb5.rows[1]
         eq(r:GetAttribute("type1"), "macro", "rada er ein makro-knapp")
-        eq(r:GetAttribute("macrotext1"), "/target Maal",
+        -- Ein secure knapp som berre er meld på for "LeftButtonUp" køyrer
+        -- ikkje handlinga i det heile på denne klienten. Spy har den linja i
+        -- kjeldekoda si med eit kommenteringsteikn framfor og denne under.
+        eq(r:ClicksFor(), "AnyDown,AnyUp",
+           "og meld på for både ned og opp, elles gjer han ingenting")
+        eq(r:GetAttribute("macrotext1"), "/targetexact Maal",
            "som targetar den som står der")
 
         -- i kamp er attributta fryste, så lista ventar i staden for å peike
@@ -2978,7 +4583,7 @@ do
         S.inCombat = true
         BT.NoteEnemy("Ny I Kamp", { level = 50 })
         BT.RefreshNearby()
-        eq(r:GetAttribute("macrotext1"), "/target Maal",
+        eq(r:GetAttribute("macrotext1"), "/targetexact Maal",
            "i kamp blir klikket ståande der det var")
         ok((nb5.title:GetText() or ""):find("held"),
            "og lista seier frå at ho held igjen")
@@ -2991,19 +4596,30 @@ do
           if type(row.rec) == "table" then names[row.rec.name] = row end
         end
         ok(names["Ny I Kamp"] ~= nil, "etter kampen er den nye der")
-        eq(names["Ny I Kamp"]:GetAttribute("macrotext1"), "/target Ny I Kamp",
+        eq(names["Ny I Kamp"]:GetAttribute("macrotext1"), "/targetexact Ny I Kamp",
            "og klikket peikar på han")
+
+        -- Klikket peikar seg sjølv i det du klikkar, ikkje berre ved neste
+        -- oppfrisking: rada under peikaren er den du vil ha.
+        names["Maal"]:SetAttribute("macrotext1", nil)
+        names["Maal"].armedFor = nil
+        names["Maal"].__scripts.PreClick(names["Maal"])
+        eq(names["Maal"]:GetAttribute("macrotext1"), "/targetexact Maal",
+           "klikket peikar seg sjølv på veg inn")
 
         -- shift targetar OG merkar, sidan den sikre delen køyrer uansett
         ChainDB.kos = {}
         S.shiftDown = true
-        names["Maal"].__scripts.PostClick(names["Maal"], "LeftButton")
+        names["Maal"].__scripts.PostClick(names["Maal"], "LeftButton", true)
+        eq(BT.IsKOS("Maal"), nil,
+           "nedtrykket gjer ingenting - klikket kjem to gonger")
+        names["Maal"].__scripts.PostClick(names["Maal"], "LeftButton", false)
         S.shiftDown = false
         eq(select(1, BT.IsKOS("Maal")), "named", "shift-klikk merkar han òg")
 
         -- og eit vanleg venstreklikk merkar ikkje: det berre targetar
         ChainDB.kos = {}
-        names["Maal"].__scripts.PostClick(names["Maal"], "LeftButton")
+        names["Maal"].__scripts.PostClick(names["Maal"], "LeftButton", false)
         eq(BT.IsKOS("Maal"), nil, "vanleg klikk merkar ikkje")
       end
 
@@ -3686,6 +5302,403 @@ do
     if _G["SLASH_CHAIN" .. i] == "/levelbar" then old = true end
   end
   ok(old, "og /levelbar verkar framleis")
+end
+
+--------------------------------------------------------------------------
+print("== oppgradering frå ein gammal installasjon ==")
+-- Alt over er skrive med dagens former. Det er ikkje det nokon faktisk har på
+-- disken: dei har eit år med handlar utan pris på seg, ein loot-logg full av
+-- myntlinjer, ein inngangslogg som instans-ID-feilen har tømt, og ingen av
+-- dei nye flaggene. Så: bygg ein slik database, lat addonet laste, og sjå
+-- etter at kvar einaste migrering landar.
+do
+  local keepDB, keepChar = ChainDB, ChainCharDB
+  local frame2 = BT.frame
+  local t0 = S.now
+  S.level = 30
+  S.units["player"] = S.units["player"] or {}
+
+  ChainDB = {
+    -- gamle runs: ingen coin, ingen step på nokre av dei
+    runs = {
+      { at = t0 - 3000, t = 300, zone = "The Stockade", id = "stock",
+        xp = 9000, k = 60, by = "Gamling", char = "Tester", lvl = 28 },
+      { at = t0 - 2000, t = 300, zone = "The Stockade", id = "stock",
+        xp = 9000, k = 60, by = "Gamling", char = "Tester", lvl = 29 },
+      -- og denne er merkt som eit gjensyn av den gamle, feile regelen: han
+      -- markerte kvar einaste gjentaking av same *instans-namn*. Det er
+      -- nettopp desse runane som mista inngangen sin, så flagget må ikkje
+      -- takast for god fisk i reparasjonen.
+      { at = t0 - 1000, t = 300, zone = "The Stockade", id = "stock",
+        xp = 9000, k = 60, by = "Gamling", char = "Tester", lvl = 29,
+        reentry = true },
+    },
+    -- gamle handlar: ingen perRun, ingen manual, ingen setTo
+    trades = {
+      { at = t0 - 3600, with = "Gamling", gave = 100 * 10000, got = 0,
+        id = "stock", by = "Gamling", char = "Tester", lvl = 28 },
+    },
+    -- og ein inngangslogg som feilen har ete opp: éin står att av tre
+    entries = {
+      { t = t0 - 3000, seq = "Tester:1", zone = "The Stockade",
+        char = "Tester" },
+    },
+    -- loot-loggen slik han såg ut: éi linje per myntplukk
+    loot = {
+      { at = t0 - 2900, copper = 500, who = "Tester", n = 1, mine = true },
+      { at = t0 - 2880, copper = 250, who = "Tester", n = 1, mine = true },
+      { at = t0 - 1900, copper = 1000, who = "Tester", n = 1, mine = true },
+      { at = t0 - 1880, id = 12345, link = "x", n = 1, who = "Tester" },
+      { at = t0 - 500, copper = 33, who = "Tester", n = 1, mine = true },
+    },
+    boosters = { Gamling = { price = 100, pack = 5 } },   -- 20g per run
+    route = { stock = { on = true, from = 22, to = 30, gold = 50, pack = 5 } },
+  }
+  ChainCharDB = {
+    -- og gamle instans-IDar i det gamle formatet, utan kolon
+    seenInst = { ["34"] = t0 - 1000 },
+    instId = { ["The Stockade"] = "34" },
+    entrySeq = 1,
+  }
+  S.Fire(frame2, "ADDON_LOADED", "Chain")
+
+  -- 1. ingenting er borte
+  eq(#ChainDB.runs, 3, "runane står")
+  eq(#ChainDB.trades, 1, "og handelen")
+
+  -- 2. inngangane er bygde opp att frå runloggen, òg dei som den gamle
+  --    regelen hadde stempla som gjensyn
+  eq(#ChainDB.entries, 3, "dei tapte inngangane er henta tilbake")
+  eq(BT.Lockout(), 3, "og timen tel tre, ikkje ein")
+  ok(ChainDB.entriesRepaired, "og reparasjonen er gjord unna")
+
+  -- 3. myntane er folda inn i runane og ute av loggen
+  eq(#ChainDB.loot, 1, "berre gjenstanden står att i loot-loggen")
+  eq(ChainDB.runs[1].coin, 750, "myntane frå fyrste runen ligg på han")
+  eq(ChainDB.runs[2].coin, 1000, "og den andre sine")
+  eq(ChainDB.coinLoose, 33, "det som fall utanfor er teke vare på")
+  eq(BT.RunCoin(), 750 + 1000 + 33, "og totalen er alt saman")
+  ok(ChainDB.coinFolded, "og det skjer berre ein gong")
+
+  -- 4. ein gammal handel utan pris på seg blir framleis rekna om til runs, på
+  --    dagens pris, og seier ifrå om det
+  local c = BT.BoosterCredit("Gamling")
+  ok(c ~= nil, "det finst ei rekning med han")
+  near(c.runsPaid, 5, "100g til 20g per run er fem runs")
+  eq(c.guessed, 1, "og den eine er prisa på dagens pris")
+
+  -- 5. ein gammal instans-ID i det gamle formatet skal ikkje lage eit falskt
+  --    gjensyn: dei nye nøklane har kolon og kan ikkje kollidere
+  eq(BT.InstIdFrom("Creature-0-4672-34-991-1234-0000"), "34:991",
+     "ny nøkkel har både kart og kopi")
+  ok(ChainCharDB.seenInst["34:991"] == nil, "og finst ikkje i den gamle lista")
+
+  -- 6. dei nye innstillingane har trygge utgangspunkt
+  eq(ChainDB.nearbyAlways, nil, "lista står ikkje plutseleg på skjermen")
+  eq(ChainDB.meter, nil, "og fps-målaren slår seg ikkje på av seg sjølv")
+
+  -- 7. og ei ny lasting gjer ingenting om att
+  local runsBefore = ChainDB.runs[1].coin
+  local entriesBefore = #ChainDB.entries
+  S.Fire(frame2, "ADDON_LOADED", "Chain")
+  eq(ChainDB.runs[1].coin, runsBefore, "myntane blir ikkje talde to gonger")
+  eq(#ChainDB.entries, entriesBefore, "og inngangane ikkje lagde to gonger")
+
+  -- 8. og etter reparasjonen blir flagget trudd att, slik det skal - det blir
+  --    rekna ut riktig no
+  do
+    table.insert(ChainDB.runs, { at = t0 - 200, t = 300, zone = "The Stockade",
+                                 id = "stock", xp = 9000, k = 60,
+                                 by = "Gamling", char = "Tester", lvl = 30,
+                                 reentry = true })
+    BT.Touch()
+    eq(BT.ReconcileEntries(), 0, "eit ekte gjensyn får ingen inngang")
+    table.remove(ChainDB.runs)
+    BT.Touch()
+  end
+
+  ChainDB, ChainCharDB = keepDB, keepChar
+  BT.Touch() BT.TouchTrades()
+end
+
+-- Og ein logg som kjem frå eit namnebyte kan vere i kva rekkjefølgje som
+-- helst. Foldinga går framover gjennom begge listene, så ein peikar som berre
+-- flyttar seg framover ville lagt halve myntbunken i "heimlaus".
+do
+  local keepDB, keepChar = ChainDB, ChainCharDB
+  local t0 = S.now
+  ChainDB = BT.ApplyDefaults({
+    runs = {
+      { at = t0 - 1000, t = 300, zone = "The Stockade", id = "stock",
+        xp = 9000, k = 60, char = "Tester" },
+      { at = t0 - 3000, t = 300, zone = "The Stockade", id = "stock",
+        xp = 9000, k = 60, char = "Tester" },
+    },
+    loot = {
+      { at = t0 - 900, copper = 100, who = "Tester" },
+      { at = t0 - 2900, copper = 700, who = "Tester" },
+    },
+  }, BT.DEFAULTS)
+  ChainCharDB = BT.ApplyDefaults({}, BT.CHAR_DEFAULTS)
+  BT.FoldCoins()
+  local byAt = {}
+  for _, r in ipairs(ChainDB.runs) do byAt[r.at] = r.coin end
+  eq(byAt[t0 - 1000], 100, "myntane finn runen sin uansett rekkjefølgje")
+  eq(byAt[t0 - 3000], 700, "og den andre òg")
+  eq(ChainDB.coinLoose, nil, "og ingenting blir heimlaust")
+  ChainDB, ChainCharDB = keepDB, keepChar
+  BT.Touch() BT.TouchTrades()
+end
+
+--------------------------------------------------------------------------
+print("== betalte runs blir talde ned ==")
+-- Hans tilfelle, slik skjermbiletet viste det: 400g skrive inn for hand for
+-- trettan minutt sidan, ti runs kjøpt, to runs gått sidan - og baren sa
+-- framleis "10 runs paid up".
+do
+  local keepT, keepR, keepB = ChainDB.trades, ChainDB.runs, ChainDB.boosters
+  local who = "Cart\195\168r"          -- Cartèr, slik klienten skriv han
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainDB.boosters = { [who] = { price = 400, pack = 10 } }   -- 40g per run
+  BT.Touch() BT.TouchTrades()
+
+  local t0 = S.now
+  ChainDB.trades[1] = { at = t0 - 780, with = who, gave = 400 * 10000, got = 0,
+                        id = "sm", by = who, manual = true, perRun = 40,
+                        char = "Tester", lvl = 38 }
+  BT.TouchTrades()
+  local c = BT.BoosterCredit(who)
+  ok(c ~= nil, "det finst ei rekning")
+  near(c.runsPaid, 10, "400g til 40g per run er ti runs")
+  near(c.left, 10, "og ingen gått enno")
+
+  -- så to runs med han
+  for i = 1, 2 do
+    table.insert(ChainDB.runs, { at = t0 - 600 + i * 200, t = 240, zone = "SM",
+                                 id = "sm", xp = 8881, k = 66, by = who,
+                                 char = "Tester" })
+  end
+  BT.Touch()
+  c = BT.BoosterCredit(who)
+  eq(c.runsDone, 2, "to runs gått")
+  near(c.left, 8, "så det står att åtte, ikkje ti")
+
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
+  BT.Touch() BT.TouchTrades()
+end
+
+-- Halve gullet går til ein bank-alt, og augeblinken handelen går gjennom er
+-- augeblinken du veit kven ho er. Så den spør då, i staden for å la boosteren
+-- sjå ubetalt ut og alten sjå ut som ein framand som skuldar deg tjue runs.
+do
+  local keepT, keepR, keepB = ChainDB.trades, ChainDB.runs, ChainDB.boosters
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainDB.boosters = { Carter = { price = 400, pack = 10 } }
+  ChainCharDB.lastBy = "Carter"
+  S.party = {}
+  BT.Touch() BT.TouchTrades()
+
+  ok(BT.AskIfAlt("Anisora"), "ein framand medan nokon boostar deg blir spurd om")
+  ok(BT.AskIfAlt("Carter") == false, "boosteren sjølv blir ikkje spurd om")
+
+  -- og ein som faktisk har køyrt for deg er ingen bank-alt
+  table.insert(ChainDB.runs, { at = S.now - 100, by = "Kjend", id = "sm",
+                               xp = 9000, k = 60, char = "Tester" })
+  BT.Touch()
+  ok(BT.AskIfAlt("Kjend") == false, "og ein som har køyrt for deg heller ikkje")
+
+  -- seier du nei, blir du ikkje spurd igjen
+  BT.BoosterInfo("Anisora").notAnAlt = true
+  ok(BT.AskIfAlt("Anisora") == false, "og eit nei blir hugsa")
+  ChainDB.boosters["Anisora"].notAnAlt = nil
+
+  -- og seier du ja, tel gullet hennar for han
+  BT.SetPaysFor("Anisora", "Carter")
+  ok(BT.AskIfAlt("Anisora") == false, "ein alt som alt er knytt blir ikkje spurd")
+  ChainDB.trades[1] = { at = S.now - 600, with = "Anisora", gave = 400 * 10000,
+                        got = 0, id = "sm", perRun = 40, char = "Tester" }
+  BT.TouchTrades()
+  near(BT.BoosterCredit("Carter").runsPaid, 10,
+       "og gullet til alten er hans runs")
+
+  ChainCharDB.lastBy = nil
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
+  BT.Touch() BT.TouchTrades()
+end
+
+-- Boosteren sin eigen teljar. Addonet hans kunngjer kvar kvar enkelt er i
+-- pakken - "[BoostBuddy] Nintoz - Run 4/10" - og det er talet han fakturerer
+-- mot. Han veit når pakken starta; vi gjettar ut frå når du betalte.
+do
+  local keepT, keepR, keepB = ChainDB.trades, ChainDB.runs, ChainDB.boosters
+  local me = UnitName("player")
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainDB.boosters = { Carter = { price = 400, pack = 10 } }
+  ChainCharDB.packRun = nil
+  ChainDB.trades[1] = { at = S.now - 600, with = "Carter", gave = 400 * 10000,
+                        got = 0, id = "sm", perRun = 40, char = "Tester" }
+  BT.Touch() BT.TouchTrades()
+  eq(BT.PackRun("Carter"), nil, "utan ei melding er det ingen teljar")
+
+  -- ei linje som gjeld nokon andre er ikkje vår
+  eq(BT.NotePackRun("[BoostBuddy] Truehair - Run 3/10", "Carter"), nil,
+     "ei linje om ein annan i raidet tel ikkje")
+
+  -- og ei som gjeld deg blir teken
+  local p = BT.NotePackRun("[BoostBuddy] " .. me .. " - Run 4/10", "Carter")
+  ok(p ~= nil, "linja om deg blir lesen")
+  eq(p.n, 4, "kor langt du er komen")
+  eq(p.of, 10, "og kor stor pakken er")
+  local n, of, by = BT.PackRun("Carter")
+  eq(n, 4, "og den kan lesast att")
+  eq(of, 10, "med pakkestorleiken")
+  eq(by, "Carter", "og kven som sa det")
+
+  -- ein annan booster sin teljar gjeld ikkje denne
+  eq(BT.PackRun("Berreta"), nil, "og gjeld berre den som sa det")
+
+  -- baren skal vise hans tal når han har eitt
+  local c = BT.BoosterCredit("Carter")
+  eq(c.hisDone, 4, "rekninga ber hans tal")
+  eq(c.hisLeft, 6, "og kor mange som står att av pakken hans")
+
+  -- og den blir gammal
+  S.now = S.now + 7300
+  eq(BT.PackRun("Carter"), nil, "ein gammal teljar blir ikkje trudd")
+  S.now = S.now - 7300
+
+  -- Talet han sa er sant for den runden han sa det på. Han seier det ein gong
+  -- per run, og ein booster som sluttar å seie det - eller har skrudd av
+  -- addonen - let oss sitte med eit tal som var rett for tjue minutt og tre
+  -- runder sidan. "9/10 runs" stod på baren i to timar etter at pakken var
+  -- ferdig, fordi det var det siste han sa.
+  do
+    local said = ChainCharDB.packRun.at
+    S.now = S.now + 400
+    table.insert(ChainDB.runs, { at = said + 200, t = 300, zone = "The Stockade",
+      id = "sm", by = "Carter", xp = 9000, k = 60, lvl = 20 })
+    BT.Touch()
+    eq(BT.PackRun("Carter"), 5, "ein run vi har sett tel eitt hakk vidare")
+    eq(BT.BoosterCredit("Carter").hisLeft, 5, "og rekninga fylgjer med")
+
+    -- og går det til enden av pakken, er pakken over: då er det vår eiga
+    -- rekning som gjeld, og ho veit at du har gått forbi det du betalte for
+    for i = 2, 6 do
+      table.insert(ChainDB.runs, { at = said + 200 + i * 300, t = 300,
+        zone = "The Stockade", id = "sm", by = "Carter", xp = 9000, k = 60,
+        lvl = 20 })
+    end
+    S.now = S.now + 2000
+    BT.Touch()
+    eq(BT.PackRun("Carter"), nil, "ved enden av pakken er det ikkje noko att å tru på")
+    eq(BT.BoosterCredit("Carter").hisLeft, nil, "og baren viser ikkje hans tal lenger")
+    ok((BT.BoosterCredit("Carter").left or 0) < 10,
+       "vår eiga rekning har talt rundene")
+  end
+
+  -- ei betaling som er nyare enn meldinga er ein ny pakke: hans gamle tal er
+  -- om den førre
+  do
+    ChainCharDB.packRun = nil
+    ChainDB.runs = {}
+    BT.Touch()
+    local q = BT.NotePackRun(me .. " - Run 3/10", "Carter")
+    ok(q ~= nil, "han seier kor han er")
+    eq(BT.PackRun("Carter"), 3, "og det blir trudd")
+    table.insert(ChainDB.trades, { at = q.at + 10, with = "Carter",
+      gave = 400 * 10000, got = 0, id = "sm", perRun = 40, char = "Tester" })
+    BT.TouchTrades()
+    eq(BT.PackRun("Carter"), nil, "men ikkje etter at du har betalt for ein ny")
+    S.now = S.now + 60
+  end
+
+  -- Ein run forbi det som er betalt er normalt: du tek ein på krita og gjer
+  -- opp på slutten. Ein heil pakke forbi er det ikkje - då har det gått pengar
+  -- vi ikkje såg, og då seier han frå i staden for å la talet drive til at
+  -- baren påstår du skuldar sju runder.
+  do
+    ChainDB.trades, ChainDB.runs = {}, {}
+    ChainCharDB.debtTold, ChainCharDB.packRun = nil, nil
+    ChainDB.trades[1] = { at = S.now - 7200, with = "Carter", gave = 400 * 10000,
+                          got = 0, id = "sm", perRun = 40, char = "Tester" }
+    for i = 1, 9 do
+      table.insert(ChainDB.runs, { at = S.now - 7000 + i * 300, t = 300,
+        zone = "The Stockade", id = "sm", by = "Carter", xp = 9000, k = 60,
+        lvl = 20 })
+    end
+    BT.Touch() BT.TouchTrades()
+    S.printed = {}
+    BT.CheckDebt("Carter")
+    eq(#S.printed, 0, "ni av ti er ikkje noko å seie frå om")
+
+    for i = 10, 21 do
+      table.insert(ChainDB.runs, { at = S.now - 7000 + i * 300, t = 300,
+        zone = "The Stockade", id = "sm", by = "Carter", xp = 9000, k = 60,
+        lvl = 20 })
+    end
+    BT.Touch()
+    S.printed = {}
+    BT.CheckDebt("Carter")
+    ok(S.Said("runs past what is logged"), "ein heil pakke forbi blir sagt frå om")
+    ok(S.Said("/chain paid Carter"), "med kommandoen som rettar det")
+
+    S.printed = {}
+    BT.CheckDebt("Carter")
+    eq(#S.printed, 0, "men berre ein gong per betaling")
+
+    -- og gjer du opp, er han stille igjen til neste gong
+    table.insert(ChainDB.trades, { at = S.now, with = "Carter",
+      gave = 400 * 10000, got = 0, id = "sm", perRun = 40, char = "Tester" })
+    BT.TouchTrades()
+    S.printed = {}
+    BT.CheckDebt("Carter")
+    eq(#S.printed, 0, "etter ei ny betaling er han stille")
+  end
+
+  -- ulike former på linja
+  ChainCharDB.packRun = nil
+  ok(BT.NotePackRun(me .. " - run 2/5", "Carter"), "liten r i run går òg")
+  eq(select(2, BT.PackRun()), 5, "og pakkestorleiken blir med")
+
+  ChainCharDB.packRun = nil
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
+  BT.Touch() BT.TouchTrades()
+end
+
+-- Og den som fekk det til å stå stille: runloggen heldt klienten si eiga
+-- skrivemåte medan handelsloggen heldt den vaska, og dei blir samanlikna med
+-- eit rett likskapsteikn. Ein booster som heiter CartEr var to ulike folk for
+-- addonet - runsa hans talde for den eine og gullet for den andre, og
+-- balansen rørte seg aldri.
+do
+  local keepT, keepR, keepB = ChainDB.trades, ChainDB.runs, ChainDB.boosters
+  eq(BT.CleanName("CartEr"), "Carter", "vaskaren endrar ei stor bokstav inni")
+
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainDB.boosters = { Carter = { price = 400, pack = 10 } }
+  local t0 = S.now
+  ChainDB.trades[1] = { at = t0 - 780, with = "Carter", gave = 400 * 10000,
+                        got = 0, id = "sm", perRun = 40, char = "Tester" }
+  -- runane slik klienten stava han
+  for i = 1, 2 do
+    table.insert(ChainDB.runs, { at = t0 - 400 + i * 100, t = 240, zone = "SM",
+                                 id = "sm", xp = 8881, k = 66, by = "CartEr",
+                                 char = "Tester" })
+  end
+  BT.Touch() BT.TouchTrades()
+  eq(BT.BoosterCredit("Carter").runsDone, 0,
+     "med to skrivemåtar tel ingen av runsa")
+
+  -- og opprydninga ved innlasting set det på plass
+  ChainDB.namesCleaned = nil
+  S.Fire(BT.frame, "ADDON_LOADED", "Chain")
+  BT.Touch() BT.TouchTrades()
+  eq(ChainDB.runs[1].by, "Carter", "runloggen blir vaska")
+  eq(BT.BoosterCredit("Carter").runsDone, 2, "og då tel dei")
+  near(BT.BoosterCredit("Carter").left, 8, "åtte att av ti")
+
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
+  BT.Touch() BT.TouchTrades()
 end
 
 --------------------------------------------------------------------------

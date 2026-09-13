@@ -463,6 +463,27 @@ parts that are not.
   only part that is news. Levelling says it the same way: the right-hand end
   reads `ding in ~41m` rather than `~41m to 32`.
 
+- **The run you are in is at the top of the History tab, while you are in it.**
+  It used to appear only once you had walked out, which is the one moment you
+  no longer need telling about it - and when a booster says "that is five"
+  mid-chain, the run you are standing in is exactly the one in dispute. It says
+  **now** in the when column and counts up. It is not saved, cannot be deleted
+  and cannot be ticked: it counts for nothing until you finish it.
+
+- **And the count can be settled in one line of party chat.** He says five, you
+  counted four, and neither of you can prove it, because both of you are
+  counting in your head - him across three customers at once. The addon is not
+  counting in its head. Every History row has a **+** to tick it,
+  **tick since last trade** ticks the ones the argument is actually about (his
+  alts included, since the gold often goes to a bank character), and **say in
+  party** puts it in chat:
+
+      [CHAIN] - 4 runs with Magecome - 49m, 1h 13m, 1h 36m, 2h 19m ago
+
+  Eight times at most, then "+3 older". The ticks are not saved: it is
+  something you do for ten seconds to settle an argument, and a tick surviving
+  a logout would only ever be a surprise.
+
 - **The Windows tray program opened and shut without a word.** `pythonw.exe`
   runs with no console - which is the point, since nobody wants a black window
   behind the game - and with no console Python sets `sys.stdout` and

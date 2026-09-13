@@ -335,6 +335,21 @@ bat = open(os.path.join(PUSH, "ChainPush.bat"), encoding="utf-8").read()
 ok("tray_win.py" in bat, ".bat-fila startar skuffa")
 ok("pythonw" in bat, "og utan eit konsollvindauge bak spelet")
 
+# pythonw køyrer utan konsoll, og utan konsoll set Python sys.stdout og
+# sys.stderr til None i staden for til noko ufarleg. Fyrste print() i motoren
+# kastar då AttributeError - og det finst ingen stad å skrive det heller.
+# Programmet startar, døyr på fyrste linja med utskrift, og viser ingenting:
+# eit vindauge som opnar og lukkar seg.
+ok("sys.stdout is None" in tsrc,
+   "skuffa gir straumane ein stad å gå når det ikkje finst konsoll")
+ok(tsrc.index("sys.stdout is None") < tsrc.index("import chainpush"),
+   "og gjer det før motoren blir importert")
+ok("MessageBoxW" in tsrc, "og det som likevel ryk hamnar på skjermen")
+ok("crash.log" in tsrc, "og på disk")
+ok(tsrc.count("_died(") >= 3,
+   "både importen og sjølve køyringa er dekte")
+ok("debug" in bat, ".bat-fila kan køyre med meldingane synlege")
+
 print("== ikon ==")
 ok(len(gui.ICON_PNG_BASE64) > 1000, "ikonet ligg inne i programmet")
 for f in ("icon.png", "icon.ico", "icon.icns"):

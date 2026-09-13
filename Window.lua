@@ -259,6 +259,11 @@ local function Rate(value, avg, higherIsBetter)
   return C.warn
 end
 
+-- Which runs you have ticked, keyed by the record itself. Not saved: it is a
+-- thing you do for ten seconds to settle an argument, and a tick surviving a
+-- logout would only ever be a surprise.
+local picked = {}
+
 local function RunRows()
   local out = {}
   -- one average per instance, worked out once rather than per row
@@ -271,6 +276,46 @@ local function RunRows()
                   boosted = r.by ~= nil })) or false
     end
     return avgFor[key] or nil
+  end
+
+  -- The run you are in belongs at the top of the list. It used to appear only
+  -- once you had walked out, which is the one moment you no longer need to be
+  -- told about it - and when a booster says "that is five" mid-chain, the run
+  -- you are standing in is exactly the one in dispute.
+  --
+  -- It is not in ChainDB.runs and does not go in: it counts for nothing until
+  -- it is finished, it cannot be deleted, and it cannot be ticked. It is shown
+  -- and nothing more.
+  local live = ChainCharDB.run
+  if live and live.zone then
+    local t = math.max(0, time() - (live.start or time()))
+    local rate = (t > 0) and ((live.xp or 0) / t * 3600) or 0
+    table.insert(out, {
+      live = true,
+      at = live.start, zone = live.zone, xp = live.xp or 0, t = t,
+      k = live.k or 0, rate = rate, by = live.by, lvl = live.lvl,
+      grpAvg = live.grpAvg, coin = live.coin or 0,
+      tip = {
+        BT.Short(live.zone, live.map) or "?",
+        "the run you are in, still going",
+        BT.N(live.xp or 0) .. " xp, " .. (live.k or 0) .. " mobs, " .. BT.T(t),
+        live.by and ("boosted by " .. live.by) or "clearing it yourself",
+        "it counts for nothing until you walk out"
+      },
+      cells = {
+        C.good .. "now" .. C.off,
+        BT.Short(live.zone, live.map) or "?",
+        BT.N(live.xp or 0),
+        BT.T(t),
+        tostring(live.k or 0),
+        (rate > 0) and string.format("%.0fk", rate / 1000) or "-",
+        ((live.coin or 0) > 0) and (C.gold .. BT.Coin(live.coin) .. C.off)
+          or (C.dim .. "-" .. C.off),
+        live.by or (C.dim .. "self" .. C.off),
+        tostring(live.lvl or "-"),
+        live.grpAvg and string.format("%.1f", live.grpAvg) or "-"
+      }
+    })
   end
 
   for _, r in ipairs(BT.Runs({})) do
@@ -312,8 +357,11 @@ local function RunRows()
       }
     })
   end
-  -- newest first by default
-  table.sort(out, function(a, b) return (a.at or 0) > (b.at or 0) end)
+  -- newest first by default, and the one you are in is newer than all of them
+  table.sort(out, function(a, b)
+    if a.live ~= b.live then return a.live and true or false end
+    return (a.at or 0) > (b.at or 0)
+  end)
   return out
 end
 
@@ -1406,6 +1454,24 @@ local function Render()
     if w then w:SetShown(paying) end
   end
 
+  -- and the two settle-up buttons belong to the History tab
+  local counting = (mode == "runs")
+  for _, w in ipairs({ win.sinceButton, win.sayButton, win.sayNote }) do
+    if w then w:SetShown(counting) end
+  end
+  if counting and win.sayNote then
+    local n = 0
+    for _, r in ipairs(ChainDB.runs) do if picked[r] then n = n + 1 end end
+    win.sayNote:SetText((n > 0)
+      and (C.good .. n .. C.off .. C.dim .. " ticked - the + on each row"
+           .. C.off)
+      or (C.dim .. "tick runs with the + on each row, then say them" .. C.off))
+    if win.sayButton then
+      win.sayButton.fs:SetText((IsInRaid and IsInRaid())
+        and "say in raid" or "say in party")
+    end
+  end
+
   -- and the rank box belongs to the Rank tab, on the same line
   local planning = (mode == "pvp")
   for _, w in ipairs({ win.targetLabel, win.targetBox, win.targetUp,
@@ -1479,6 +1545,14 @@ local function Render()
       -- the x removes a run from the averages on History, and on Boosters it
       -- removes somebody you put in the list yourself. It never appears on a
       -- booster you have actually run with: that is measured history.
+      row.pick.rec = nil
+      if mode == "runs" and d.rec then
+        row.pick.rec = d.rec
+        row.pick.fs:SetText(picked[d.rec] and (C.good .. "v" .. C.off) or "+")
+        row.pick:Show()
+      else
+        row.pick:Hide()
+      end
       row.del.rec, row.del.name, row.del.trade = nil, nil, nil
       if mode == "runs" and d.rec then
         row.del.rec = d.rec
@@ -1617,7 +1691,7 @@ local function Render()
     else
       row.tip, row.link = nil, nil
       row.price:Hide() row.pack:Hide() row.kos:Hide()
-      row.note:Hide() row.del:Hide() row.whisper:Hide()
+      row.note:Hide() row.del:Hide() row.whisper:Hide() row.pick:Hide()
       row:Hide()
     end
   end
@@ -1907,6 +1981,18 @@ local function Build()
     end)
     row.kos:Hide()
 
+    -- Ticking a run. A booster who says "that is five" when it was four is
+    -- not usually lying; he is counting in his head across three customers.
+    -- The way that ends is one line in party chat with the times in it, and
+    -- for that you have to be able to say which runs you mean.
+    row.pick = Button(row, "+", 16, 14, function(self)
+      if not self.rec then return end
+      picked[self.rec] = (not picked[self.rec]) or nil
+      Render()
+    end)
+    row.pick:SetPoint("LEFT", row, "LEFT", 810, 0)
+    row.pick:Hide()
+
     row.del = Button(row, "x", 16, 14, function(self)
       if self.trade then
         BT.ForgetTrade(self.trade)
@@ -1933,10 +2019,72 @@ local function Build()
     rows[i] = row
   end
 
+  local addY = -94 - ROWS * 18 - 6
+
+  -- Settling the count with the booster, on the History tab.
+  --
+  -- He says five, you counted four, and neither of you can prove it because
+  -- both of you are counting in your head - him across three customers at
+  -- once. The addon is not counting in its head. So it can put the times in
+  -- party chat and the argument is over in one line.
+  --
+  -- "since the last trade" is the question actually being asked: what have I
+  -- had that I have not paid for. It ticks those; anything else you tick or
+  -- untick yourself.
+  local function PickedRuns()
+    local out = {}
+    for _, r in ipairs(ChainDB.runs) do
+      if picked[r] then table.insert(out, r) end
+    end
+    table.sort(out, function(a, b) return (a.at or 0) < (b.at or 0) end)
+    return out
+  end
+
+  local function LastBooster()
+    for i = #ChainDB.runs, 1, -1 do
+      if ChainDB.runs[i].by then return ChainDB.runs[i].by end
+    end
+    return ChainCharDB.lastBy
+  end
+
+  win.sinceButton = Button(win, "tick since last trade", 150, 18, function()
+    local who = LastBooster()
+    if not who then return end
+    local from = (BT.LastPaid and BT.LastPaid(who)) or 0
+    -- his alts count as him: the money goes to a bank character often enough
+    -- that the runs and the gold would otherwise be about two people
+    local purse = (BT.PurseFor and BT.PurseFor(who)) or { [who] = true }
+    wipe(picked)
+    for _, r in ipairs(ChainDB.runs) do
+      if r.by and purse[r.by] and (r.at or 0) > from then picked[r] = true end
+    end
+    Render()
+  end)
+  win.sinceButton:SetPoint("TOPLEFT", 12, addY + 3)
+
+  win.sayButton = Button(win, "say in party", 110, 18, function()
+    local list = PickedRuns()
+    if #list == 0 then return end
+    local who = list[#list].by
+    local bits = {}
+    for i = #list, 1, -1 do
+      if #bits >= 8 then break end
+      table.insert(bits, BT.T(time() - (list[i].at or time())))
+    end
+    local text = #list .. ((#list == 1) and " run" or " runs")
+      .. (who and (" with " .. who) or "")
+      .. " - " .. table.concat(bits, ", ") .. " ago"
+      .. ((#list > #bits) and (" (+" .. (#list - #bits) .. " older)") or "")
+    if BT.SayToGroup then BT.SayToGroup(text) end
+  end)
+  win.sayButton:SetPoint("TOPLEFT", 170, addY + 3)
+
+  win.sayNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.sayNote:SetPoint("TOPLEFT", 290, addY)
+
   -- Adding somebody by hand, on the Boosters tab: a name you were given in a
   -- whisper is worth keeping before you have ever run with him, and the note
   -- is where "only sells mornings" or "does not pull the last room" goes.
-  local addY = -94 - ROWS * 18 - 6
   win.addLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.addLabel:SetPoint("TOPLEFT", 12, addY)
   win.addLabel:SetText("add someone")
