@@ -301,10 +301,17 @@ end
 -- whether that is the man who did nine runs for you or the rogue who camped
 -- you at the meeting stone. So every list hands its name to this, and
 -- hovering it says the same in all of them.
-function BT.PersonCard(name)
+-- canWhisper: whether the list this name came from is one where talking to
+-- him is a thing that exists. It is not on the enemy tabs, and this is not a
+-- matter of taste - cross-faction whispers are not implemented in the game at
+-- all. Offering it there is offering a button that cannot work.
+function BT.PersonCard(name, canWhisper)
   if not name or name == "" then return nil end
   local out = { name }
   local e = BT.Know(name)
+  -- and the tracker is hostile-only by construction, so a name in it is the
+  -- other faction whatever tab you found it on
+  if e then canWhisper = false end
 
   local who = {}
   if e and e.level and e.level > 0 then
@@ -349,7 +356,9 @@ function BT.PersonCard(name)
   note = note or (BT.EnemyNote and BT.EnemyNote(name) or nil)
   if note and note ~= "" then out[#out + 1] = "your note: " .. note end
 
-  out[#out + 1] = "double-click the line to whisper him"
+  if canWhisper ~= false then
+    out[#out + 1] = "double-click the line to whisper him"
+  end
   return out
 end
 

@@ -485,6 +485,12 @@ local function RowPerson(d)
   return d.whisper or d.kosName or d.name or d.by or d.who or d.with
 end
 
+-- The tabs where the person on the row is on the other side. You cannot
+-- whisper across factions in this game - it is not disabled, it does not
+-- exist - so a double-click that opens a whisper box there is a button that
+-- can never work.
+local NO_WHISPER = { enemies = true, koslist = true }
+
 local function Whisper(name)
   if not name or name == "" then return false end
   if ChatFrame_SendTell then
@@ -2163,6 +2169,8 @@ local function Render()
       row.mark:SetWidth(math.max(1, rx))
       row.mark:SetShown((row.markKey and selected == row.markKey) and true or false)
       row.person = RowPerson(d)
+      row.canWhisper = not NO_WHISPER[mode]
+      row.who.canWhisper = row.canWhisper
       if row.person and whoX then
         row.who.person = row.person
         row.who:ClearAllPoints()
@@ -2399,6 +2407,7 @@ local function Render()
     else
       row.tip, row.link = nil, nil
       row.markKey, row.person, row.who.person = nil, nil, nil
+      row.canWhisper, row.who.canWhisper = nil, nil
       row.price:Hide() row.pack:Hide() row.kos:Hide() row.left:Hide()
       row.note:Hide() row.del:Hide() row.whisper:Hide() row.pick:Hide()
       row.mark:Hide() row.who:Hide()
@@ -2661,7 +2670,8 @@ local function Build()
       -- Button's, and setting a script a frame does not have throws on the
       -- spot rather than politely doing nothing.
       local now = (GetTime and GetTime()) or 0
-      if self.person and self.lastClick and (now - self.lastClick) <= 0.4 then
+      if self.person and self.canWhisper and self.lastClick
+         and (now - self.lastClick) <= 0.4 then
         self.lastClick = nil
         Whisper(self.person)
         return
@@ -2693,7 +2703,8 @@ local function Build()
     row.who:EnableMouse(true)
     row.who:SetScript("OnEnter", function(self)
       if not self.person then return end
-      local card = BT.PersonCard and BT.PersonCard(self.person) or nil
+      local card = BT.PersonCard
+        and BT.PersonCard(self.person, self.canWhisper and true or false) or nil
       if not card or #card == 0 then return end
       GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
       for i, line in ipairs(card) do

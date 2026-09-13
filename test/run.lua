@@ -4157,7 +4157,11 @@ do
   ok(card:find("41", 1, true), "med level")
   ok(card:find("Sveitte Nerdar", 1, true), "og gildet")
   ok(card:find("Tanaris", 1, true), "og kvar han sist blei sett")
-  ok(card:find("double%-click"), "og seier kva dobbeltklikket gjer")
+  -- ...men ikkje kvisk-hintet: trackeren registrerer berre fiendtlege, så eit
+  -- namn som står i han er den andre sida, og kviskring på tvers av fraksjon
+  -- finst ikkje i spelet. Ein knapp som aldri kan virke er verre enn ingen.
+  ok(not card:find("double%-click"),
+     "ingen kvisk-hint på ein du har sett som fiende")
 
   -- ein me aldri har sett skal ikkje gje eit tomt kort
   ChainDB.groups = {}
@@ -4170,6 +4174,30 @@ do
   row2.who.__scripts.OnEnter(row2.who)
   ok(S.TipText():find("never seen him yet", 1, true),
      "og ein ukjend seier at han er ukjend")
+  ok(S.TipText():find("double%-click"),
+     "og han kan kviskrast til, så hintet står der")
+
+  -- og på fiende-fanene er hintet borte same kven det er
+  do
+    BT.ShowTab("enemies")
+    local we = _G.ChainWindow
+    local er
+    for _, r in ipairs(we.rows or {}) do
+      if r:IsShown() and (r.cells[2]:GetText() or ""):find("Merkar") then er = r end
+    end
+    ok(er ~= nil, "han står på Enemies")
+    er.who.__scripts.OnEnter(er.who)
+    ok(not S.TipText():find("double%-click"),
+       "ingen kvisk-hint på Enemies")
+    -- og dobbeltklikket gjer ingenting der
+    S.whispered = {}
+    S.uptime = S.uptime + 5
+    er.__scripts.OnMouseUp(er, "LeftButton")
+    S.uptime = S.uptime + 0.2
+    er.__scripts.OnMouseUp(er, "LeftButton")
+    eq(#S.whispered, 0, "og dobbeltklikket opnar ingen kvisk")
+    BT.ShowTab("groups")
+  end
 
   -- klikk gjennom namnekolonnen skal òg merke linja
   ok(not row2.mark:IsShown(), "umerka")

@@ -1053,6 +1053,11 @@ parts that are not.
   it afterwards. The tooltip answers the two questions you have while he is
   there: who he is, and whether you have beaten him before. The faction line
   went too; the race above it already says which side he is on.
+- **The card offered to whisper an enemy.** You cannot whisper across
+  factions in this game - it is not disabled, it does not exist - so that was
+  a button that could never work. The hint and the double-click are gone on
+  the enemy tabs, and gone for anybody the tracker has seen at all, since the
+  tracker only ever records the other side.
 - **The names in the tracker had a dark bar down either side and were cut
   short.** The row was twelve pixels narrower than the box it sits in, so the
   class stripe stopped short of both edges; and the right-hand column reserved
