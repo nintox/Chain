@@ -2313,7 +2313,14 @@ local function Build()
       end
       GameTooltip:Show()
     end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- Not a bare Hide: the name column is a frame of its own sitting on top
+    -- of this one, and moving onto it leaves the row. Whether that arrives
+    -- before or after the name's own OnEnter is not ours to decide, so
+    -- neither handler is allowed to hide a tooltip the other just put up.
+    row:SetScript("OnLeave", function(self)
+      if self.who and self.who:IsShown() and self.who:IsMouseOver() then return end
+      GameTooltip:Hide()
+    end)
     -- and shift-click drops the link into whatever you are typing, the way it
     -- works everywhere else in the game
     row:SetScript("OnMouseUp", function(self, button)
@@ -2372,7 +2379,15 @@ local function Build()
       end
       GameTooltip:Show()
     end)
-    row.who:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row.who:SetScript("OnLeave", function()
+      -- back onto the rest of the line: say what the line says, rather than
+      -- leaving a hole until the cursor moves again
+      if row:IsMouseOver() then
+        local f = row:GetScript("OnEnter")
+        if f then f(row) return end
+      end
+      GameTooltip:Hide()
+    end)
     -- it sits on top of the row, so the row's own clicks have to come
     -- through it rather than stop at it
     row.who:SetScript("OnMouseUp", function(self, button)
