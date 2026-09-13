@@ -396,9 +396,26 @@ function BT.BoosterCredit(who)
   local hisN, hisOf
   if BT.PackRun then hisN, hisOf = BT.PackRun(who) end
 
+  -- How big the pack you are working through is: what he owed you the moment
+  -- you last handed money over. "3 runs left" is a number you have to hold
+  -- against something to know whether to be pleased; "7/10" is the same fact
+  -- with the something included, and it is how the booster counts it too.
+  local ofPack
+  do
+    local led = BT.CreditLedger and BT.CreditLedger() or nil
+    for i = #list, 1, -1 do
+      local t = list[i]
+      if t.setTo or ((t.gave or 0) - (t.got or 0)) > 0 then
+        local e = led and led[t]
+        if e and e.left then ofPack = e.left end
+        break
+      end
+    end
+  end
+
   return {
     who = who, paid = paid, trades = n, since = since,
-    hisDone = hisN, hisOf = hisOf,
+    hisDone = hisN, hisOf = hisOf, ofPack = ofPack,
     hisLeft = (hisN and hisOf) and (hisOf - hisN) or nil,
     setAt = (baseIdx > 0) and baseAt or nil,
     setTo = (baseIdx > 0) and base or nil,

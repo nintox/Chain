@@ -322,10 +322,28 @@ local function BoostText()
         -- are in his pack, and that is the number he is charging against -
         -- ours is inferred from when you paid, and the two can honestly
         -- differ. Both are on the tooltip.
+        -- Counted the way the pack is sold, because that is how both of you
+        -- are thinking about it: "7/10" says how far through you are and how
+        -- far there is to go in the same breath, where "3 runs left" is a
+        -- number you have to hold against something else to make sense of.
+        --
+        -- And the last one gets said out loud. It is the one that decides
+        -- whether you pay again before the next pull or walk out after it.
+        local function Tail(leftN)
+          return (leftN > 0 and leftN <= 1.01)
+            and (C.warn .. " - last run" .. C.off) or ""
+        end
         if credit.hisLeft then
           local v = credit.hisLeft
-          local col = (v >= 1) and C.good or ((v > 0) and C.warn or C.bad)
-          runsLeft = col .. credit.hisDone .. "/" .. credit.hisOf .. " runs" .. C.off
+          local col = (v >= 2) and C.good or ((v > 0) and C.warn or C.bad)
+          runsLeft = col .. credit.hisDone .. "/" .. credit.hisOf .. C.off
+            .. Tail(v)
+        elseif credit.left > 0 and (credit.ofPack or 0) >= 1 then
+          local v, of = credit.left, credit.ofPack
+          local total = math.floor(of + 0.5)
+          local done = math.max(0, math.min(total, math.floor(of - v + 0.5)))
+          local col = (v >= 2) and C.good or C.warn
+          runsLeft = col .. done .. "/" .. total .. C.off .. Tail(v)
         else
           local v = credit.left
           local col = (v >= 1) and C.good or ((v > -0.5) and C.warn or C.bad)

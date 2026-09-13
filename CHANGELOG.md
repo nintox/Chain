@@ -478,6 +478,16 @@ parts that are not.
   with it.* "Are you sure?" is not a question you can answer without being
   told what you are being asked about.
 
+- **The runs are counted the way the pack is sold: `7/10`.** That is how both
+  of you are thinking about it - it says how far through you are and how much
+  is left in the same breath, where `3 runs left` is a number you have to hold
+  against something else to make sense of. The total is what he owed you the
+  moment you last paid, so a pack bought on top of two leftovers reads `0/5`
+  and counts up from there.
+  **And the last one is said out loud**: `9/10 - last run`. It is the one that
+  decides whether you pay again before the next pull or walk out after it. His
+  own announced count gets the same treatment.
+
 - **The Trade tab starts out pointed at whoever is boosting you**, rather than
   at nobody. An empty name field meant typing a number, pressing the button and
   being told "no name"; it is filled in with the current booster now. Beside

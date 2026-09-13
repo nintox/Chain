@@ -2001,7 +2001,7 @@ do
   S.zone, S.map, S.inInstance = "The Stockade", 34, true
   S.Fire(frame, "ZONE_CHANGED_NEW_AREA")
   local cbody = table.concat(BT.AllLines(), "\n")
-  ok(cbody:find("runs left") or cbody:find("runs owed") or cbody:find("/%d+ runs"),
+  ok(cbody:find("runs left") or cbody:find("runs owed") or cbody:find("%d/%d"),
      "baren seier kor mange runs som står att")
   BT.BarTooltip(GameTooltip)
   local ctip = S.TipText()
@@ -2224,11 +2224,27 @@ do
   BT.LogPayment(who, 100)
   BT.Touch()
   local s2 = BT.BuildText() or {}
-  ok(Plain(s2.bottomLeft):find("runs"),
+  ok(Plain(s2.bottomLeft):find("%d/%d") or Plain(s2.bottomLeft):find("runs"),
      "med noko kjøpt er venstre kor mange runs du har att ("
      .. Plain(s2.bottomLeft) .. ")")
   ok(Plain(s2.bottomRight):find("^ding in"),
      "og høgre når du dingar (" .. Plain(s2.bottomRight) .. ")")
+
+  -- og den siste runden i pakken blir sagt høgt
+  do
+    local paidAt = BT.LastPaid(who) or S.now
+    for i = 1, 9 do
+      table.insert(ChainDB.runs, { at = paidAt + i * 60, t = 300,
+        zone = "The Stockade", id = "sm", by = who, xp = 9000, k = 60,
+        lvl = 20 })
+    end
+    BT.Touch()
+    local s5 = BT.BuildText() or {}
+    ok(Plain(s5.bottomLeft):find("9/10"),
+       "ni av ti er gjort (" .. Plain(s5.bottomLeft) .. ")")
+    ok(Plain(s5.bottomLeft):find("last run"),
+       "og den siste blir sagt høgt")
+  end
   ok(not Plain(s2.bottomLeft):find("xp/run")
      and not Plain(s2.bottomRight):find("xp/run"),
      "xp per run er ikkje der - det står på tooltipen")
@@ -2520,6 +2536,40 @@ do
   end
   eq(nowRows, 0, "ute av instansen er han borte frå lista att")
   ChainCharDB.run = keepRun
+end
+
+-- Talde slik pakken blir seld, for det er slik begge to tenkjer om han:
+-- "7/10" seier kor langt du er komen og kor mykje som står att i same andedrag,
+-- der "3 runs left" er eit tal du må halde opp mot noko anna for å forstå.
+do
+  local keepT, keepR, keepB = ChainDB.trades, ChainDB.runs, ChainDB.boosters
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainDB.boosters = { Pakkar = { price = 100, pack = 10 } }
+  table.insert(ChainDB.trades, { at = S.now - 4000, with = "Pakkar",
+    gave = 100 * 10000, got = 0, id = "sm", perRun = 10, char = "Tester" })
+  for i = 1, 7 do
+    table.insert(ChainDB.runs, { at = S.now - 3900 + i * 300, t = 300,
+      zone = "The Stockade", id = "sm", by = "Pakkar", xp = 9000, k = 60,
+      lvl = 20 })
+  end
+  BT.Touch() BT.TouchTrades()
+  local c = BT.BoosterCredit("Pakkar")
+  near(c.ofPack or 0, 10, "pakken var på ti", 0.01)
+  near(c.left or 0, 3, "og tre står att", 0.01)
+
+  -- og den siste blir sagt høgt: det er den som avgjer om du betaler att før
+  -- neste pull eller går ut etter han
+  ChainDB.runs[#ChainDB.runs + 1] = { at = S.now - 500, t = 300,
+    zone = "The Stockade", id = "sm", by = "Pakkar", xp = 9000, k = 60,
+    lvl = 20 }
+  ChainDB.runs[#ChainDB.runs + 1] = { at = S.now - 400, t = 300,
+    zone = "The Stockade", id = "sm", by = "Pakkar", xp = 9000, k = 60,
+    lvl = 20 }
+  BT.Touch()
+  near(BT.BoosterCredit("Pakkar").left or 0, 1, "no er det éin att", 0.01)
+
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
+  BT.Touch() BT.TouchTrades()
 end
 
 -- Gull-fana skal vere klar til bruk utan at du fyller ut namnet: den som
