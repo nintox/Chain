@@ -383,3 +383,65 @@ function BT.ApplyDefaults(db, defaults)
   end
   return db
 end
+
+--------------------------------------------------------------------------
+-- What an ability says about the man who used it
+--------------------------------------------------------------------------
+-- The combat log carries no level. That is the whole reason a rogue you have
+-- fought fifteen times sits in the list as "??": we only ever learn a level
+-- from a nameplate or from having him targeted, and a stealther who opens on
+-- you and vanishes gives neither.
+--
+-- What the log does carry is what he cast, and an ability cannot be used
+-- before it can be learned. So every one of these is a floor - "at least
+-- this" - never a level, and the list only ever raises it.
+--
+-- Two kinds of entry, and both are chosen to be things worth being sure of:
+--
+--   1. Every class's 31-point talents. A talent that deep needs thirty-one
+--      points, and thirty-one points needs level forty. There is no way round
+--      that rule and no rank of the spell below it, so every one of these is
+--      a flat 40 whatever else is true.
+--   2. A short list of baseline abilities whose first rank is high enough to
+--      be worth saying. Rank one is what is stored, because the log line
+--      names the spell and not the rank: "Kidney Shot" is 30 whether it was
+--      the level 30 rank or the level 60 one.
+--
+-- Matched on the name rather than the spell id on purpose. Ids are per rank
+-- and there are thousands of them; a wrong id here would quietly claim
+-- somebody is forty when he is twelve, and a name either matches or does not.
+-- Where Spy is installed its own per-rank table is better than this and is
+-- used first; this is what fills the column in for everybody else.
+BT.ABILITY_LEVEL = {
+  -- 31-point talents: thirty-one points is level forty, every class
+  ["Adrenaline Rush"] = 40, ["Blade Flurry"] = 40, ["Preparation"] = 40,
+  ["Cold Blood"] = 40,
+  ["Mortal Strike"] = 40, ["Bloodthirst"] = 40, ["Shield Slam"] = 40,
+  ["Death Wish"] = 40,
+  ["Bestial Wrath"] = 40, ["Trueshot Aura"] = 40, ["Wyvern Sting"] = 40,
+  ["Presence of Mind"] = 40, ["Combustion"] = 40, ["Ice Barrier"] = 40,
+  ["Dark Pact"] = 40, ["Conflagrate"] = 40,
+  ["Power Infusion"] = 40, ["Lightwell"] = 40, ["Shadowform"] = 40,
+  ["Nature's Swiftness"] = 40, ["Elemental Mastery"] = 40,
+  ["Stormstrike"] = 40,
+  ["Innervate"] = 40,
+  ["Holy Shock"] = 40, ["Repentance"] = 40, ["Blessing of Sanctuary"] = 40,
+
+  -- baseline abilities, at the level their first rank is learned
+  ["Blind"] = 34, ["Kidney Shot"] = 30, ["Vanish"] = 22, ["Cheap Shot"] = 18,
+  ["Distract"] = 22, ["Rupture"] = 20, ["Kick"] = 16, ["Ambush"] = 18,
+  ["Whirlwind"] = 30, ["Intimidating Shout"] = 22,
+  ["Feign Death"] = 30,
+  ["Ice Block"] = 30, ["Evocation"] = 32, ["Blink"] = 20,
+  ["Cone of Cold"] = 26,
+  ["Death Coil"] = 42, ["Soul Fire"] = 48, ["Howl of Terror"] = 40,
+  ["Chain Lightning"] = 32,
+  ["Hammer of Justice"] = 20,
+}
+
+-- The floor an ability puts under somebody, by name. nil when we have nothing
+-- to say, which is most abilities and is the honest answer.
+function BT.AbilityLevelByName(spellName)
+  if type(spellName) ~= "string" then return nil end
+  return BT.ABILITY_LEVEL[spellName]
+end

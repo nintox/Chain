@@ -956,7 +956,8 @@ function BT.AbilityInfo(spellId)
 end
 
 function BT.HasAbilityData()
-  return type(_G.Spy_AbilityList) == "table"
+  if type(_G.Spy_AbilityList) == "table" then return true end
+  return type(BT.ABILITY_LEVEL) == "table" and next(BT.ABILITY_LEVEL) ~= nil
 end
 
 -- The sub-events that mean somebody is swinging rather than hiding. A rogue
@@ -984,9 +985,16 @@ function BT.NoteCombatLogUnit(guid, name, flags, spellId, sub, spellName, isSrc)
     if englishClass and englishClass ~= "" then class = englishClass end
     if englishRace and englishRace ~= "" then race = englishRace end
   end
-  -- and what the ability they just used says about them
+  -- and what the ability they just used says about them. Spy's table first
+  -- where it is loaded - it is per rank and knows more than we do - then our
+  -- own, which is by name and is what fills the column in for everybody who
+  -- does not run Spy.
   local lvl, aClass, aRace
   if spellId then lvl, aClass, aRace = BT.AbilityInfo(spellId) end
+  if not lvl and BT.AbilityLevelByName then
+    lvl = BT.AbilityLevelByName(spellName)
+  end
+
 
   -- Somebody going into stealth, which is the thing you actually want to
   -- know and the one we were missing entirely. It was read only off a unit

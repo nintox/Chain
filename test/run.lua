@@ -5932,9 +5932,29 @@ do
         ok(found and (found.right:GetText() or ""):find("45%+"),
            "og rada seier 45+ (" .. tostring(found and found.right:GetText()) .. ")")
 
+        -- Og utan Spy i det heile: vår eiga liste tek over. Ho er på namn og
+        -- ikkje på id, og kvart tal er golvet under evna - "minst dette" -
+        -- fordi ei evne ikkje kan brukast før ho kan lærast.
         _G.Spy_AbilityList = nil
-        ok(not BT.HasAbilityData(), "utan tabellen gjer det rett og slett ingenting")
-        ok(BT.NoteAbilityLevel("Kvasom", 50) == nil, "og ingen level blir gjetta")
+        ok(BT.HasAbilityData(), "vi har vår eiga liste når Spy ikkje er der")
+        eq(BT.AbilityLevelByName("Blade Flurry"), 40,
+           "eit 31-poengs talent er level 40, same kva klasse")
+        eq(BT.AbilityLevelByName("Blind"), 34, "og Blind er 34")
+        eq(BT.AbilityLevelByName("Backstab"), nil,
+           "medan noko alle kan frå starten seier ingenting")
+        eq(BT.AbilityLevelByName(nil), nil, "og ingen evne seier ingenting")
+
+        -- ein rogue som opnar med Cheap Shot og seinare bruker Blade Flurry
+        BT.NoteCombatLogUnit("Player-4-0103", "Namnar-Testrealm", 0x440, nil,
+                             "SPELL_CAST_SUCCESS", "Cheap Shot", true)
+        eq(ChainDB.enemies["Namnar"].level, 18, "fyrste evna set golvet")
+        ok(ChainDB.enemies["Namnar"].levelGuess, "og det er merka som gjetta")
+        BT.NoteCombatLogUnit("Player-4-0103", "Namnar-Testrealm", 0x440, nil,
+                             "SPELL_CAST_SUCCESS", "Blade Flurry", true)
+        eq(ChainDB.enemies["Namnar"].level, 40, "og ei djupare evne hevar det")
+        BT.NoteCombatLogUnit("Player-4-0103", "Namnar-Testrealm", 0x440, nil,
+                             "SPELL_CAST_SUCCESS", "Kick", true)
+        eq(ChainDB.enemies["Namnar"].level, 40, "men ei grunnare senkar det ikkje")
       end
 
       -- Storleik: dette blir lese på to sekund før ein slåstkamp, ikkje studert

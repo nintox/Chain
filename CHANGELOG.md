@@ -1053,6 +1053,20 @@ parts that are not.
   it afterwards. The tooltip answers the two questions you have while he is
   there: who he is, and whether you have beaten him before. The faction line
   went too; the race above it already says which side he is on.
+- **The level column filled in with question marks and stayed that way.** A
+  level is only ever learned from a nameplate or from having somebody
+  targeted, and a rogue who opens on you out of stealth and vanishes gives
+  neither - so a man you had fought fifteen times sat there as `??` for ever.
+  Chain now reads what he *cast*: an ability cannot be used before it can be
+  learned, so every spell puts a floor under him. Two sorts of entry, both
+  worth being sure of - every class's 31-point talents, which need thirty-one
+  points and therefore level forty, and a short list of baseline abilities
+  whose first rank is high enough to say something. Matched on the name rather
+  than the spell id, because ids are per rank and a wrong one would quietly
+  claim a level twelve is forty. The figure shows as `40+` and is a floor that
+  only ever rises; actually seeing him still settles it outright. Where Spy is
+  installed its own per-rank table is better and is used first - this is what
+  fills the column in for everybody else.
 - **The card offered to whisper an enemy.** You cannot whisper across
   factions in this game - it is not disabled, it does not exist - so that was
   a button that could never work. The hint and the double-click are gone on

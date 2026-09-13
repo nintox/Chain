@@ -249,7 +249,11 @@ local LAYOUTS = {
     cols = {
       { "when",     70, "at" },
       { "who",      96, "name" },
-      { "lvl",      38, "level" },
+      { "lvl",      38, "level", "the level the game told us - from his "
+        .. "nameplate, or from having him targeted. '??' means you have "
+        .. "never actually seen him: only his attacks in the combat log, "
+        .. "which carry no level at all. '40+' is a floor worked out from an "
+        .. "ability he used - it cannot be cast before it can be learned." },
       { "class",    70, "class" },
       { "guild",   118, "guild" },
       { "where",    92, "zone" },
