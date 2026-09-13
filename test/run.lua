@@ -3789,6 +3789,22 @@ do
   local before = row.mark:IsShown()
   row.__scripts.OnMouseUp(row, "RightButton")
   eq(row.mark:IsShown(), before, "høgreklikk let linja vere")
+
+  -- berre éi om gongen: merket svarar på "kvar var eg", og ei liste du kan
+  -- setje att femten blå linjer i svarar ikkje på noko
+  grp("LFM RFD need heal", "Andre-Testrealm")
+  BT.ShowTab("groups")
+  local a, b
+  for _, r in ipairs(_G.ChainWindow.rows or {}) do
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Merkar") then a = r end
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Andre") then b = r end
+  end
+  S.uptime = S.uptime + 5
+  a.__scripts.OnMouseUp(a, "LeftButton")
+  S.uptime = S.uptime + 5
+  b.__scripts.OnMouseUp(b, "LeftButton")
+  ok(b.mark:IsShown(), "den nye linja er merka")
+  ok(not a.mark:IsShown(), "og den førre er det ikkje lenger")
 end
 
 -- Namnet skal seie kven han er, same kva liste du fann han i.
@@ -3824,6 +3840,7 @@ do
 
   -- klikk gjennom namnekolonnen skal òg merke linja
   ok(not row2.mark:IsShown(), "umerka")
+  S.uptime = S.uptime + 5
   row2.who.__scripts.OnMouseUp(row2.who, "LeftButton")
   ok(row2.mark:IsShown(), "klikk på namnet merkar linja som alle andre klikk")
 end
@@ -5991,6 +6008,26 @@ do
     -- level og klasse saman til høgre, slik spelet skriv det elles
     eq(nb.rows[1].right:GetText(), "60 Rogue", "med level og klasse til høgre")
     ok((nb.title:GetText() or ""):find("1 nearby"), "og kor mange det er")
+
+    -- Overskrifta har ein bar under seg, og knappen ved sida av henne heng i
+    -- same baren - elles er dei to ting som er dytta på plass kvar for seg og
+    -- aldri står på same linja.
+    ok(nb.head ~= nil, "overskrifta har ein bar")
+    eq(nb.head:GetHeight(), 18, "med si eiga høgd")
+    eq(select(2, nb.title:GetPoint(1)), nb.head, "tittelen heng i baren")
+    eq(select(2, nb.open:GetPoint(1)), nb.head, "og knappen gjer det same")
+    eq(nb.title:GetPoint(1), "LEFT", "tittelen midt på til venstre")
+    eq(nb.open:GetPoint(1), "RIGHT", "knappen midt på til høgre")
+    -- og knappen er merket vårt, ikkje ein bokstav
+    ok((nb.open.tex:GetTexture() or ""):find("minimap"),
+       "knappen er Chain-merket (" .. tostring(nb.open.tex:GetTexture()) .. ")")
+
+    -- Eit namn som ikkje fekk plass braut linja, og ein to-linjers streng
+    -- midtstilt på ei ein-linjes rad la merket over namnet og namnet under
+    -- stripa. Det er akkurat det skjermbiletet viste.
+    eq(nb.rows[1].name.__wrap, false, "namnet bryt ikkje linja")
+    eq(nb.rows[1].right.__wrap, false, "og ikkje level og klasse heller")
+    eq(nb.title.__wrap, false, "og ikkje overskrifta")
 
     -- eit klikk på rada merkar han, og tooltipen seier alt vi veit
     ChainDB.kos, ChainDB.kosGuilds = {}, {}

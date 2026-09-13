@@ -1074,6 +1074,7 @@ local NEAR_W    = 176        -- and ChainDB.nearbyWidth overrides this
 local RIGHT_W   = 74         -- room kept for "45 Warrior" on the right
 local NEAR_MAX  = 20         -- as many row frames as we ever build
 local ROW_H     = 14
+local HEAD_H    = 18         -- the bar the heading sits on
 
 -- How many rows to actually show, and which way the list grows from where you
 -- put it. Both are yours: a list that grows down is wrong if you have parked
@@ -1914,29 +1915,49 @@ function BT.BuildNearby()
     nearby.bg:SetTexture(0, 0, 0, 0.55)
   end
 
+  -- The heading sits on a bar of its own. On the same wash as the names it
+  -- read as a line of text that had drifted to the top rather than as the top
+  -- of anything, and the button beside it had nothing to line up against.
+  -- One flat colour, no gradient and no border: the class stripes below are
+  -- the colour in this box, and a header competing with them is noise.
+  nearby.head = nearby:CreateTexture(nil, "ARTWORK")
+  if nearby.head.SetColorTexture then
+    nearby.head:SetColorTexture(0.11, 0.13, 0.19, 0.95)
+  else
+    nearby.head:SetTexture(0.11, 0.13, 0.19, 0.95)
+  end
+
   nearby.title = nearby:CreateFontString(nil, "OVERLAY", "ChainFontNormalSmall")
+  nearby.title:SetJustifyH("LEFT")
+  -- "5 nearby (1 shown) drag me" is longer than a narrow box, and a heading
+  -- that wraps takes the bar's height with it
+  if nearby.title.SetWordWrap then nearby.title:SetWordWrap(false) end
+  if nearby.title.SetMaxLines then nearby.title:SetMaxLines(1) end
 
   -- A way in to the rest of it. The list is a corner of the Enemies tab -
   -- everything you would want after seeing a name is there, and the only way
   -- in was a slash command you had to remember. One letter in the header is
   -- cheap and it is where you are already looking.
+  -- The addon's own mark rather than a letter. "E" needed explaining; the
+  -- icon is the thing you click on the minimap to open the same window, so
+  -- it says what it does without a word.
   nearby.open = CreateFrame("Button", nil, nearby)
-  nearby.open:SetSize(16, 14)
-  nearby.open.fs = nearby.open:CreateFontString(nil, "OVERLAY",
-                                                "ChainFontNormalSmall")
-  nearby.open.fs:SetAllPoints()
-  nearby.open.fs:SetText(C.dim .. "E" .. C.off)
+  nearby.open:SetSize(14, 14)
+  nearby.open.tex = nearby.open:CreateTexture(nil, "OVERLAY")
+  nearby.open.tex:SetAllPoints()
+  nearby.open.tex:SetTexture("Interface\\AddOns\\" .. ADDON .. "\\minimap")
+  nearby.open.tex:SetAlpha(0.7)
   nearby.open:SetScript("OnClick", function()
     if BT.ShowTab then BT.ShowTab("enemies") end
   end)
   nearby.open:SetScript("OnEnter", function(self)
-    self.fs:SetText(C.warn .. "E" .. C.off)
+    self.tex:SetAlpha(1)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:AddLine("Open the Enemies tab")
     GameTooltip:Show()
   end)
   nearby.open:SetScript("OnLeave", function(self)
-    self.fs:SetText(C.dim .. "E" .. C.off)
+    self.tex:SetAlpha(0.7)
     GameTooltip:Hide()
   end)
 
@@ -1962,9 +1983,14 @@ function BT.BuildNearby()
     row:SetScript("OnDragStart", BeginDrag)
     row:SetScript("OnDragStop", EndDrag)
     row.name = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
-    row.name:SetPoint("LEFT", 0, 0)
+    row.name:SetPoint("LEFT", 3, 0)
     row.name:SetJustifyH("LEFT")
-    row.name:SetWidth(NearWidth() - 12 - RIGHT_W)
+    row.name:SetWidth(NearWidth() - 12 - RIGHT_W - 3)
+    -- A name that does not fit was wrapping, and a two-line string centred on
+    -- a one-line row puts the mark above the name and the name below the
+    -- stripe. Long names are cut off instead; the tooltip has the whole of it.
+    if row.name.SetWordWrap then row.name:SetWordWrap(false) end
+    if row.name.SetMaxLines then row.name:SetMaxLines(1) end
     -- The class as a tint across the whole row rather than only on the name.
     -- A coloured word asks you to have the palette memorised and half of it is
     -- a shade apart; a coloured band you read at a glance.
@@ -1972,8 +1998,10 @@ function BT.BuildNearby()
     row.stripe:SetAllPoints()
     -- level and class together on the right, the way the game writes it
     row.right = row:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
-    row.right:SetPoint("RIGHT", -2, 0)
+    row.right:SetPoint("RIGHT", -3, 0)
     row.right:SetJustifyH("RIGHT")
+    if row.right.SetWordWrap then row.right:SetWordWrap(false) end
+    if row.right.SetMaxLines then row.right:SetMaxLines(1) end
     row:SetScript("OnEnter", RowTooltip)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     -- The secure half handles left-click on its own; everything else hangs
@@ -2015,13 +2043,16 @@ end
 -- the bottom, next to where the list starts.
 local function LayoutNearby(shown)
   local up = GrowUp()
-  nearby.title:ClearAllPoints()
-  if up then
-    nearby.title:SetPoint("BOTTOMLEFT", 6, 5)
-  else
-    nearby.title:SetPoint("TOPLEFT", 6, -5)
-  end
   local w = NearWidth()
+  -- the bar first: the heading and the button both hang off it, so they line
+  -- up with each other rather than each being nudged into place separately
+  nearby.head:ClearAllPoints()
+  nearby.head:SetPoint(up and "BOTTOMLEFT" or "TOPLEFT", 0, 0)
+  nearby.head:SetPoint(up and "BOTTOMRIGHT" or "TOPRIGHT", 0, 0)
+  nearby.head:SetHeight(HEAD_H)
+  nearby.title:ClearAllPoints()
+  nearby.title:SetPoint("LEFT", nearby.head, "LEFT", 6, 0)
+  nearby.title:SetWidth(math.max(20, w - 30))
   nearby:SetScale(NearScale())
   if not sizing then nearby:SetWidth(w) end
   for i = 1, NEAR_MAX do
@@ -2052,8 +2083,7 @@ local function LayoutNearby(shown)
     -- each other. Then, and only then, the button steps aside.
     local tight = (shown or 0) == 0 and not ChainDB.nearbyLocked
     nearby.open:ClearAllPoints()
-    nearby.open:SetPoint(up and "BOTTOMRIGHT" or "TOPRIGHT",
-                         tight and -16 or -4, up and 4 or -4)
+    nearby.open:SetPoint("RIGHT", nearby.head, "RIGHT", tight and -16 or -4, 0)
   end
 
   -- and the height stays put while you are holding it: a box that grows or
@@ -2062,7 +2092,7 @@ local function LayoutNearby(shown)
     -- With nobody about and the header kept on screen, the header is the
     -- whole thing: a box with a row's worth of empty space under it is a box
     -- that looks broken rather than quiet.
-    nearby:SetHeight(22 + ((shown > 0) and (shown * ROW_H) or 0))
+    nearby:SetHeight((shown > 0) and (22 + shown * ROW_H) or (HEAD_H + 2))
   end
   AnchorNearby()
 end

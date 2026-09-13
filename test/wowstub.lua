@@ -508,6 +508,8 @@ function frameMeta:GetPoint(i)
   return p.point, p.rel, p.relPoint or p.point, p.x or 0, p.y or 0
 end
 function frameMeta:SetText(v) self.__text = v end
+function frameMeta:SetWordWrap(v) self.__wrap = v and true or false end
+function frameMeta:SetMaxLines(n) self.__maxLines = n end
 function frameMeta:SetTexture(v, g, b, a)
   if type(v) == "number" then self.__alpha = a else self.__tex = v end
 end

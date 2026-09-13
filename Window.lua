@@ -400,6 +400,12 @@ end
 -- ever be a surprise.
 local picked = {}
 
+-- The line you are on. One at a time: it answers "where was I" while you read
+-- down a long list, and a list you can leave fifteen blue lines in answers
+-- nothing. Marking several runs to say them out loud is a different job and
+-- it has its own button on History.
+local selected = nil
+
 -- Some lists are built out of tables we keep (a run, a trade, an enemy) and
 -- some out of tables built fresh on every draw. The first kind can be marked
 -- by identity; the second needs a name that survives the next redraw.
@@ -1879,7 +1885,8 @@ local function Render()
 
       -- marked, and who the line is about
       row.markKey = MarkKey(d)
-      row.mark:SetShown((row.markKey and picked[row.markKey]) and true or false)
+      row.mark:SetWidth(math.max(1, rx))
+      row.mark:SetShown((row.markKey and selected == row.markKey) and true or false)
       row.person = RowPerson(d)
       if row.person and whoX then
         row.who.person = row.person
@@ -2104,6 +2111,8 @@ local function SetMode(m)
   end
   mode = m
   if GROUP[m] then ChainCharDB[GROUP[m] .. "Tab"] = m end
+  -- a line you marked on another tab is not where you are now
+  selected = nil
   page = 1
   sortKey, sortDesc = nil, false
   for key, b in pairs(tabs) do
@@ -2282,7 +2291,12 @@ local function Build()
     -- while you are scrolling between them and counting, and on History the
     -- same mark is the one "say in party" reads.
     row.mark = Tex(row, "BACKGROUND", 0.25, 0.50, 0.85, 0.28)
-    row.mark:SetAllPoints()
+    -- as wide as the columns actually in use: the row frame is cut to the
+    -- widest tab, so a full-width band leaves a stub of colour hanging off
+    -- the end of every narrower one
+    row.mark:SetPoint("TOPLEFT")
+    row.mark:SetPoint("BOTTOMLEFT")
+    row.mark:SetWidth(1)
     row.mark:Hide()
     -- A row that can be hovered: the advert text is longer than any column,
     -- and a line you can only half read is a line you have to go and find in
@@ -2345,7 +2359,7 @@ local function Build()
       end
       self.lastClick = now
       if not self.markKey then return end
-      picked[self.markKey] = (not picked[self.markKey]) or nil
+      selected = (selected ~= self.markKey) and self.markKey or nil
       Render()
     end)
 
