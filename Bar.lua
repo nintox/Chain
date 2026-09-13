@@ -585,14 +585,20 @@ local function LevelText(soloStep)
     S.cur, S.max = BT.StepProgress()
   end
 
-  -- say why there is no rate rather than claiming to still be measuring one
+  -- A rate, or a reason there is none, or nothing.
+  --
+  -- "measuring xp/h" was the third case and it was a claim: it said work was
+  -- going on when the truth was that nothing had happened yet. Two minutes
+  -- after logging in there is no rate because there is no experience, and the
+  -- honest way to say that is to leave the space empty. "no xp for 12m" is
+  -- different - that one is a measurement, and it is the one you want.
   local rateTxt
   if rate then
     local col = RateColour(rate, nil)
     rateTxt = (col or "") .. BT.N(rate) .. " xp/h" .. (col and C.off or "")
   elseif idle and idle > 0 then
     rateTxt = C.dim .. "no xp for " .. BT.T(idle * 60) .. C.off
-  else rateTxt = "measuring xp/h" end
+  end
 
   -- The rate goes between the two corners, on the line it is measured
   -- alongside: how much is left on one side, how fast it is coming in in the
@@ -653,7 +659,18 @@ local function LevelText(soloStep)
     if need < 0 then need = 0 end
     local plan = { step.label .. " > " .. step.to }
     local st, borrowed = BT.StepStats(step)
-    if st and (st.xp or 0) > 0 then
+    -- Only once we have actually run the place.
+    --
+    -- "Maraudon > 52  boost ~87 runs ~12h 15m est" on a character that has
+    -- never set foot in Maraudon is not an estimate, it is a number borrowed
+    -- from somewhere else and dressed in the word "est". It reads as
+    -- knowledge and it is not: the figure it is built from is another
+    -- instance's, and the two have nothing to do with each other.
+    --
+    -- So the forecast waits for the first run through the door. Until then
+    -- the line says where you are heading and stops, which is all anybody can
+    -- honestly say.
+    if st and (st.xp or 0) > 0 and not borrowed then
       local runs = need / st.xp
       local bb = { string.format("boost ~%.0f runs", runs) }
       -- time is left off on purpose: while questing the question is "pay or
@@ -661,7 +678,7 @@ local function LevelText(soloStep)
       local cost = BT.Cost(step, runs, BT.CurrentBooster())
       if cost > 0 then table.insert(bb, "~" .. BT.G(cost))
       elseif (st.t or 0) > 0 then table.insert(bb, "~" .. BT.T(runs * st.t)) end
-      table.insert(plan, table.concat(bb, " ") .. (borrowed and " est" or ""))
+      table.insert(plan, table.concat(bb, " "))
     end
     if rate and rate > 0 then
       table.insert(plan, "solo ~" .. BT.T(need / rate * 3600))

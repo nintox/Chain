@@ -32,19 +32,53 @@ local function HasWord(hay, needle)
   return hay:find("%f[%w]" .. needle:lower():gsub("(%W)", "%%%1") .. "%f[%W]") ~= nil
 end
 
--- Which instance an advert is about, if any
-function BT.AdZone(msg)
-  local low = " " .. msg:lower() .. " "
+-- Where a name sits in the text, or nil. Position rather than yes-or-no,
+-- because which name comes first is the whole answer below.
+local function WordAt(hay, needle)
+  if needle == "" then return nil end
+  return hay:find("%f[%w]" .. needle:lower():gsub("(%W)", "%%%1") .. "%f[%W]")
+end
+
+-- Which instance an advert is about, if any.
+--
+-- The earliest name in the text wins, not the first one our own table happens
+-- to list. Boosters sell by running other people down, and the instance they
+-- name while doing it is not the one they are selling:
+--
+--   WTS Nonstop Dire Maul West+North Boost, Better than Strat/ZG/BRD and
+--   incompetent mafia boosters
+--
+-- That went into the list as Blackrock Depths, for no better reason than that
+-- BRD sits above Dire Maul in BT.DUNGEONS. An advert leads with what it is
+-- selling and everything after that is context, so reading order is the
+-- answer. It is a rule and not a certainty - somebody who opens with what he
+-- is better than will still fool it - but it is right about how people write.
+local function FirstNamed(low)
+  local best, bestAt, bestLen
+  -- Earliest wins; on a tie the longer name wins, because the longer name is
+  -- the more specific one. "Dire Maul East" and "Dire Maul" start at the same
+  -- letter and only one of them says which wing.
+  local function see(needle, id)
+    if not needle or needle == "" then return end
+    local at = WordAt(low, needle)
+    if not at then return end
+    local len = #needle
+    if bestAt and (at > bestAt or (at == bestAt and len <= bestLen)) then return end
+    best, bestAt, bestLen = id, at, len
+  end
   for _, d in ipairs(BT.DUNGEONS) do
-    if HasWord(low, d.label) or HasWord(low, d.zone) then return d.id end
+    see(d.label, d.id)
+    see(d.zone, d.id)
     local short = BT.SHORT[d.zone]
-    if short and HasWord(low, short) then return d.id end
+    if short then see(short, d.id) end
   end
-  -- then the words people actually type: "Mara boost", "SM Cath & Arm"
-  for word, id in pairs(BT.ALIAS or {}) do
-    if HasWord(low, word) then return id end
-  end
-  return nil
+  -- and the words people actually type: "Mara boost", "SM Cath & Arm"
+  for word, id in pairs(BT.ALIAS or {}) do see(word, id) end
+  return best
+end
+
+function BT.AdZone(msg)
+  return FirstNamed(" " .. msg:lower() .. " ")
 end
 
 -- What was said, without the decorations: colour codes, item links and the
@@ -324,8 +358,14 @@ function BT.NoteAd(msg, sender, source)
   if type(msg) ~= "string" or type(sender) ~= "string" then return end
   if not BT.AdSourceOn(source) then return end
   if not BT.LooksLikeAd(msg) then return end
+  -- An advert we cannot put a name to is still a man selling boosts.
+  --
+  -- It used to be thrown away outright, and the ones that go are exactly the
+  -- ones worth having: a spelling nobody but him uses, a wing we have no word
+  -- for, an offer with no instance in it at all. He goes on the list with a
+  -- dash where the instance would be - the text of what he said is right
+  -- there in the row, and the whisper button works the same.
   local id = BT.AdZone(msg)
-  if not id then return end
   -- The price is optional. Most adverts do not carry one at all - "WTS SM
   -- boost, Cath & Arm, 20-42, FFA loot, sum ready" is the usual shape - and a
   -- booster you never see is worse than one whose price you have to ask for.
@@ -334,7 +374,10 @@ function BT.NoteAd(msg, sender, source)
   local name = BT.ShortName(sender)
   if name == BT.ShortName(UnitName("player")) then return end
   local b = BT.BoosterInfo(name)
-  b.adPrice, b.adPack, b.adZone, b.adAt = gold or 0, runs or 1, id, time()
+  b.adPrice, b.adPack, b.adAt = gold or 0, runs or 1, time()
+  -- nil rather than a guess: "we do not know" is a thing the row can say
+  b.adZone = id
+  b.adAny = true
   b.adFrom = source
   b.adText = BT.AdText(msg)
   BT.CountAd(source, name, id, gold or 0, runs or 1)

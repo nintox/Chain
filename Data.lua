@@ -163,10 +163,22 @@ BT.ALIAS = {
   mara = "mara", maraudon = "mara",
   st = "st", sunken = "st", atal = "st",
   brd = "brd", depths = "brd",
+  -- Dire Maul is three instances behind one name, so the wing has to be in
+  -- the words. Written every way people write it, including the "+" form -
+  -- "Dire Maul West+North" is one advert for two wings and the first one
+  -- named is the one it starts on.
   dmw = "dmw", dme = "dme", dmn = "dmn",
+  ["dire maul west"] = "dmw", ["dire maul east"] = "dme",
+  ["dire maul north"] = "dmn",
+  ["dm west"] = "dmw", ["dm east"] = "dme", ["dm north"] = "dmn",
+  ["dm w"] = "dmw", ["dm e"] = "dme", ["dm n"] = "dmn",
   lbrs = "lbrs", ubrs = "ubrs",
   scholo = "scholo", scholomance = "scholo",
-  strat = "strat", stratholme = "strat"
+  -- Nobody spells it right. "Stratholm" without the e is as common in a
+  -- trade channel as the real thing, and an advert we cannot name is an
+  -- advert nobody sees.
+  strat = "strat", stratholme = "strat", stratholm = "strat",
+  strath = "strat", stratt = "strat"
 }
 
 BT.K = {

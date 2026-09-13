@@ -1053,6 +1053,36 @@ parts that are not.
   it afterwards. The tooltip answers the two questions you have while he is
   there: who he is, and whether you have beaten him before. The faction line
   went too; the race above it already says which side he is on.
+- **A forecast for an instance you have never been in.** `Maraudon > 52
+  boost ~87 runs ~12h 15m est` on a character that had never set foot in
+  Maraudon: the figure was borrowed from somewhere else and dressed in the
+  word "est", and it read as knowledge. Dire Maul is the clearest case - three
+  instances behind one name, so a run through North gave West a whole number
+  to boast with. The forecast waits for the first run through that door now.
+  Until then the line says where you are heading and stops, which is all
+  anybody can honestly say.
+- **"measuring xp/h" was a claim, not a measurement.** It said work was going
+  on when the truth was that nothing had happened yet. Two minutes after
+  logging in there is no rate because there is no experience, and the honest
+  way to say that is to leave the space empty. "no xp for 12m" stays - that
+  one *is* a measurement, and it is the one you want.
+- **An advert was filed under the instance it was rubbishing.** "WTS Dire
+  Maul West+North, better than Strat/ZG/BRD and incompetent mafia boosters"
+  went into the list as Blackrock Depths - for no better reason than that BRD
+  sits above Dire Maul in our own table. The earliest name in the text wins
+  now: an advert leads with what it is selling, and everything after that is
+  context. On a tie the longer name wins, so "Dire Maul East" beats the bare
+  "Dire Maul" that starts at the same letter.
+- **Dire Maul needed the wing spelled out and Stratholme needed spelling
+  wrong.** Three instances behind one name, written every way people write it
+  - `DM West`, `dm w`, `Dire Maul North` - and `Stratholm` without the e,
+  which in a trade channel is as common as the real thing.
+- **An advert we cannot name is still a man selling boosts**, and it was being
+  thrown away outright. The ones that went are exactly the ones worth having:
+  a spelling nobody else uses, a wing we have no word for, an offer with no
+  instance in it at all. He goes on the list with a dash where the instance
+  would be - what he actually wrote is in the row, and the whisper button
+  works the same.
 - **"0.0 runs left" is not a thing worth writing in the corner of the
   screen.** Square with him - everything settled, nothing bought yet, or a
   balance you have just typed to zero - is a state you sit in for hours, and

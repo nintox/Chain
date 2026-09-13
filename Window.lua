@@ -892,20 +892,22 @@ local function AdRows()
   local out = {}
   local now = time()
   for name, info in pairs(ChainDB.boosters) do
-    if info.adZone and info.adAt and (now - info.adAt) <= AD_KEEP then
-      local d = BT.BY_ID[info.adZone]
+    if (info.adZone or info.adAny) and info.adAt
+       and (now - info.adAt) <= AD_KEEP then
+      local d = info.adZone and BT.BY_ID[info.adZone] or nil
+      local where = d and d.label or info.adZone
       local pack = ((info.adPack or 1) > 0) and info.adPack or 1
       local gold = info.adPrice or 0
       local perRun = (gold > 0) and (gold / pack) or 0
       local from = tostring(info.adFrom or "chat"):gsub("^channel:", "")
       table.insert(out, {
-        by = name, at = info.adAt or 0, zone = d and d.label or info.adZone,
+        by = name, at = info.adAt or 0, zone = where or "",
         gold = gold, perRun = perRun, pack = pack, from = from,
         whisper = name,
         cells = {
           BT.T(time() - (info.adAt or time())) .. " ago",
           name,
-          d and d.label or info.adZone,
+          where or (C.dim .. "-" .. C.off),
           -- most adverts name no price at all; that is what whisper is for
           (gold > 0) and (C.gold .. BT.G(gold)
             .. ((pack > 1) and (C.dim .. "/" .. pack) or "") .. C.off)
@@ -917,7 +919,7 @@ local function AdRows()
         },
         tip = Lines(
           name,
-          (d and d.label or info.adZone)
+          (where or "no instance named")
             .. "   " .. BT.T(time() - (info.adAt or time())) .. " ago"
             .. "   " .. from,
           info.adText or "",

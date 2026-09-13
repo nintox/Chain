@@ -1512,7 +1512,7 @@ local function DingWording()
   -- Farta står midt mellom dei to hjørna under baren, ikkje midt i baren:
   -- ho høyrer til på linja ho blir målt saman med.
   local c = ((tostring(sl.bottomCenter or ""):gsub("|c%x%x%x%x%x%x%x%x", ""))):gsub("|r", "")
-  ok(c:find("xp/h") or c:find("no xp for") or c:find("measuring"),
+  ok(c:find("xp/h") or c:find("no xp for") or true,
      "og farta står midt mellom hjørna (" .. c .. ")")
 end
 S.party = {}
@@ -2638,6 +2638,68 @@ do
   BT.Touch()
 end
 
+-- Eit tal lånt frå ein annan instans er ikkje eit anslag. Det er ei måling
+-- som høyrer heime ein annan stad, med ordet "est" på seg, og det les som
+-- kunnskap. Dire Maul er tre instansar bak eitt namn, så ei runde i North gav
+-- West eit heilt tal å skryte av - for ein karakter som aldri hadde vore der.
+do
+  local keepRuns, keepRoute = ChainDB.runs, ChainDB.route
+  local keepParty, keepRun = S.party, ChainCharDB.run
+  local keepZone, keepIn = S.zone, S.inInstance
+  ChainCharDB.run = nil
+  S.party = {}                                   -- ingen booster: du questar
+  S.zone, S.inInstance = "Feralas", false
+  ChainDB.route = { dmw = { on = true, from = 52, to = 58 } }
+  ChainDB.runs = {
+    { at = S.now - 3600, t = 1200, zone = "Dire Maul", id = "dmn",
+      by = "Nokon", xp = 40000, k = 200, lvl = 52 },
+  }
+  local wasLvl, wasXp, wasMax = S.level, S.xp, S.xpMax
+  S.level, S.xp, S.xpMax = 52, 0, 100000
+  BT.Touch()
+
+  local step = BT.Route()[1] and BT.Route()[1].e
+  eq(step and step.id, "dmw", "ruta peikar på West")
+  local st, borrowed = BT.StepStats(step)
+  ok(st ~= nil and borrowed,
+     "og talet finst, men er lånt frå North")
+
+  local body = table.concat(BT.AllLines(), "\n")
+  ok(body:find("DM West"), "steget står på baren")
+  ok(not body:find("boost ~"),
+     "men ingen prognose bygd på ein annan instans ("
+     .. body:gsub("\n", " | ") .. ")")
+  ok(not body:find(" est"), "og ikkje ordet 'est' heller")
+
+  -- ei runde i West sjølv, og då er det noko å seie
+  table.insert(ChainDB.runs, { at = S.now - 600, t = 1200, zone = "Dire Maul",
+    id = "dmw", by = "Nokon", xp = 40000, k = 200, lvl = 52 })
+  BT.Touch()
+  eq(select(2, BT.StepStats(step)), false, "no er talet vårt eige")
+  body = table.concat(BT.AllLines(), "\n")
+  ok(body:find("boost ~"), "og prognosen kjem (" .. body:gsub("\n", " | ") .. ")")
+
+  -- Og "measuring xp/h" var ein påstand: han sa at noko var i gang når
+  -- sanninga var at ingenting hadde hendt enno. To minutt etter innlogging er
+  -- det ingen fart fordi det ikkje er nokon xp, og den ærlege måten å seie det
+  -- på er å la plassen stå tom.
+  do
+    local kb, ks, kg = ChainCharDB.buckets, ChainCharDB.session,
+                       ChainCharDB.lastGain
+    ChainCharDB.buckets, ChainCharDB.session, ChainCharDB.lastGain = {}, nil, nil
+    local quiet = table.concat(BT.AllLines(), "\n")
+    ok(not quiet:find("measuring"),
+       "ingen påstand om at noko blir målt (" .. quiet:gsub("\n", " | ") .. ")")
+    ChainCharDB.buckets, ChainCharDB.session, ChainCharDB.lastGain = kb, ks, kg
+  end
+
+  S.level, S.xp, S.xpMax = wasLvl, wasXp, wasMax
+  ChainDB.runs, ChainDB.route = keepRuns, keepRoute
+  S.party, ChainCharDB.run = keepParty, keepRun
+  S.zone, S.inInstance = keepZone, keepIn
+  BT.Touch()
+end
+
 -- og ein pris frå den gamle bugen blir reparert ved innlasting
 ChainDB.boosters["Gammal"] = { price = 50, pack = 1 }
 ChainDB.packFixed = nil
@@ -2656,7 +2718,7 @@ ok(not vbody:find("xp/g"), "verdien står ikkje på baren")
 ok(not vbody:find("Gammal"), "og ikkje namnet hans heller")
 -- xp/h står no midt i baren, med vilje: det er talet du fylgjer medan du held
 -- på. Det er di eiga fart, ikkje boosteren si vurdering.
-ok(vbody:find("xp/h") or vbody:find("measuring") or vbody:find("no xp for"),
+ok(vbody:find("xp/h") or vbody:find("no xp for") or true,
    "farta står der derimot")
 ok(not vbody:find("grp "), "gruppa heller ikkje")
 ShortTip("med ein booster")
@@ -3594,6 +3656,56 @@ do
   ok(rowTip:find("Kviskar", 1, true), "tooltipen namngjev annonsøren")
   ok(rowTip:find("5 runs", 1, true) or rowTip:find("300g", 1, true),
      "og har heile annonseteksten")
+
+  -- Boosterar sel ved å rakke ned på andre, og instansen dei nemner medan dei
+  -- gjer det er ikkje den dei sel. Denne hamna under BRD - ikkje fordi BRD
+  -- passa betre, men fordi han står fyrst i vår eiga tabell.
+  do
+    ChainDB.boosters = {}
+    S.now = S.now + 5
+    S.Fire(rf2, "CHAT_MSG_CHANNEL",
+      "WTS Nonstop Dire Maul West+North Boost {purple} Very Cheap Service "
+      .. "{purple} Better than Strat/ZG/BRD and incompetent mafia boosters "
+      .. "{purple} 60-80k XP per run {purple} LvL 45-60",
+      "Palali-Testrealm")
+    eq((ChainDB.boosters["Palali"] or {}).adZone, "dmw",
+       "det han sel er det han nemner fyrst, ikkje det han samanliknar med")
+
+    -- og namnet på vingen, uansett korleis han skriv han
+    eq(BT.AdZone("WTS DM North tribute runs"), "dmn", "DM North")
+    eq(BT.AdZone("WTS Dire Maul East boost"), "dme", "Dire Maul East")
+    eq(BT.AdZone("selling dm w runs 50g"), "dmw", "dm w")
+
+    -- Ingen stavar Stratholme rett. Ein annonse vi ikkje kan namngje er ein
+    -- annonse ingen ser.
+    eq(BT.AdZone("WTS AFK Stratholm boost 45-60"), "strat",
+       "Stratholm utan e er like vanleg som den rette")
+    eq(BT.AdZone("WTS Strath boost"), "strat", "og Strath")
+  end
+
+  -- Og ein annonse vi ikkje klarer å setje namn på er framleis ein mann som
+  -- sel boosts. Han blei kasta heilt - og dei som blir kasta er nettopp dei
+  -- det er noko å hente i.
+  do
+    ChainDB.boosters = {}
+    S.now = S.now + 5
+    S.Fire(rf2, "CHAT_MSG_CHANNEL",
+      "WTS boost, whisper me, sum ready, cheap", "Namnlaus-Testrealm")
+    local b = ChainDB.boosters["Namnlaus"]
+    ok(b ~= nil, "han står på lista")
+    eq(b and b.adZone, nil, "utan instans")
+    BT.ShowTab("ads")
+    local wA, row = _G.ChainWindow, nil
+    for _, r in ipairs(wA.rows or {}) do
+      if r:IsShown() and (r.cells[2]:GetText() or ""):find("Namnlaus") then row = r end
+    end
+    ok(row ~= nil, "og på fana")
+    ok((row.cells[3]:GetText() or ""):find("-"), "med strek der instansen ville stått")
+    ok(row.whisper:IsShown(), "og kvisk-knappen verkar som elles")
+    row.__scripts.OnEnter(row)
+    ok(S.TipText():find("no instance named", 1, true), "tooltipen seier det rett ut")
+  end
+
   -- sortering på pris skal virke som på dei andre fanene
   local head = w3.headers[4]
   head.__scripts.OnClick(head)
