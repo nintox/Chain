@@ -470,6 +470,14 @@ parts that are not.
   **now** in the when column and counts up. It is not saved, cannot be deleted
   and cannot be ticked: it counts for nothing until you finish it.
 
+- **The payments sit in the History list, among the runs.** "When did I pay
+  him, and what have I had since" is one question, and it was two tabs: the
+  times were in the Trade tab, the runs were here, and you were left holding a
+  clock in your head. On one list, in one order, the answer is the rows between
+  the money and the top. A payment row says **paid** with the runs it bought,
+  the sum in the gold column and his name in the booster column, and the x
+  strikes it from there the same as from the Trade tab.
+
 - **And the count can be settled in one line of party chat.** He says five, you
   counted four, and neither of you can prove it, because both of you are
   counting in your head - him across three customers at once. The addon is not

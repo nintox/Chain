@@ -2522,6 +2522,57 @@ do
   ChainCharDB.run = keepRun
 end
 
+-- Betalingane høyrer heime i same lista som runane. "Når betalte eg, og kva
+-- har eg fått sidan" er eitt spørsmål, og det var to faner: tidene låg i
+-- Trade-fana og runane her, og du sat att med ei klokke i hovudet.
+do
+  local keepT, keepR = ChainDB.trades, ChainDB.runs
+  ChainDB.trades, ChainDB.runs = {}, {}
+  ChainCharDB.run = nil
+  table.insert(ChainDB.trades, { at = S.now - 3000, with = "Blandar",
+    gave = 400 * 10000, got = 0, id = "sm", perRun = 40, lvl = 38,
+    char = "Tester" })
+  for i = 1, 3 do
+    table.insert(ChainDB.runs, { at = S.now - 2500 + i * 300, t = 300,
+      zone = "The Stockade", id = "sm", by = "Blandar", xp = 9000, k = 60,
+      lvl = 38 })
+  end
+  BT.Touch() BT.TouchTrades()
+  BT.ShowTab("runs")
+  local wm = _G.ChainWindow
+
+  local order, tradeAt = {}, nil
+  for i, row in ipairs(wm.rows or {}) do
+    if row:IsShown() then
+      local what = ((row.cells[2]:GetText() or "")
+        :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+      if what ~= "" then
+        table.insert(order, what)
+        if what:find("^paid") and not tradeAt then tradeAt = #order end
+      end
+    end
+  end
+  ok(tradeAt ~= nil, "betalinga står i lista (" .. table.concat(order, " | ") .. ")")
+  eq(tradeAt, 4, "under dei tre runane som kom etter henne")
+
+  -- og ho seier kva ho kjøpte og kven som fekk pengane
+  local tr
+  for _, row in ipairs(wm.rows or {}) do
+    local what = ((row.cells[2]:GetText() or "")
+      :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+    if row:IsShown() and what:find("^paid") then tr = row break end
+  end
+  if tr then
+    ok((tr.cells[7]:GetText() or ""):find("400"), "med summen i gull-kolonnen")
+    ok((tr.cells[8]:GetText() or ""):find("Blandar"), "og kven som fekk dei")
+    ok(tr.del:IsShown(), "og ho kan strykast herifrå òg")
+    ok(not tr.pick:IsShown(), "men ikkje hakkast av - det er runar ein tel")
+  end
+
+  ChainDB.trades, ChainDB.runs = keepT, keepR
+  BT.Touch() BT.TouchTrades()
+end
+
 -- Å gjere opp teljinga med boosteren.
 --
 -- Han seier fem, du talde fire, og ingen av dykk kan bevise noko fordi begge
@@ -3876,7 +3927,11 @@ do
     do
       local wr, withGold = _G.ChainWindow, 0
       for _, row in ipairs(wr.rows or {}) do
-        if row:IsShown() then
+        -- betalingane ligg no i same lista, og dei har gull i same kolonnen;
+        -- det er runane vi tel her
+        local what = ((row.cells[2]:GetText() or "")
+          :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+        if row:IsShown() and not what:find("^paid") and not what:find("^got back") then
           local g = (row.cells[7]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", "")
           g = g:gsub("|r", "")
           if g:find("%d") and g ~= "-" then withGold = withGold + 1 end

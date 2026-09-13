@@ -50,7 +50,8 @@ end
 -- key is what the sort uses; nil means the column is not sortable
 local LAYOUTS = {
   runs = {
-    title = "Every run, newest first. Click the x to throw one out of the averages.",
+    title = "Runs and payments, newest first. What sits above a payment is "
+      .. "what you have had since it.",
     cols = {
       { "when",     78, "at" },
       { "instance", 90, "zone" },
@@ -357,6 +358,44 @@ local function RunRows()
       }
     })
   end
+  -- The payments, in among the runs. "When did I pay him, and what have I had
+  -- since" is one question, and it was two tabs: the times were in the Trade
+  -- tab and the runs were here, and you were left holding a clock in your
+  -- head. Put them on the same list, in the same order, and the answer is the
+  -- rows between the money and the top.
+  local ledger = BT.CreditLedger and BT.CreditLedger() or {}
+  for _, t in ipairs(ChainDB.trades or {}) do
+    local net = (t.gave or 0) - (t.got or 0)
+    if t.at and net ~= 0 then
+      local led = ledger[t]
+      local runs = led and led.bought or nil
+      table.insert(out, {
+        trade = t, at = t.at,
+        tip = {
+          (net > 0) and ("paid " .. (t.with or "?"))
+            or ("got back from " .. (t.with or "?")),
+          date("%A %d %B, %H:%M", t.at or time()),
+          BT.G(BT.Gold(math.abs(net)))
+            .. (runs and string.format("  -  %.1f runs", runs) or ""),
+          t.manual and "typed in by hand" or "the addon watched this one",
+          "everything above this line is what you have had since"
+        },
+        cells = {
+          C.dim .. BT.T(time() - (t.at or time())) .. " ago" .. C.off,
+          C.gold .. ((net > 0) and "paid" or "got back") .. C.off
+            .. (runs and (C.dim .. string.format("  %.0f runs", runs) .. C.off)
+                or ""),
+          C.dim .. "-" .. C.off, C.dim .. "-" .. C.off,
+          C.dim .. "-" .. C.off, C.dim .. "-" .. C.off,
+          C.gold .. BT.G(BT.Gold(math.abs(net))) .. C.off,
+          t.with or (C.dim .. "?" .. C.off),
+          tostring(t.lvl or "-"),
+          C.dim .. "-" .. C.off
+        }
+      })
+    end
+  end
+
   -- newest first by default, and the one you are in is newer than all of them
   table.sort(out, function(a, b)
     if a.live ~= b.live then return a.live and true or false end
@@ -1554,7 +1593,10 @@ local function Render()
         row.pick:Hide()
       end
       row.del.rec, row.del.name, row.del.trade = nil, nil, nil
-      if mode == "runs" and d.rec then
+      if mode == "runs" and d.trade then
+        row.del.trade = d.trade
+        row.del:Show()
+      elseif mode == "runs" and d.rec then
         row.del.rec = d.rec
         row.del:Show()
       elseif mode == "boosters" and d.mine then
