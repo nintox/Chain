@@ -118,10 +118,10 @@ end
 -- so they sit under one heading and you pick the angle once you are there.
 local SUBTABS = {
   boosting = { { "boosters", "Boosters" }, { "ads", "Sellers" },
-               { "reported", "Shared" } }
+               { "wtb", "Buyers" }, { "reported", "Shared" } }
 }
 local GROUP = { boosters = "boosting", ads = "boosting",
-                reported = "boosting" }
+                wtb = "boosting", reported = "boosting" }
 
 -- What each tab is for, on the tab itself. Eleven tabs is a lot to learn by
 -- clicking them one at a time.
@@ -133,8 +133,11 @@ local TAB_HINT = {
     .. "shared.",
   ads = "who is selling right now, read out of chat. Older than half an hour "
     .. "and they are off the list.",
-  groups = "people looking for a boost rather than selling one - LFM, LFG "
-    .. "and WTB.",
+  groups = "people looking for a group: LFM and LFG, out of every channel. "
+    .. "Somebody wanting to buy a boost is on Boosting, with the rest of the "
+    .. "buying and selling.",
+  wtb = "everyone asking to buy a boost. The other side of the Sellers tab, "
+    .. "and where you find somebody to split a chain with.",
   boosting = "buying and selling: who sells the step you are on, who is "
     .. "advertising right now, and what other people's addons have said.",
   reported = "what other people's addons have told you, kept apart from your "
@@ -287,8 +290,8 @@ local LAYOUTS = {
     }
   },
   groups = {
-    title = "Everyone looking rather than selling: LFM, LFG and WTB, from "
-      .. "every channel.",
+    title = "Everyone looking for a group: LFM and LFG, from every channel. "
+      .. "Somebody wanting to buy a boost is on Boosting.",
     cols = {
       { "when",     70, "at" },
       { "who",      88, "by" },
@@ -303,6 +306,24 @@ local LAYOUTS = {
         .. "asked for is on the row tooltip." },
       { "heard in", 88, "from" },
       { "what he said", 240, nil },
+      { "",         64, nil }        -- the whisper button
+    }
+  },
+  -- The other side of Sellers, and the reason it is here rather than with
+  -- the LFM posts: a man asking to buy a boost is in the same trade you are,
+  -- not looking for a fifth for Scholo. He is who you split a chain with when
+  -- the booster sells in tens and you want five.
+  wtb = {
+    title = "Everyone asking to buy a boost. The other side of Sellers - "
+      .. "and who to share a chain with.",
+    cols = {
+      { "when",     70, "at" },
+      { "who",      88, "by" },
+      { "instance", 96, "zone", "the instance he named, when he named one" },
+      { "enter at", 58, "min", "the level that instance lets you in at, "
+        .. "green once you are there" },
+      { "heard in", 96, "from" },
+      { "what he said", 330, nil },
       { "",         64, nil }        -- the whisper button
     }
   },
@@ -848,10 +869,14 @@ end
 local KIND_WORD = { lfm = "forming", lfg = "looking", wtb = "wants to buy" }
 local KIND_COL = { lfm = C.good, lfg = C.info, wtb = C.gold }
 
+-- The LFM and LFG half. A man asking to buy a boost is in the same trade you
+-- are, so he is on Boosting with the rest of the buying and selling; he is
+-- not somebody you are going to fill a group with.
 local function GroupRows()
   local out = {}
   local mine = BT.FocusStep()
   for _, g in ipairs(BT.GroupLog()) do
+   if g.kind ~= "wtb" then
     local d = g.id and BT.BY_ID[g.id]
     local age = time() - (g.at or time())
     local col = KIND_COL[g.kind] or C.dim
@@ -893,6 +918,48 @@ local function GroupRows()
           or nil
       )
     }
+   end
+  end
+  return out
+end
+
+-- Everyone asking to buy one. The same posts, read for the other reason: not
+-- "can I join this" but "is somebody else buying the same chain".
+local function BuyerRows()
+  local out = {}
+  local mine = BT.FocusStep()
+  for _, g in ipairs(BT.GroupLog()) do
+   if g.kind == "wtb" then
+    local d = g.id and BT.BY_ID[g.id]
+    local age = time() - (g.at or time())
+    local here = mine and g.id == mine.id
+    out[#out + 1] = {
+      at = g.at, by = g.by, from = g.from, min = d and d.min or nil,
+      zone = d and d.label or (g.id or ""),
+      whisper = g.by, rec = g,
+      cells = {
+        BT.T(age) .. " ago" .. ((g.n or 1) > 1
+          and (C.dim .. " x" .. g.n .. C.off) or ""),
+        (here and C.good or "") .. g.by .. (here and C.off or ""),
+        d and ((here and C.good or "") .. d.label .. (here and C.off or ""))
+          or (C.dim .. "-" .. C.off),
+        (d and BT.MinChunk(d)) or (C.dim .. "-" .. C.off),
+        C.dim .. tostring(g.from or ""):gsub("^channel:", "") .. C.off,
+        C.dim .. (g.text or "") .. C.off,
+        ""
+      },
+      tip = Lines(
+        g.by .. " wants to buy",
+        (d and d.label or "no instance named")
+          .. "   " .. BT.T(age) .. " ago"
+          .. "   " .. tostring(g.from or ""):gsub("^channel:", "")
+          .. ((g.n or 1) > 1 and ("   said " .. g.n .. " times") or ""),
+        g.text or "",
+        here and "the step you are on - he is buying what you are buying"
+          or nil
+      )
+    }
+   end
   end
   return out
 end
@@ -1462,6 +1529,7 @@ local function Data()
   if mode == "boosters" then return BoosterRows() end
   if mode == "ads" then return AdRows() end
   if mode == "groups" then return GroupRows() end
+  if mode == "wtb" then return BuyerRows() end
   if mode == "enemies" then return EnemyRows() end
   if mode == "pvp" then return PvPRows() end
   if mode == "koslist" then return KOSRows() end
@@ -1629,11 +1697,20 @@ local function Summary()
     return n .. " advertiser" .. (n == 1 and "" or "s") .. " heard"
       .. (best and (C.dim .. "   most from " .. best.label .. C.off) or "")
       .. C.dim .. "   settings - channels... to choose where from" .. C.off
-  elseif mode == "groups" then
-    local all = BT.GroupLog()
+  elseif mode == "groups" or mode == "wtb" then
+    local buying = (mode == "wtb")
+    local all = {}
+    for _, g in ipairs(BT.GroupLog()) do
+      if (g.kind == "wtb") == buying then all[#all + 1] = g end
+    end
     if #all == 0 then
       if not ChainDB.readGroups then
         return C.dim .. "reading group posts is off - turn it on in the settings" .. C.off
+      end
+      if buying then
+        return "nobody asking to buy just now.  WTB posts are read from the "
+          .. "same channels as the rest - join LookingForGroup and the city "
+          .. "channels."
       end
       return "nothing heard yet.  People post these in LookingForGroup and in "
         .. "the city channels - join those and stand in a city."
@@ -1645,7 +1722,8 @@ local function Summary()
       if step and g.id == step.id then here = here + 1 end
       if (time() - (g.at or 0)) < 900 then fresh = fresh + 1 end
     end
-    return #all .. " post" .. (#all == 1 and "" or "s") .. " kept"
+    return #all .. (buying and " buyer" or " post") .. (#all == 1 and "" or "s")
+      .. " kept"
       .. C.dim .. "   " .. fresh .. " in the last 15 minutes" .. C.off
       .. ((here > 0 and step)
           and ("   " .. C.good .. here .. " for " .. step.label .. C.off) or "")
@@ -1967,7 +2045,8 @@ local function Render()
         row.del:Hide()
       end
 
-      if (mode == "ads" or mode == "groups") and d.whisper then
+      if (mode == "ads" or mode == "groups" or mode == "wtb")
+         and d.whisper then
         local wx = 0
         for ci, col in ipairs(layout.cols) do
           if ci < #layout.cols then wx = wx + col[2] end

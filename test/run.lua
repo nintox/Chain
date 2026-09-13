@@ -2905,12 +2905,12 @@ do
   BT.ShowTab("boosting")
   local wt = _G.ChainWindow
   eq(BT.WindowMode(), "boosters", "Boosting opnar på Boosters fyrste gong")
-  ok(wt.subtabs and #wt.subtabs == 3, "med tre underfaner")
+  ok(wt.subtabs and #wt.subtabs == 4, "med fire underfaner")
   local shown = 0
   for _, b in ipairs(wt.subtabs or {}) do
     if b:IsShown() then shown = shown + 1 end
   end
-  eq(shown, 3, "og dei er framme")
+  eq(shown, 4, "og dei er framme")
 
   -- overskrifta er tent så lenge du er inne i ei av dei
   local head
@@ -2938,9 +2938,14 @@ do
   BT.ShowTab("boosting")
   eq(BT.WindowMode(), "ads", "han kjem tilbake dit du var")
 
-  -- den tredje heiter Shared
-  eq(wt.subtabs[3].fs:GetText(), "Shared", "den tredje heiter Shared")
+  -- WTB er kjøparane, og dei høyrer heime her og ikkje mellom LFM-a
+  eq(wt.subtabs[3].fs:GetText(), "Buyers", "den tredje heiter Buyers")
   wt.subtabs[3].__scripts.OnClick(wt.subtabs[3])
+  eq(BT.WindowMode(), "wtb", "og er WTB-lista")
+
+  -- den fjerde heiter Shared
+  eq(wt.subtabs[4].fs:GetText(), "Shared", "den fjerde heiter Shared")
+  wt.subtabs[4].__scripts.OnClick(wt.subtabs[4])
   eq(BT.WindowMode(), "reported", "og er den gamle Reported")
 
   -- utanfor gruppa er dei borte, og overskrifta tek plassen att
@@ -3685,6 +3690,42 @@ eq(BT.GroupLog()[1].id, "stock", "og instansen blir kjend att")
 
 grp("WTB SM boost, paying well", "Kjopar-Testrealm")
 eq(BT.GroupLog()[1].kind, "wtb", "WTB er nokon som vil kjøpe")
+
+-- ...og han høyrer ikkje heime mellom LFM-a. Ein som spør etter ein boost er
+-- i same handelen som deg; han er ikkje nokon du skal fylle ei gruppe med.
+do
+  BT.ShowTab("groups")
+  local wg = _G.ChainWindow
+  local onGroups = false
+  for _, r in ipairs(wg.rows or {}) do
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Kjopar") then
+      onGroups = true
+    end
+  end
+  ok(not onGroups, "WTB står ikkje på Groups")
+
+  BT.ShowTab("wtb")
+  eq(BT.WindowMode(), "wtb", "Buyers er ei fane under Boosting")
+  local row
+  for _, r in ipairs(wg.rows or {}) do
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Kjopar") then row = r end
+  end
+  ok(row ~= nil, "men han står på Buyers")
+  ok((row.cells[3]:GetText() or ""):find("SM"), "med instansen han spurde om")
+  ok((row.cells[4]:GetText() or ""):find("21"),
+     "og levelen den slepp deg inn på (" .. tostring(row.cells[4]:GetText()) .. ")")
+  ok(row.whisper:IsShown(), "og ein kvisk-knapp")
+  row.__scripts.OnEnter(row)
+  ok(S.TipText():find("wants to buy", 1, true), "tooltipen seier kva han er ute etter")
+
+  -- og ingen LFM har sneke seg inn hit
+  local lfm = false
+  for _, r in ipairs(wg.rows or {}) do
+    if r:IsShown() and (r.cells[2]:GetText() or ""):find("Leiar") then lfm = true end
+  end
+  ok(not lfm, "og ingen LFM-innlegg er med på Buyers")
+  BT.ShowTab("groups")
+end
 
 -- LF2M med tal
 grp("LF2M ZF, need tank", "Tal-Testrealm")
