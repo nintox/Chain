@@ -102,23 +102,42 @@ function BT.SnapPoint(dx, dy, barW, barH, uiW, uiH)
 end
 
 -- What the bar is standing on right now, snapped, and remembered.
+-- Two frames, two coordinate systems, and the screen underneath both. A frame
+-- reports where it is in its own units - screen pixels divided by everything
+-- scaling it, its own scale and UIParent's on top of that - and SetPoint
+-- offsets are in those same units. UIParent reports its own in its.
+--
+-- So the way across is through the screen: out of the bar's units into
+-- pixels, out of UIParent's into pixels, subtract there, and back into the
+-- bar's once. It used to go halfway - the bar's own scale but not the UI's -
+-- and the UI scale is almost never 1 in a real game. Dropped at the right of
+-- the screen the bar jumped a couple of hundred pixels further right, or
+-- straight into the edge, and you could not put it anywhere on purpose.
+local function Scales()
+  local b, ui = bar, _G.UIParent
+  local eb = (b and b.GetEffectiveScale and b:GetEffectiveScale()) or 1
+  local eu = (ui and ui.GetEffectiveScale and ui:GetEffectiveScale()) or 1
+  if not (eb > 0) then eb = 1 end
+  if not (eu > 0) then eu = 1 end
+  return eb, eu
+end
+
 function BT.SaveBarPos()
   local b = bar
   if not b or not b.GetCenter then return nil end
-  local scale = (b.GetScale and b:GetScale()) or 1
-  if scale <= 0 then scale = 1 end
-  local cx, cy = b:GetCenter()
   local ui = _G.UIParent
-  if not cx or not ui or not ui.GetCenter then return nil end
+  if not ui or not ui.GetCenter then return nil end
+  local cx, cy = b:GetCenter()
+  if not cx then return nil end
   local ux, uy = ui:GetCenter()
-  local uiScale = (ui.GetScale and ui:GetScale()) or 1
-  if uiScale <= 0 then uiScale = 1 end
-  -- the bar's own units throughout
-  local dx = cx - ux * uiScale / scale
-  local dy = cy - uy * uiScale / scale
+  if not ux then return nil end
+  local eb, eu = Scales()
+  -- in pixels, then once into the bar's own units
+  local dx = (cx * eb - ux * eu) / eb
+  local dy = (cy * eb - uy * eu) / eb
   dx, dy = BT.SnapPoint(dx, dy, b:GetWidth(), b:GetHeight(),
-                        ui:GetWidth() * uiScale / scale,
-                        ui:GetHeight() * uiScale / scale)
+                        ui:GetWidth() * eu / eb,
+                        ui:GetHeight() * eu / eb)
   ChainDB.point = { "CENTER", nil, "CENTER", dx, dy }
   BT.PlaceBar()
   return dx, dy
@@ -134,13 +153,10 @@ function BT.PlaceBar()
   local dx, dy = p[4] or 0, p[5] or 0
   local ui = _G.UIParent
   if ui and ui.GetWidth then
-    local scale = (b.GetScale and b:GetScale()) or 1
-    if scale <= 0 then scale = 1 end
-    local uiScale = (ui.GetScale and ui:GetScale()) or 1
-    if uiScale <= 0 then uiScale = 1 end
+    local eb, eu = Scales()
     dx, dy = BT.SnapPoint(dx, dy, b:GetWidth(), b:GetHeight(),
-                          ui:GetWidth() * uiScale / scale,
-                          ui:GetHeight() * uiScale / scale)
+                          ui:GetWidth() * eu / eb,
+                          ui:GetHeight() * eu / eb)
     ChainDB.point = { "CENTER", nil, "CENTER", dx, dy }
   end
   b:ClearAllPoints()
@@ -211,21 +227,6 @@ local function RateColour(rate, step)
   if r >= 0.95 then return C.good end
   if r >= 0.80 then return C.warn end
   return C.bad
-end
-
--- Average group level, coloured by what the make-up costs you in experience.
-local function GroupChunk()
-  local avg, n, ratio = BT.GroupInfo()
-  if not avg then return nil end
-  local txt = string.format("grp %.1f (%d)", avg, n)
-  if ratio and ratio < 0.99 then
-    txt = txt .. string.format(" %+.0f%% xp", (ratio - 1) * 100)
-  end
-  local col = C.dim
-  if ratio then
-    col = (ratio >= 0.90) and C.good or (ratio >= 0.75) and C.warn or C.bad
-  end
-  return col .. txt .. C.off
 end
 
 -- What the reset actually means for you right now. Inside, leave. Outside with
@@ -418,11 +419,16 @@ local function BoostText()
           return (leftN > 0 and leftN <= 1.01)
             and (C.warn .. " - last run" .. C.off) or ""
         end
+        -- "run" in front of the number, because the other end of the bar says
+        -- "inst 4/5" and the two count different things: that one counts
+        -- every zone-in against the five an hour, this one counts the runs in
+        -- the pack you paid for. Two bare 4/5s on one bar read as one number
+        -- said twice - and then as a bug on the day they disagree.
         if credit.hisLeft then
           local v = credit.hisLeft
           local col = (v >= 2) and C.good or ((v > 0) and C.warn or C.bad)
-          runsLeft = col .. credit.hisDone .. "/" .. credit.hisOf .. C.off
-            .. Tail(v)
+          runsLeft = col .. "run " .. credit.hisDone .. "/" .. credit.hisOf
+            .. C.off .. Tail(v)
         elseif credit.ofPack and credit.ofPack >= 1
            and (credit.donePack or 0) <= credit.ofPack then
           -- the pack he is counting: what the last payment bought, and how
@@ -435,7 +441,7 @@ local function BoostText()
           -- fifth of five would read as red and finished.
           local toGo = total - done + (credit.livePack and 1 or 0)
           local col = (toGo >= 2) and C.good or ((toGo > 0) and C.warn or C.bad)
-          runsLeft = col .. done .. "/" .. total .. C.off .. Tail(toGo)
+          runsLeft = col .. "run " .. done .. "/" .. total .. C.off .. Tail(toGo)
         elseif math.abs(credit.left or 0) >= 0.5 then
           -- Square with him is not news, and it is a state you sit in for
           -- hours: everything settled, nothing bought yet, or a balance you
@@ -642,7 +648,6 @@ local function LevelText(soloStep)
   local remain = mx - xp
   local rate = BT.Rate()
   local idle = BT.IdleMin()
-  local rested = GetXPExhaustion and GetXPExhaustion() or nil
 
   local S = {}
   S.barLeft = "Lvl " .. lvl .. C.dim
@@ -698,29 +703,22 @@ local function LevelText(soloStep)
     S.topRight = C.dim .. "session " .. BT.N(ses.xp) .. " xp in "
       .. BT.T(time() - (ses.start or time())) .. C.off
   end
-  if rested and rested > 0 and mx > 0 and rested / mx >= 0.01 then
-    table.insert(more, C.rested .. "rested " .. BT.Pct(rested / mx) .. C.off)
-  end
-  local qxp, qn = BT.questXP or 0, BT.questCount or 0
-  local qgrey = BT.questGrey or 0
-  if qxp > 0 then
-    local q = C.gold .. "quests ready "
-      .. ((mx > 0) and BT.Pct(qxp / mx) or BT.N(qxp)) .. " (" .. qn .. ")"
-    -- said out loud rather than silently left out, so the number in the log
-    -- and the number here can be reconciled
-    if qgrey > 0 then
-      q = q .. C.dim .. " +" .. qgrey .. " grey" .. C.off .. C.gold
-    end
-    if remain - qxp <= 0 then q = q .. " = level " .. (lvl + 1)
-    elseif rate then q = q .. " -> ~" .. BT.T((remain - qxp) / rate * 3600) end
-    table.insert(more, q .. C.off)
-  end
-  -- What you have spent altogether used to sit here. It is a total: it does
-  -- not move while you play, there is nothing to do about it, and a bar is
-  -- for what is happening now. It is on the Trade tab, where the rest of the
-  -- money is, and that is where you go when you want to know.
-  local grp = GroupChunk()
-  if grp then table.insert(more, grp) end
+  -- Rested used to have a line of its own here. It is one number that does not
+  -- move while you play and that you cannot do anything about, and it was
+  -- taking a line from things that do move. It is drawn on the bar already -
+  -- the blue band ahead of the fill is exactly how much there is - so hovering
+  -- that band says the rest.
+  -- The quests in your bag and the group you are in were two more lines here.
+  -- Both are true all day and neither changes what you do in the next minute:
+  -- the quests are experience you have already earned and can hand in when
+  -- you like, and the group is what it is until somebody leaves. That is
+  -- tooltip material, and the quest part is drawn on the bar besides - the
+  -- gold band ahead of the fill is what handing them in would move you.
+  --
+  -- What you have spent altogether used to sit here too. It is a total: it
+  -- does not move while you play, there is nothing to do about it, and a bar
+  -- is for what is happening now. It is on the Trade tab, where the rest of
+  -- the money is, and that is where you go when you want to know.
   local lock, lockN, dayLock = LockoutChunk()
   if lock and lockN >= (ChainDB.limit or K.LIMIT) - 1 then
     table.insert(more, lock)
@@ -752,7 +750,9 @@ local function LevelText(soloStep)
     -- So the forecast waits for the first run through the door. Until then
     -- the line says where you are heading and stops, which is all anybody can
     -- honestly say.
+    local haveBoost = false
     if st and (st.xp or 0) > 0 and not borrowed then
+      haveBoost = true
       local runs = need / st.xp
       local bb = { string.format("boost ~%.0f runs", runs) }
       -- time is left off on purpose: while questing the question is "pay or
@@ -762,14 +762,19 @@ local function LevelText(soloStep)
       elseif (st.t or 0) > 0 then table.insert(bb, "~" .. BT.T(runs * st.t)) end
       table.insert(plan, table.concat(bb, " "))
     end
-    if rate and rate > 0 then
+    -- How long it would take on your own, but only next to what the boost
+    -- would take. On its own it is not a decision: "Maraudon > 52  solo ~296h"
+    -- says the grind is twelve days, which nobody was considering, about a
+    -- place you have not run yet. Beside "boost ~87 runs" it is the whole
+    -- point of the line - that is the choice being offered.
+    if haveBoost and rate and rate > 0 then
       table.insert(plan, "solo ~" .. BT.T(need / rate * 3600))
     end
     -- A heading with nothing after it is a label, not a line. "Maraudon > 52"
     -- on its own tells you something you set yourself and can read off the
-    -- route; the line earns its place when it carries a figure - what the
-    -- boost would take, or how long it is on your own.
-    if #plan > 1 then
+    -- route; the line earns its place when it carries what the boost would
+    -- take - the one figure there is no other way to know.
+    if haveBoost and #plan > 1 then
       table.insert(lines, C.info .. table.concat(plan, "  ") .. C.off)
     end
   end
@@ -1039,9 +1044,19 @@ function BT.InitUI()
   end)
   bar:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
+    -- letting go of a drag is a mouse-up as well; see below
+    self.droppedAt = GetTime and GetTime() or nil
     BT.SaveBarPos()
   end)
-  bar:SetScript("OnMouseUp", function(_, button)
+  bar:SetScript("OnMouseUp", function(self, button)
+    -- The end of a drag comes through here too, so every time you moved the
+    -- bar you also opened - or closed - the window, right where you were
+    -- trying to set it down.
+    local now = GetTime and GetTime() or 0
+    if self.droppedAt and (now - self.droppedAt) < 0.2 then
+      self.droppedAt = nil
+      return
+    end
     if button == "RightButton" then
       if BT.ToggleOptions then BT.ToggleOptions() end
     else
@@ -1049,7 +1064,31 @@ function BT.InitUI()
     end
   end)
   bar:SetScript("OnEnter", function(self) BT.BarTooltip(self) end)
-  bar:SetScript("OnLeave", function() BT.HideBarTooltip() end)
+  bar:SetScript("OnLeave", function()
+    -- Moving onto the rested band is not leaving the bar. It is a frame of its
+    -- own with a tooltip of its own, and two neighbours must not take the
+    -- tooltip off each other: whichever one the mouse is actually over keeps
+    -- it.
+    if bar.restedHot and bar.restedHot:IsShown()
+       and bar.restedHot.IsMouseOver and bar.restedHot:IsMouseOver() then
+      return
+    end
+    BT.HideBarTooltip()
+  end)
+
+  -- The blue band ahead of the fill is how much rested you have; it was also
+  -- a line of text saying the same thing in words. The band is the picture and
+  -- this is the sentence, and you only need the sentence when you ask for it.
+  local hot = CreateFrame("Frame", nil, bar)
+  hot:SetFrameLevel(bar:GetFrameLevel() + 5)
+  hot:EnableMouse(true)
+  hot:Hide()
+  hot:SetScript("OnEnter", function(self) BT.RestedTooltip(self) end)
+  hot:SetScript("OnLeave", function()
+    if bar.IsMouseOver and bar:IsMouseOver() then BT.BarTooltip(bar)
+    else BT.HideBarTooltip() end
+  end)
+  bar.restedHot = hot
 
   -- one timer, not one per event: the elapsed-time figures have to tick even
   -- when nothing at all is happening
@@ -1215,6 +1254,20 @@ function BT.Refresh()
     bar.rested:Hide()
     bar.quest:Hide()
   end
+  -- the hover target sits exactly on the band, so it moves when it moves and
+  -- goes away when there is nothing there to ask about
+  local hot = bar.restedHot
+  if hot then
+    if bar.rested:IsShown() then
+      hot:ClearAllPoints()
+      hot:SetPoint("TOPLEFT", bar.rested, "TOPLEFT", 0, 0)
+      hot:SetPoint("BOTTOMRIGHT", bar.rested, "BOTTOMRIGHT", 0, 0)
+      hot:SetSize(bar.rested:GetWidth() or 0, bar:GetHeight() or 26)
+      hot:Show()
+    else
+      hot:Hide()
+    end
+  end
 end
 
 -- The tooltip carries everything that would otherwise have to sit on the bar:
@@ -1301,6 +1354,31 @@ function BT.HideBarTooltip()
   GameTooltip:Hide()
   if side then side:Hide() end
   active = nil
+end
+
+-- The blue band on the bar, in words. Small on purpose: what it is worth,
+-- what it does, and how far it goes. It used to be a line of text under the
+-- bar saying "rested 2.2%" at all times, which is a number you cannot act on
+-- and cannot get rid of.
+function BT.RestedTooltip(owner)
+  active, split = nil, false
+  local rested = GetXPExhaustion and GetXPExhaustion() or 0
+  if not rested or rested <= 0 then return end
+  local mx = UnitXPMax("player") or 0
+  if GameTooltip.SetMinimumWidth then GameTooltip:SetMinimumWidth(0) end
+  GameTooltip:SetOwner(owner, "ANCHOR_BOTTOM")
+  Tip():AddLine("Rested", 0.25, 0.63, 1)
+  Pair("bonus left", BT.N(rested) .. " xp"
+    .. ((mx > 0) and (C.dim .. "  " .. BT.Pct(rested / mx) .. " of a level" .. C.off) or ""))
+  -- the pool is spent against kills, at the rate it doubles them, and quests
+  -- do not touch it - which is the part people get wrong
+  Tip():AddLine("Kills give double experience until it is used up. Quests do "
+    .. "not spend it.", 0.7, 0.7, 0.7, true)
+  local rate = BT.Rate and BT.Rate()
+  if rate and rate > 0 then
+    Pair("lasts about", "~" .. BT.T(rested / rate * 3600) .. " of this")
+  end
+  Tip():Show()
 end
 
 function BT.BarTooltip(owner)
@@ -1400,13 +1478,18 @@ function BT.BarTooltip(owner)
       -- unpaid" about the same booster at the same second. Whatever the
       -- arithmetic, a line that disagrees with the line above it is a bug to
       -- the person reading it. The bar shows the pack, so this shows the pack.
+      -- "run" in front of it, because the other end of the bar says
+      -- "inst 4/5" and the two are different things: that one counts every
+      -- zone-in against the five an hour, this one counts the runs in the
+      -- pack you paid for. Two bare 4/5s on one bar read as one number said
+      -- twice, and then as a bug when they disagree.
       if credit.hisLeft ~= nil then
-        txt = credit.hisDone .. "/" .. credit.hisOf
+        txt = "run " .. credit.hisDone .. "/" .. credit.hisOf
       elseif credit.ofPack and credit.ofPack >= 1
          and (credit.donePack or 0) <= credit.ofPack then
         local total = math.floor(credit.ofPack + 0.5)
         local done = math.max(0, credit.donePack or 0)
-        txt = done .. "/" .. total
+        txt = "run " .. done .. "/" .. total
         local toGo = total - done + (credit.livePack and 1 or 0)
         if toGo > 0 and toGo <= 1.01 then txt = txt .. " - last run" end
         col = (toGo >= 2) and C.good or ((toGo > 0) and C.warn or C.bad)
@@ -1482,6 +1565,46 @@ function BT.BarTooltip(owner)
       Tip():AddLine(" ")
       Tip():AddLine(inside and "reset called - get out" or "reset done - go in",
         0.4, 1, 0.4)
+    end
+  end
+
+  -- Your own situation, whatever mode the bar is in and whether or not there
+  -- is a route. Both of these were lines on the bar: true all day, acted on
+  -- rarely, and in the way of the numbers that do move.
+  do
+    -- called on its own line: "BT.GroupInfo and BT.GroupInfo()" hands back one
+    -- value, not three, and the two it drops are the two this needs
+    local avg, n, ratio
+    if BT.GroupInfo then avg, n, ratio = BT.GroupInfo() end
+    if avg and n then
+      local col = C.dim
+      if ratio then
+        col = (ratio >= 0.90) and C.good or (ratio >= 0.75) and C.warn or C.bad
+      end
+      -- what it costs you is the point of the line, so it is the coloured part
+      Pair("group", string.format("%.1f", avg) .. C.dim .. " average of "
+        .. n .. C.off
+        .. ((ratio and ratio < 0.99)
+            and ("   " .. col .. string.format("%+.0f%% xp", (ratio - 1) * 100)
+                 .. C.off) or ""))
+    end
+    local qxp = BT.questXP or 0
+    local mx = UnitXPMax("player") or 0
+    if qxp > 0 then
+      local qn, qgrey = BT.questCount or 0, BT.questGrey or 0
+      Pair("quests ready", C.gold
+        .. ((mx > 0) and BT.Pct(qxp / mx) or BT.N(qxp)) .. C.off
+        .. C.dim .. "  " .. qn .. " to hand in"
+        -- said out loud rather than silently left out, so the number in your
+        -- log and the number here can be reconciled
+        .. ((qgrey > 0) and (" +" .. qgrey .. " grey") or "") .. C.off)
+      local remain = mx - (UnitXP("player") or 0)
+      local rate = BT.Rate and BT.Rate()
+      if remain - qxp <= 0 then
+        Pair("hand them in", C.good .. "that is the level" .. C.off)
+      elseif rate and rate > 0 then
+        Pair("then ding in", "~" .. BT.T((remain - qxp) / rate * 3600))
+      end
     end
   end
 

@@ -455,11 +455,29 @@ GameTooltip = setmetatable({
     table.insert(S.tip, "[hyperlink] " .. tostring(link or ""))
   end,
   AddLine = function(self, text) table.insert(S.tip, tostring(text or "")) end,
+  ClearLines = function() S.tip = {} end,
+  NumLines = function() return #(S.tip or {}) end,
+  -- The client's own words about a talent. Some builds answer this and some
+  -- do not, which is the whole reason the addon has to check whether it got
+  -- anything rather than trust that it did.
+  SetTalent = function(self, tab, index)
+    if S.noSetTalent then return end
+    local t = (S.talents or {})[tab] and S.talents[tab][index]
+    if not t then return end
+    table.insert(S.tip, t.name)
+    table.insert(S.tip, "Rank " .. t.rank .. "/" .. t.max)
+    table.insert(S.tip, "What " .. t.name .. " does for you, in the game's "
+      .. "own words.")
+  end,
   AddDoubleLine = function(self, left, right)
     table.insert(S.tip, tostring(left or "") .. "\t" .. tostring(right or ""))
   end,
-  Show = function() end,
-  Hide = function() end
+  -- Whether it is up or not is behaviour, not decoration: two frames beside
+  -- each other both hiding what the other just raised is a bug you can only
+  -- catch if the stub remembers which it is.
+  Show = function() S.tipShown = true end,
+  Hide = function() S.tipShown = false end,
+  IsShown = function() return S.tipShown and true or false end
 }, tipMeta)
 -- everything the tooltip was told, colour codes stripped, as one string
 function S.TipText()
@@ -560,7 +578,17 @@ function frameMeta:GetPoint(i)
   if not p then return "CENTER", nil, "CENTER", 0, 0 end
   return p.point, p.rel, p.relPoint or p.point, p.x or 0, p.y or 0
 end
-function frameMeta:SetText(v) self.__text = v end
+-- The client fires OnTextChanged when an addon sets the text, not only when
+-- a person types - with userInput false, which is how a handler tells the two
+-- apart. A stub that stays silent lets code that depends on that look fine
+-- here and do nothing in the game.
+function frameMeta:SetText(v)
+  local was = self.__text
+  self.__text = v
+  if was == v then return end
+  local fn = self.__scripts and self.__scripts.OnTextChanged
+  if fn then fn(self, false) end
+end
 -- The colour of the letters, not only of the box behind them: a tab that is
 -- marked by its label colour is marked by nothing at all if this is a no-op.
 function frameMeta:SetTextColor(r, g, b, a)
@@ -580,6 +608,15 @@ function frameMeta:SetColorTexture(r, g, b, a)
   self.__r, self.__g, self.__b, self.__alpha = r, g, b, a
 end
 function frameMeta:SetFrameStrata(v) self.__strata = v end
+-- A real frame answers this, and code that stacks one frame on another does
+-- the arithmetic on what it answers. The no-op handed back nil and the
+-- arithmetic blew up - in the game it would not have.
+function frameMeta:SetFrameLevel(v) self.__level = v end
+function frameMeta:GetFrameLevel()
+  if self.__level then return self.__level end
+  local p = self.__parent
+  return p and ((p:GetFrameLevel() or 0) + 1) or 1
+end
 function frameMeta:GetTexture() return self.__tex end
 function frameMeta:GetText() return self.__text or "" end
 -- rough but monotonic: enough for the layout to make the same decisions.
@@ -613,9 +650,18 @@ function frameMeta:SetShown(v) self.__shown = v and true or false end
 function frameMeta:SetChecked(v) self.__checked = v end
 function frameMeta:GetChecked() return self.__checked end
 function frameMeta:HasFocus() return false end
+-- and a register of who listens to what, so an event can be fired at the
+-- game rather than at one frame the test happens to know about
+S.listeners = {}
 function frameMeta:RegisterEvent(e)
   self.__events = self.__events or {}
   self.__events[e] = true
+  S.listeners[e] = S.listeners[e] or {}
+  S.listeners[e][self] = true
+end
+function frameMeta:UnregisterEvent(e)
+  if self.__events then self.__events[e] = nil end
+  if S.listeners[e] then S.listeners[e][self] = nil end
 end
 -- Enough of a screen position for code that reads where a frame ended up
 -- after the user dragged it. A test moves a frame by setting __left/__top.
@@ -632,7 +678,29 @@ end
 function frameMeta:GetBottom() return (self:GetTop() or 0) - (self:GetHeight() or 0) end
 function frameMeta:SetScale(v) self.__scale = v end
 function frameMeta:GetScale() return self.__scale or 1 end
-function frameMeta:GetEffectiveScale() return self.__scale or 1 end
+-- A frame's own scale times every scale above it, which is what the client
+-- means by effective. It used to be the frame's own scale and nothing else,
+-- so every sum that converts between a frame's units and the screen's came
+-- out right here and wrong in the game - the one place UIParent's scale is
+-- almost never 1.
+function frameMeta:GetEffectiveScale()
+  local s = self.__scale or 1
+  local p = self.__parent
+  while p do
+    s = s * (p.__scale or 1)
+    p = p.__parent
+  end
+  return s
+end
+-- Where the frame sits on screen, in its own units, the way the client reports
+-- it. A test puts a frame somewhere by setting __center; otherwise it is the
+-- middle of the screen plus whatever it was anchored by.
+function frameMeta:GetCenter()
+  if self.__center then return self.__center[1], self.__center[2] end
+  local p = self.__points and self.__points[1]
+  local w, h = self:GetWidth() or 0, self:GetHeight() or 0
+  return (p and p.x or 0) + w / 2, (p and p.y or 0) + h / 2
+end
 function frameMeta:StartMoving() self.__moving = true end
 function frameMeta:StopMovingOrSizing() self.__moving = false end
 
@@ -688,9 +756,105 @@ function Minimap:GetEffectiveScale() return 1 end
 S.cursor = { 600, 480 }
 function GetCursorPosition() return S.cursor[1], S.cursor[2] end
 
+--------------------------------------------------------------------------
+-- Talents
+--------------------------------------------------------------------------
+-- A small tree that plays by the client's rules, because the rules are the
+-- whole problem: a talent in row 4 needs fifteen points below it in the same
+-- tree, an arrow needs its parent at full rank, and nothing may go past its
+-- own maximum. Code that spends points in the wrong order looks fine against
+-- a stub that just says yes.
+--
+-- Three trees, five rows, so a build can be wrong in every way that matters.
+S.talentPoints = 0
+S.talents = nil
+function S.MakeTalents()
+  local function tree(prefix)
+    local t = {}
+    for tier = 1, 5 do
+      for col = 1, 3 do
+        t[#t + 1] = { name = prefix .. " " .. tier .. "-" .. col,
+                      tier = tier, column = col, max = (col == 2) and 1 or 5,
+                      rank = 0 }
+      end
+    end
+    -- one arrow: the middle of row 3 needs the middle of row 2 at full rank
+    t[8].prereq = 5
+    return t
+  end
+  S.talents = { tree("Fire"), tree("Frost"), tree("Arcane") }
+  S.talentPoints = 51
+  S.learnCalls = 0
+end
+S.MakeTalents()
+
+function GetNumTalentTabs() return #(S.talents or {}) end
+function GetNumTalents(tab) return #((S.talents or {})[tab] or {}) end
+function GetTalentTabInfo(tab)
+  -- the client has moved these about between versions; the first return is
+  -- not the name in every build, and reading it wrong puts a texture path in
+  -- a heading
+  local names = { "Fire", "Frost", "Arcane" }
+  return tab, names[tab] or ("tree " .. tab), "", "Interface\\Icons\\x", 0
+end
+function GetTalentInfo(tab, index)
+  local t = (S.talents or {})[tab] and S.talents[tab][index]
+  if not t then return nil end
+  return t.name, "Interface\\Icons\\x", t.tier, t.column, t.rank, t.max
+end
+function UnitCharacterPoints() return S.talentPoints or 0 end
+-- the other way to the same words, for the clients that have no SetTalent
+function GetTalentLink(tab, index)
+  if S.noTalentLink then return nil end
+  local t = (S.talents or {})[tab] and S.talents[tab][index]
+  if not t then return nil end
+  return "|Htalent:" .. tab .. ":" .. index .. "|h[" .. t.name .. "]|h"
+end
+-- The arrow, answered the way the older clients answer it: row, column and
+-- whether you could learn it now.
+function GetTalentPrereqs(tab, index)
+  local tree = (S.talents or {})[tab]
+  local t = tree and tree[index]
+  if not (t and t.prereq) then return nil end
+  local p = tree[t.prereq]
+  return p.tier, p.column, p.rank >= p.max
+end
+
+-- The real thing refuses quietly: an illegal point is not an error, it simply
+-- does not happen, and nothing tells you. So does this.
+function LearnTalent(tab, index)
+  S.learnCalls = (S.learnCalls or 0) + 1
+  local tree = (S.talents or {})[tab]
+  local t = tree and tree[index]
+  if not t then return end
+  if (S.talentPoints or 0) <= 0 then return end
+  if t.rank >= t.max then return end
+  local spent = 0
+  for _, x in ipairs(tree) do spent = spent + x.rank end
+  if spent < (t.tier - 1) * 5 then return end
+  if t.prereq then
+    local p = tree[t.prereq]
+    if p.rank < p.max then return end
+  end
+  t.rank = t.rank + 1
+  S.talentPoints = S.talentPoints - 1
+  -- and the client answers by event, not by return: the rank an addon reads
+  -- straight after this call is the old one in the game. Addons that loop on
+  -- the read spend nothing and never stop.
+  S.FireAll("CHARACTER_POINTS_CHANGED", -1)
+end
+
 function S.Fire(frame, event, ...)
   local fn = frame.__scripts.OnEvent
   if fn then fn(frame, event, ...) end
+end
+
+-- everybody who asked for it, the way the game does it
+function S.FireAll(event, ...)
+  for f in pairs(S.listeners[event] or {}) do
+    local fn = f.__scripts and f.__scripts.OnEvent
+    if fn then fn(f, event, ...) end
+  end
 end
 
 function S.Reset()

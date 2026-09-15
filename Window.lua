@@ -78,8 +78,9 @@ local function Button(parent, label, w, h, onClick)
   b:SetScript("OnLeave", function(self)
     -- a tab goes back to being marked, not to being grey: hovering the tab you
     -- were already on and moving away used to leave it looking like a tab you
-    -- were not on
-    if self.mark then LitTab(self, self.active)
+    -- were not on. The same for any button that carries a state in its colour.
+    if self.restore then self:restore()
+    elseif self.mark then LitTab(self, self.active)
     else self.bg:SetColorTexture(0.15, 0.15, 0.15, 0.9) end
     GameTooltip:Hide()
   end)
@@ -425,16 +426,16 @@ local LAYOUTS = {
     }
   },
   locks = {
-    title = "Every instance you entered and every reset. Green still counts "
-      .. "against the five per hour.",
+    title = "One line a run: when you went in, and whose reset let you. Green "
+      .. "still counts against the five per hour.",
     cols = {
-      { "when",     86, "t" },
-      { "what",     74, "kind" },
-      { "instance", 130, "zone" },
-      { "character",96, "char" },
-      { "counts",   62, nil },
-      { "free in",  84, "left" },
-      { "source",   70, nil }
+      { "when",     112, "t" },
+      { "what",     104, "kind" },
+      { "instance", 124, "zone" },
+      { "reset by", 104, "by" },
+      { "counts",   70, nil },
+      { "free in",  80, "left" },
+      { "source",   86, nil }
     }
   },
   pvp = {
@@ -491,6 +492,13 @@ end
 -- keep your place in a long list, and a mark surviving a logout would only
 -- ever be a surprise.
 local picked = {}
+
+-- The run you are standing in, as something that can be marked. It is not in
+-- ChainDB.runs - it counts for nothing until you walk out - but it is exactly
+-- the run the argument is about: he says five, you say four, and the fourth
+-- is the one you are both standing in. So it gets a key of its own and goes
+-- in the list like any other, with "still going" written on it.
+local LIVE = {}
 
 -- The line you are on. One at a time: it answers "where was I" while you read
 -- down a long list, and a list you can leave fifteen blue lines in answers
@@ -567,14 +575,14 @@ local function RunRows()
   -- you are standing in is exactly the one in dispute.
   --
   -- It is not in ChainDB.runs and does not go in: it counts for nothing until
-  -- it is finished, it cannot be deleted, and it cannot be marked. It is shown
-  -- and nothing more.
+  -- it is finished and it cannot be deleted. It can be marked, though - it
+  -- used not to be, and the run in dispute is the one you are standing in.
   local live = ChainCharDB.run
   if live and live.zone then
     local t = math.max(0, time() - (live.start or time()))
     local rate = (t > 0) and ((live.xp or 0) / t * 3600) or 0
     table.insert(out, {
-      live = true,
+      live = true, rec = LIVE,
       at = live.start, zone = live.zone, xp = live.xp or 0, t = t,
       k = live.k or 0, rate = rate, by = live.by, lvl = live.lvl,
       grpAvg = live.grpAvg, coin = live.coin or 0,
@@ -1489,44 +1497,131 @@ local function LootRows()
   return out
 end
 
+-- When something happened, in the words you would use about it. An age is
+-- right for this hour - "3m ago" is the whole answer - and useless for
+-- anything older: "35h 22m ago" is arithmetic you have to do before you know
+-- whether it was last night or the night before.
+local function WhenText(at)
+  local now = time()
+  local age = math.max(0, now - (at or now))
+  if age < 6 * 3600 then return BT.T(age) .. " ago" end
+  local hm = date("%H:%M", at)
+  local today, was = date("*t", now), date("*t", at)
+  if today.yday == was.yday and today.year == was.year then return hm end
+  local y = date("*t", now - 86400)
+  if y.yday == was.yday and y.year == was.year then return "yesterday " .. hm end
+  if age < 6 * 86400 then return date("%a", at) .. " " .. hm end
+  return date("%d %b", at) .. " " .. hm
+end
+
+-- The instance log, as runs rather than as events.
+--
+-- It was one line per thing that happened, so every run took two: a reset by
+-- him, then you going in, one under the other, saying the same instance twice
+-- and the same character twice. Sixteen lines for eight runs, with "no" down
+-- the counts column and "own" down the source column on every one of them.
+--
+-- A reset and the entry that follows it are one thing that happened, so they
+-- are one line. What is ordinary - your own character, your own log - is left
+-- blank rather than repeated: what you are looking for is the line that is
+-- different from the others.
+local PAIR_WINDOW = 15 * 60
+
 local function LockRows()
-  local out = {}
+  local events = {}
   for _, e in ipairs(BT.InstanceLog()) do
-    local col = e.counts and C.good or C.dim
-    table.insert(out, {
-      t = e.t, zone = e.zone, char = e.char, left = e.left, kind = "entered",
-      cells = {
-        col .. BT.T(e.age) .. " ago" .. C.off,
-        col .. "entered" .. C.off,
-        col .. (BT.Short(e.zone) or "?") .. C.off,
-        C.dim .. (e.char or "-") .. C.off,
-        e.counts and (C.warn .. "yes" .. C.off) or (C.dim .. "no" .. C.off),
-        e.counts and (col .. BT.T(e.left) .. C.off) or "-",
-        -- where this row came from, because a count you cannot trace is a
-        -- count you can only argue with
-        e.nit and (C.dim .. "from NIT" .. C.off)
-          or e.ghost and (C.warn .. "the game said" .. C.off)
-          or e.fromRun and (C.dim .. "rebuilt" .. C.off)
-          or (C.dim .. "own" .. C.off)
-      }
-    })
+    table.insert(events, { at = e.t, kind = "in", zone = e.zone, char = e.char,
+      counts = e.counts, left = e.left, nit = e.nit, ghost = e.ghost,
+      fromRun = e.fromRun })
   end
   for _, r in ipairs(BT.ResetLog()) do
-    local age = time() - (r.at or time())
-    table.insert(out, {
-      t = r.at, zone = r.zone, char = r.char, kind = "reset",
-      cells = {
-        C.dim .. BT.T(age) .. " ago" .. C.off,
-        C.info .. "reset" .. C.off,
-        C.info .. (BT.Short(r.zone) or r.zone or "?") .. C.off,
-        C.dim .. (r.char or "-") .. C.off,
-        C.dim .. "-" .. C.off,
-        r.by and (C.dim .. "by " .. r.by .. C.off) or (C.dim .. "-" .. C.off),
-        C.dim .. "own" .. C.off
-      }
-    })
+    table.insert(events, { at = r.at, kind = "reset", zone = r.zone,
+      char = r.char, by = r.by })
   end
-  table.sort(out, function(a, b) return (a.t or 0) > (b.t or 0) end)
+  table.sort(events, function(a, b) return (a.at or 0) > (b.at or 0) end)
+
+  -- newest first, so the reset that let you in sits just after the entry
+  for i, ev in ipairs(events) do
+    if ev.kind == "in" then
+      local prev = events[i + 1]
+      if prev and prev.kind == "reset" and not prev.taken
+         and prev.zone == ev.zone
+         and (ev.at or 0) - (prev.at or 0) <= PAIR_WINDOW then
+        ev.after, prev.taken = prev, true
+      end
+    end
+  end
+
+  -- which of the five this one is, counted the way the hour fills up
+  local order, seen = {}, 0
+  for i = #events, 1, -1 do
+    local ev = events[i]
+    if ev.kind == "in" and ev.counts then
+      seen = seen + 1
+      order[ev] = seen
+    end
+  end
+
+  local me = BT.ShortName and BT.ShortName(UnitName("player") or "") or nil
+  local limit = ChainDB.limit or 5
+  local out = {}
+  for _, ev in ipairs(events) do
+    if not ev.taken then
+      local col = (ev.kind == "in" and ev.counts) and C.good or C.dim
+      local what, by
+      if ev.kind == "reset" then
+        -- a reset you did not follow up on: the instance is fresh and you are
+        -- still outside it
+        what = C.info .. "reset only" .. C.off
+        by = ev.by
+      elseif ev.after then
+        what = col .. "in after reset" .. C.off
+        by = ev.after.by
+      else
+        what = col .. "went in" .. C.off
+      end
+      -- your own character and your own log are the ordinary case, and a
+      -- column that says the same word on every line is a column you stop
+      -- reading. Only what is not ordinary gets written down.
+      local source = ev.nit and (C.dim .. "from NIT" .. C.off)
+        or ev.ghost and (C.warn .. "the game said" .. C.off)
+        or ev.fromRun and (C.dim .. "rebuilt" .. C.off)
+        or (ev.char and me and ev.char ~= me
+            and (C.dim .. ev.char .. C.off))
+        or ""
+      table.insert(out, {
+        t = ev.at, zone = ev.zone, char = ev.char, by = by,
+        left = ev.counts and ev.left or nil,
+        kind = (ev.kind == "reset") and "reset" or "entered",
+        tip = Lines(
+          BT.Short(ev.zone) or ev.zone or "?",
+          date("%A %d %B, %H:%M", ev.at or time()),
+          (ev.kind == "reset")
+            and "the instance was reset and nobody went back in within a "
+                .. "quarter of an hour"
+            or (ev.after and ("reset by " .. (ev.after.by or "somebody")
+                 .. " " .. BT.T(math.max(0, (ev.at or 0) - (ev.after.at or 0)))
+                 .. " before you went in")
+                or "you went in without a reset first"),
+          (ev.kind == "in") and (ev.counts
+            and ("this one still counts - it frees up in " .. BT.T(ev.left or 0))
+            or "older than an hour, so it counts against nothing now") or nil,
+          ev.char and ("on " .. ev.char) or nil
+        ),
+        cells = {
+          col .. WhenText(ev.at) .. C.off,
+          what,
+          col .. (BT.Short(ev.zone) or ev.zone or "?") .. C.off,
+          by and (C.dim .. by .. C.off) or "",
+          (ev.kind == "in" and ev.counts and order[ev])
+            and (C.warn .. order[ev] .. "/" .. limit .. C.off) or "",
+          (ev.kind == "in" and ev.counts)
+            and (col .. BT.T(ev.left or 0) .. C.off) or "",
+          source
+        }
+      })
+    end
+  end
   return out
 end
 
@@ -1707,7 +1802,10 @@ local function Summary()
     for i = #ChainDB.trades, 1, -1 do
       local t = ChainDB.trades[i]
       local who = t.with and ((BT.PaysFor and BT.PaysFor(t.with)) or t.with)
-      if who and not seen[who] then
+      -- somebody you traded once is not somebody who owes you runs. A green
+      -- sold in trade chat put a stranger in this line for twenty-three runs.
+      if who and not seen[who]
+         and (not BT.IsBooster or BT.IsBooster(who)) then
         seen[who] = true
         local c = BT.BoosterCredit and BT.BoosterCredit(who)
         if c then
@@ -2043,8 +2141,9 @@ local function Render()
   -- and the hand-entry row belongs to the Trade tab, on that same line again
   local paying = (mode == "gold")
   for _, w in ipairs({ win.payLabel, win.payName, win.payPick, win.payGold,
-                       win.payButton, win.payOr, win.payRuns,
-                       win.payRunsButton, win.payNote }) do
+                       win.payButton, win.paySplit, win.payOr, win.payOrSet,
+                       win.payRuns, win.payRunsButton, win.runsDown,
+                       win.runsUp, win.runsFresh, win.payNote }) do
     if w then w:SetShown(paying) end
   end
   -- Whoever is boosting you now is who both of these are about, nine times in
@@ -2063,11 +2162,16 @@ local function Render()
     local who = win.payName and win.payName:GetText()
     local c = (who and who ~= "" and BT.BoosterCredit) and BT.BoosterCredit(who)
     local v = c and (c.hisLeft or c.left) or nil
-    win.payNote:SetText(v
-      and (C.dim .. "now " .. C.off
-           .. string.format((math.abs(v) < 10) and "%.1f" or "%.0f", v)
-           .. C.dim .. " - the tally starts again from what you type" .. C.off)
-      or (C.dim .. "the tally starts again from there" .. C.off))
+    -- The number itself, and nothing else: it sits under the words "runs
+    -- left" and in front of the three buttons that change it, so it has
+    -- already been named twice by the time you read it. The pack, not the
+    -- balance - the pack is what the bar shows and what he is counting.
+    local packLeft = (who and who ~= "" and BT.PackLeft) and BT.PackLeft(who) or nil
+    local shown = packLeft or v
+    win.payNote:SetText(shown
+      and (C.warn .. string.format((math.abs(shown) < 10) and "%.0f" or "%.0f",
+                                   shown) .. C.off)
+      or (C.dim .. "-" .. C.off))
   end
 
   -- and the settle-up row belongs to the History tab
@@ -2079,6 +2183,9 @@ local function Render()
   if counting and win.sayNote then
     local n = 0
     for _, r in ipairs(ChainDB.runs) do if picked[r] then n = n + 1 end end
+    if picked[LIVE] and ChainCharDB.run and ChainCharDB.run.zone then
+      n = n + 1
+    end
     -- the name to whisper: whoever the marked runs were with, since that is
     -- the person the argument is with
     if win.whisperTo and not win.whisperTo:HasFocus() then
@@ -2111,11 +2218,13 @@ local function Render()
 
   -- and the seller's row belongs to My boost
   local selling = (mode == "sell")
-  for _, w in ipairs({ win.sellLabel, win.sellGold, win.sellPer, win.sellPack,
-                       win.sellRuns, win.sellAd, win.sellPost, win.sellSay }) do
+  for _, w in ipairs({ win.sellOn, win.sellLabel, win.sellGold, win.sellPer,
+                       win.sellPack, win.sellRuns, win.sellAd, win.sellPost,
+                       win.sellSay }) do
     if w then w:SetShown(selling) end
   end
   if selling then
+    win.sellOn:paint()
     local step = BT.FocusStep()
     local gold, pack = BT.SellPrice(step and step.id)
     if not win.sellGold:HasFocus() then
@@ -2231,7 +2340,11 @@ local function Render()
       if mode == "runs" and d.rec then
         row.pick.rec = d.rec
         row.pick.fs:SetText(picked[d.rec] and (C.good .. "v" .. C.off) or "+")
-        row.pick.hint = "mark this run, then use 'say in party' to put the "
+        row.pick.hint = d.live
+          and "mark the run you are in. It goes in the list with what it has "
+              .. "given so far and 'still going' on the end - it is usually "
+              .. "the run being argued about."
+          or "mark this run, then use 'say in party' to put the "
           .. "times in chat. Marks are not saved."
         row.pick:Show()
       else
@@ -2250,7 +2363,9 @@ local function Render()
         row.del.hint = "take this payment out of the reckoning. The runs "
           .. "it bought stop counting with it."
         row.del:Show()
-      elseif mode == "runs" and d.rec then
+      elseif mode == "runs" and d.rec and not d.live then
+        -- the run you are in is not stored yet, so there is nothing to throw
+        -- out; marking it is a different thing and that button stays
         row.del.rec = d.rec
         row.del.hint = "throw this run out of the averages. It stays in "
           .. "no list and stops affecting every figure worked out from it."
@@ -3008,12 +3123,27 @@ local function Build()
   -- "since the last trade" is the question actually being asked: what have I
   -- had that I have not paid for. It marks those; anything else you mark or
   -- unmark yourself.
+  -- The run you are in, as a record shaped like the stored ones. Built fresh
+  -- every time it is asked for: the numbers in it are still moving.
+  local function LiveRun()
+    local live = ChainCharDB.run
+    if not (live and live.zone) then return nil end
+    return { at = live.start, t = math.max(0, time() - (live.start or time())),
+             xp = live.xp or 0, k = live.k or 0, by = live.by, lvl = live.lvl,
+             zone = live.zone, id = live.id, live = true }
+  end
+
   local function PickedRuns()
     local out = {}
     for _, r in ipairs(ChainDB.runs) do
       if picked[r] then table.insert(out, r) end
     end
     table.sort(out, function(a, b) return (a.at or 0) < (b.at or 0) end)
+    -- and last, because it has not finished
+    if picked[LIVE] then
+      local live = LiveRun()
+      if live then table.insert(out, live) end
+    end
     return out
   end
 
@@ -3034,6 +3164,14 @@ local function Build()
     wipe(picked)
     for _, r in ipairs(ChainDB.runs) do
       if r.by and purse[r.by] and (r.at or 0) > from then picked[r] = true end
+    end
+    -- and the one you are in, which is the whole reason you are counting. It
+    -- was left out, so the addon said three where he said four, and both of
+    -- you were right about different things.
+    local live = ChainCharDB.run
+    if live and live.zone and live.by and purse[live.by]
+       and (live.start or 0) > from then
+      picked[LIVE] = true
     end
     Render()
   end)
@@ -3069,7 +3207,8 @@ local function Build()
     for i = 1, math.min(n, SAY_MAX) do
       local r = list[i]
       local from = date("%H:%M", r.at or time())
-      local to = date("%H:%M", (r.at or time()) + (r.t or 0))
+      local to = r.live and "now"
+        or date("%H:%M", (r.at or time()) + (r.t or 0))
       lines[#lines + 1] = i .. "/" .. n
         .. (r.by and (" with " .. r.by) or "")
         .. " - " .. from .. "-" .. to
@@ -3081,9 +3220,33 @@ local function Build()
         -- difference between 33,000 at 43 and 33,000 at 20 is the whole
         -- argument about whether the run was worth the gold.
         .. (Pct(r) and (", " .. Pct(r) .. " of a level") or "")
+        .. (r.live and " (still in it)" or "")
     end
     if n > SAY_MAX then
       lines[#lines + 1] = "(+" .. (n - SAY_MAX) .. " older, not listed)"
+    end
+
+    -- And the clock he is reading from, which is not the same clock.
+    --
+    -- His addon counts from when he last reset to now: summoning, walking in,
+    -- the wipe, the break. Ours counts from the first pull to the last. Both
+    -- are right and they do not match, so the line says both - the whole
+    -- stretch, how much of it was inside, and what the difference was. There
+    -- is nothing left to disagree about once the gap has a number on it.
+    if n > 1 then
+      local first, last = list[1], list[n]
+      local started = first.at or time()
+      local ended = (last.at or time()) + (last.t or 0)
+      local span = math.max(0, ended - started)
+      local inside = 0
+      for _, r in ipairs(list) do inside = inside + (r.t or 0) end
+      local between = math.max(0, span - inside)
+      lines[#lines + 1] = "total " .. n .. " runs - "
+        .. date("%H:%M", started) .. "-"
+        .. (last.live and "now" or date("%H:%M", ended))
+        .. ", " .. BT.T(span)
+        .. " of which " .. BT.T(inside) .. " inside"
+        .. " and " .. BT.T(between) .. " between runs"
     end
     return lines, list
   end
@@ -3168,7 +3331,26 @@ local function Build()
     e:SetScript("OnTextChanged", function(self)
       self.hint:SetShown((self:GetText() or "") == "")
     end)
+    -- A box says what it is for, the same way every button here does. The
+    -- grey word inside it has room for one word and the question is usually
+    -- longer than that.
+    e:SetScript("OnEnter", function(self)
+      if not self.hint2 then return end
+      GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+      GameTooltip:AddLine(self.hintTitle or "", 1, 0.82, 0)
+      GameTooltip:AddLine(self.hint2, 0.9, 0.9, 0.9, true)
+      GameTooltip:Show()
+    end)
+    e:SetScript("OnLeave", function() GameTooltip:Hide() end)
     return e
+  end
+
+  -- Hint() hangs its text on .hint, and a box already has a .hint - the grey
+  -- word drawn inside it. Two different things with one name is how a label
+  -- ends up as a tooltip, so the boxes keep their own.
+  local function BoxHint(box, title, text)
+    if box then box.hintTitle, box.hint2 = title, text end
+    return box
   end
 
   win.addName = AddBox(120, 92, "name", 24)
@@ -3204,12 +3386,24 @@ local function Build()
   -- this. Two ways in, because they answer different questions: "I paid him
   -- 400g" is a payment, and "I have seven left" is the whole balance, which is
   -- the only one you can answer when you never counted the gold.
+  -- The line reads left to right as a sentence: who, then the two things you
+  -- can do about him. It used to be two jobs crammed together with nothing to
+  -- say where one ended - "never saw it?", a name, a price, a button, "or
+  -- just say what is left", a box, and three more buttons with no heading of
+  -- their own. Everything here now sits next to the word that names it.
+  local PAY_LABEL = "with"
   win.payLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
   win.payLabel:SetPoint("TOPLEFT", 12, addY)
-  win.payLabel:SetText("never saw it?")
+  win.payLabel:SetText(PAY_LABEL)
 
-  win.payName = AddBox(104, 100, "booster", 24)
-  win.payGold = AddBox(54, 250, "gold", 8)
+  win.payName = BoxHint(AddBox(96, 44, "booster", 24), "with",
+    "who this line is about. Everything to the right of it - what you paid "
+    .. "him and how many runs he still owes you - is about this man. 'pick' "
+    .. "fills it in for you.")
+  win.payGold = BoxHint(AddBox(52, 250, "gold", 8), "paid him",
+    "gold you handed over that the addon never saw: a trade during a reload, "
+    .. "gold in the post, or an arrangement you were already halfway through "
+    .. "when you installed this. It counts exactly like a watched trade.")
 
   local function Said(msg, bad)
     win.payLabel:SetText((bad and C.bad or C.good) .. msg .. C.off)
@@ -3239,9 +3433,9 @@ local function Build()
   Hint(win.payPick, "pick the name out of your group, your last booster or "
     .. "whoever you traded lately - names with accents in them are not "
     .. "worth typing twice.")
-  win.payPick:SetPoint("TOPLEFT", 206, addY + 3)
+  win.payPick:SetPoint("TOPLEFT", 144, addY + 3)
   local function ResetSaid()
-    win.payLabel:SetText("never saw it?")
+    win.payLabel:SetText(PAY_LABEL)
   end
 
   local function DoPay()
@@ -3274,13 +3468,51 @@ local function Build()
   win.payButton = Hint(Button(win, "I paid him", 78, 18, DoPay),
     "log gold the addon never saw - a trade to his bank alt, or one the "
     .. "client never announced. It counts exactly like a watched trade.")
-  win.payButton:SetPoint("TOPLEFT", 310, addY + 3)
+  win.payButton:SetPoint("TOPLEFT", 306, addY + 3)
 
+  -- a line between the two halves, because they are two different jobs and
+  -- nothing but a gap was saying so
+  win.paySplit = Tex(win, "ARTWORK", 1, 1, 1, 0.12)
+  win.paySplit:SetSize(1, 18)
+  win.paySplit:SetPoint("TOPLEFT", 392, addY + 3)
+
+  -- The second half: the count itself, with its own heading and its own
+  -- number in front of the buttons that change it.
   win.payOr = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
-  win.payOr:SetPoint("TOPLEFT", 396, addY)
-  win.payOr:SetText(C.dim .. "or just say what is left" .. C.off)
+  win.payOr:SetPoint("TOPLEFT", 404, addY)
+  win.payOr:SetText(C.dim .. "runs left" .. C.off)
 
-  win.payRuns = AddBox(46, 508, "runs", 6)
+  win.payNote = win:CreateFontString(nil, "OVERLAY", "ChainFontHighlightSmall")
+  win.payNote:SetPoint("TOPLEFT", 462, addY)
+  win.payNote:SetText("")
+
+  local function Nudge(delta)
+    local who = win.payName:GetText()
+    local rec, why = BT.NudgeRuns(who, delta)
+    if not rec then Said(why or "no", true) return end
+    ResetSaid()
+    Render()
+  end
+
+  win.runsDown = Hint(Button(win, "-1", 26, 18, function() Nudge(-1) end),
+    "one fewer left than the addon thinks. Use it when he is right and you "
+    .. "are one apart - it writes the new number down and the tally starts "
+    .. "again from it.")
+  win.runsDown:SetPoint("TOPLEFT", 494, addY + 3)
+
+  win.runsUp = Hint(Button(win, "+1", 26, 18, function() Nudge(1) end),
+    "one more left than the addon thinks. The run you are standing in counts "
+    .. "as one of them, the same way the bar counts it.")
+  win.runsUp:SetPoint("TOPLEFT", 522, addY + 3)
+
+  win.payOrSet = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
+  win.payOrSet:SetPoint("TOPLEFT", 556, addY)
+  win.payOrSet:SetText(C.dim .. "or set" .. C.off)
+
+  win.payRuns = BoxHint(AddBox(40, 598, "0", 6), "runs left",
+    "how many runs he still owes you, said outright. Everything before it "
+    .. "stops counting and the tally starts again from your number. The run "
+    .. "you are standing in is one of them.")
 
   local function DoRuns()
     local rec, why = BT.SetRunsLeft(win.payName:GetText(), win.payRuns:GetText())
@@ -3291,14 +3523,23 @@ local function Build()
     Render()
   end
   win.payRuns:SetScript("OnEnterPressed", DoRuns)
-  win.payRunsButton = Hint(Button(win, "runs left", 68, 18, DoRuns),
+  win.payRunsButton = Hint(Button(win, "set", 40, 18, DoRuns),
     "say outright how many runs he still owes you. Everything before this "
     .. "stops counting and the tally starts again from your number.")
-  win.payRunsButton:SetPoint("TOPLEFT", 560, addY + 3)
+  win.payRunsButton:SetPoint("TOPLEFT", 642, addY + 3)
 
-  win.payNote = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
-  win.payNote:SetPoint("TOPLEFT", 636, addY)
-  win.payNote:SetText(C.dim .. "the tally starts again from there" .. C.off)
+  -- The pack size is in the label, because "new pack" on its own is a
+  -- question - a new pack of how many?
+  win.runsFresh = Hint(Button(win, "new pack", 86, 18, function()
+    local who = win.payName:GetText()
+    local rec, why = BT.SetRunsLeft(who, BT.PackSize and BT.PackSize(who) or 5)
+    if not rec then Said(why or "no", true) return end
+    ResetSaid()
+    Render()
+  end), "start his pack again from the size you last bought - everything "
+    .. "before it stops counting. Use it when you have paid for the next lot "
+    .. "and the addon did not see the trade.")
+  win.runsFresh:SetPoint("TOPLEFT", 688, addY + 3)
 
   -- A step of your own, on the Route tab.
   --
@@ -3376,19 +3617,49 @@ local function Build()
   -- Your side of the counter: what you charge, the line you would type in
   -- LookingForGroup, and the count out loud. Same line as everything else,
   -- because only one tab's controls are ever on screen.
+  -- The switch, first on the line, because it is the thing you press when you
+  -- sit down to work and the thing everything else here waits for. Off, the
+  -- tab is a price list; on, it is counting: money from anybody in your group
+  -- is a customer buying runs and every run you clear puts the count in chat.
+  win.sellOn = Hint(Button(win, "start boosting", 96, 18, function()
+    BT.SetSelling(not BT.Selling())
+    Render()
+  end), "boost mode. On, anybody in your group who hands you gold goes on "
+    .. "the list at your price, and every run you clear counts one off for "
+    .. "everybody in the group and says so in party. Off, nothing here "
+    .. "watches anything - a guild mate paying back a loan at the stone is "
+    .. "not a customer.", "boost mode")
+  win.sellOn:SetPoint("TOPLEFT", 12, addY + 3)
+
+  -- It says which it is by its words and by its colour, and it goes back to
+  -- saying it after the mouse has been over it. A switch that looks the same
+  -- either way is a switch you press twice.
+  function win.sellOn:paint()
+    local on = BT.Selling and BT.Selling()
+    self.fs:SetText(on and "boosting" or "start boosting")
+    self.active = on and true or false
+    self.bg:SetColorTexture(on and 0.16 or 0.15, on and 0.42 or 0.15,
+                            on and 0.20 or 0.15, on and 1 or 0.9)
+    self.fs:SetTextColor(on and 0.6 or 0.7, on and 1 or 0.7, on and 0.6 or 0.7)
+  end
+  win.sellOn.restore = win.sellOn.paint
+  win.sellOn:paint()
+
   win.sellLabel = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
-  win.sellLabel:SetPoint("TOPLEFT", 12, addY)
+  win.sellLabel:SetPoint("TOPLEFT", 116, addY)
   win.sellLabel:SetText("your price")
 
-  win.sellGold = AddBox(46, 12, "gold", 7)
-  win.sellGold:SetPoint("TOPLEFT", 12, addY + 3)
+  -- the heading used to sit at the same x as the price box, so the words and
+  -- the box you type in were drawn on top of each other
+  win.sellGold = AddBox(46, 176, "gold", 7)
+  win.sellGold:SetPoint("TOPLEFT", 176, addY + 3)
   win.sellPer = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
-  win.sellPer:SetPoint("TOPLEFT", 62, addY + 7)
+  win.sellPer:SetPoint("TOPLEFT", 226, addY + 7)
   win.sellPer:SetText(C.dim .. "g for" .. C.off)
-  win.sellPack = AddBox(28, 96, "5", 2)
-  win.sellPack:SetPoint("TOPLEFT", 96, addY + 3)
+  win.sellPack = AddBox(28, 262, "5", 2)
+  win.sellPack:SetPoint("TOPLEFT", 262, addY + 3)
   win.sellRuns = win:CreateFontString(nil, "OVERLAY", "ChainFontDisableSmall")
-  win.sellRuns:SetPoint("TOPLEFT", 128, addY + 7)
+  win.sellRuns:SetPoint("TOPLEFT", 294, addY + 7)
   win.sellRuns:SetText(C.dim .. "runs" .. C.off)
 
   local function SaveSellPrice()
@@ -3404,8 +3675,8 @@ local function Build()
 
   -- The advert, kept per instance. Written by you, sent by you: one press,
   -- one line, and nothing on a timer.
-  win.sellAd = AddBox(356, 168, "your advert - what you would type yourself")
-  win.sellAd:SetPoint("TOPLEFT", 168, addY + 3)
+  win.sellAd = AddBox(240, 330, "your advert - what you would type yourself")
+  win.sellAd:SetPoint("TOPLEFT", 330, addY + 3)
   win.sellAd:SetMaxLetters(180)
   win.sellAd:SetScript("OnEditFocusLost", function(self)
     local step = BT.FocusStep()
@@ -3413,7 +3684,7 @@ local function Build()
   end)
   win.sellAd:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
-  win.sellPost = Button(win, "post to LookingForGroup", 168, 18, function()
+  win.sellPost = Button(win, "post advert", 78, 18, function()
     local ok, why = BT.PostAd(win.sellAd:GetText())
     win.sellLabel:SetText(ok and (C.good .. "posted" .. C.off)
       or (C.bad .. (why or "no") .. C.off))
@@ -3423,7 +3694,7 @@ local function Build()
     .. "Nothing here posts on its own and nothing repeats: an addon that "
     .. "talks in a channel by itself is what gets everybody's addon thrown "
     .. "out of it. Press it again when you want it said again.")
-  win.sellPost:SetPoint("TOPLEFT", 530, addY + 3)
+  win.sellPost:SetPoint("TOPLEFT", 578, addY + 3)
 
   win.sellSay = Button(win, "say the count", 108, 18, function()
     if not BT.SaySellCount() then
@@ -3434,7 +3705,7 @@ local function Build()
   Hint(win.sellSay, "put everybody's count into party or raid now - the same "
     .. "line that goes out on its own after each run. It is the thing that "
     .. "ends the argument before it starts.")
-  win.sellSay:SetPoint("TOPLEFT", 706, addY + 3)
+  win.sellSay:SetPoint("TOPLEFT", 662, addY + 3)
 
   -- The rank you are aiming at, on the same line and in the same place as the
   -- add-someone row, because only one of the two is ever on screen.

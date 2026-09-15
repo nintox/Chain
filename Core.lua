@@ -1354,14 +1354,76 @@ end
 --
 -- The game's own "The Stockade has been reset" is unaffected: that one is the
 -- client telling you, and it needs no vouching for.
+-- A sentence with the word "reset" in it is not an announcement that one has
+-- happened.
+--
+-- "You can wait for me to reset successfully and then come in and out in
+-- three to five minutes" is the leader explaining what he is about to do, and
+-- the bar read it as done: reset called, zone out, everybody moves. Wrong at
+-- exactly the moment it matters most.
+--
+-- So the line has to look like an announcement. Either it is the game's own
+-- sentence - "Maraudon has been reset." - which is what every addon that says
+-- anything is relaying, or it says in so many words that it is finished. And
+-- a word that puts it in the future or in question takes it back out again:
+-- what somebody is about to do, might do, or is asking about is not news.
+local DONE = { "has been reset", "have been reset", "instance reset",
+               "reset done", "reset complete", "reset successful",
+               "resat", "er reset" }
+local NOT_YET = { "?", "wait", "will ", "gonna", "going to", "can ", "let me",
+                  "trying", "try to", "about to", "need ", "after ", "when ",
+                  "before ", "should ", "if ", "ready to", "in a", "minute" }
+
+-- the client's own line, whatever language it is in
+local function SystemResetAt(low)
+  local s = _G.INSTANCE_RESET_SUCCESS
+  if type(s) ~= "string" then return nil end
+  local pat = s:lower():gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+  pat = pat:gsub("%%%%s", "(.+)")
+  return low:find(pat)
+end
+
+function BT.ResetSaid(msg)
+  if type(msg) ~= "string" then return false end
+  local low = msg:lower()
+
+  -- The hedging word only counts if it comes BEFORE the announcement.
+  --
+  -- NIT says "[NIT] Maraudon has been reset (Players still inside old
+  -- instance can zone out and enter new)" - a real reset, already done, with
+  -- the word "can" in the explanation after it. Reading the whole line for
+  -- hedging words threw that away and the addon stopped seeing resets at all.
+  -- What is in front of "has been reset" is what decides whether it has: "you
+  -- can wait for me to reset successfully" hedges, "[NIT] Maraudon" does not.
+  local function clean(upto)
+    local head = low:sub(1, math.max(0, (upto or (#low + 1)) - 1))
+    for _, w in ipairs(NOT_YET) do
+      if head:find(w, 1, true) then return false end
+    end
+    return true
+  end
+
+  local at = SystemResetAt(low)
+  if at then return clean(at) end
+  for _, w in ipairs(DONE) do
+    local i = low:find(w, 1, true)
+    if i then return clean(i) end
+  end
+  -- and the shortest announcement there is: the word on its own. "reset",
+  -- "instances reset!", "reset now" - that is how it is actually typed. Three
+  -- words is the whole line, not a word buried in one.
+  local words = 0
+  for _ in low:gmatch("%S+") do words = words + 1 end
+  if words <= 3 and low:find("%f[%a]reset") then return clean(nil) end
+  return false
+end
+
 function BT.NoteResetChat(msg, sender)
   if type(msg) ~= "string" then return end
   -- our own line, come back round the party channel. Reading it would beep at
   -- you a second time for a reset you already know about.
   if BT.SAY and msg:sub(1, #BT.SAY) == BT.SAY then return end
-  local low = msg:lower()
-  if not low:find("%f[%a]reset") then return end
-  if low:find("?", 1, true) then return end
+  if not BT.ResetSaid(msg) then return end
   if sender and not BT.IsLeader(sender) then return end
   BT.FlagReset(ChainCharDB.lastZone, sender)
 end

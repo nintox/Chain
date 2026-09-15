@@ -20,6 +20,30 @@ local function Short(name)
 end
 
 --------------------------------------------------------------------------
+-- Whether you are selling at all
+--------------------------------------------------------------------------
+-- Everything on this side used to be always on: anybody in your group who
+-- handed you gold became a customer, and the count went out in party chat
+-- whether or not you were running anything for anybody. A guild mate paying
+-- back a loan at the summoning stone is not a customer.
+--
+-- So there is a switch, and it is off until you say otherwise. It is per
+-- character, because selling is something one of your characters does on a
+-- given evening, and it is the button you press when you sit down to work.
+function BT.Selling()
+  return ChainCharDB.selling and true or false
+end
+
+function BT.SetSelling(on)
+  if on == nil then on = not BT.Selling() end
+  ChainCharDB.selling = on and true or nil
+  if on then ChainCharDB.sellingAt = time() else ChainCharDB.sellingAt = nil end
+  if BT.RenderWindow then BT.RenderWindow() end
+  if BT.Refresh then BT.Refresh() end
+  return BT.Selling()
+end
+
+--------------------------------------------------------------------------
 -- What you charge
 --------------------------------------------------------------------------
 local function Sell()
@@ -115,6 +139,9 @@ end
 function BT.CustomerPaid(name, copper, id)
   copper = tonumber(copper) or 0
   if copper <= 0 then return nil end
+  -- not while you are not selling: money from somebody in your group is a
+  -- loan being repaid as often as it is a boost being bought
+  if not BT.Selling() then return nil end
   local per = BT.SellPerRun(id)
   if per <= 0 then
     -- No price set, so we cannot say what it bought. He still goes on the
@@ -217,17 +244,37 @@ end
 -- A run finished and you were the one clearing it. Everybody on the list who
 -- is still in the group has had one.
 function BT.SellRunDone()
+  if not BT.Selling() then return nil end
   local list = BT.Customers()
   if #list == 0 then return nil end
   local here = BT.GroupNames()
-  local any = false
+  local any, spent = false, false
   for _, c in ipairs(list) do
     if here[c.name] then
-      c.done = (c.done or 0) + 1
-      any = true
+      local of = c.runs or 0
+      -- A pack stops at its own size. Two customers in one group rarely buy
+      -- the same number - one takes five and somebody joins two runs later
+      -- and takes ten - so the short one runs out first, and he is usually
+      -- still standing there while the long one carries on. His count used to
+      -- go 6/5, 7/5, which is the addon saying he has had more than he paid
+      -- for in front of the man he paid.
+      --
+      -- Somebody who paid with no price set has no total to stop at, so he
+      -- keeps counting: what we have is how many he has had.
+      if of > 0 and (c.done or 0) + 0.05 >= of then
+        spent = true
+      else
+        c.done = (c.done or 0) + 1
+        any = true
+      end
     end
   end
-  if not any then return nil end
+  if not any then
+    -- everybody present is out of runs: they were told so on the run that
+    -- finished them, and saying it again every run is nagging
+    if spent and BT.RenderWindow then BT.RenderWindow() end
+    return nil
+  end
   if BT.RenderWindow then BT.RenderWindow() end
   if Sell().announce then BT.SaySellCount() end
   return true

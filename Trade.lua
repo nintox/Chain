@@ -230,6 +230,38 @@ end
 -- before the gold does.
 local CREDIT_GRACE = 2 * 3600
 
+-- Somebody you buy runs from, as against somebody you happened to trade.
+--
+-- Trade chat is half the game: you sell a green, somebody hands you 1,400g
+-- for it, and that is not a boost. It was being priced at whatever a run
+-- costs in the place you were standing, so 1,400g coming in became "-23.3
+-- runs" and the man went into "they owe you" for twenty-three runs he had
+-- never heard of.
+function BT.IsBooster(who)
+  if not who or who == "" then return false end
+  if #BT.Runs({ by = who, limit = 1 }) > 0 then return true end
+  local info = ChainDB.boosters and ChainDB.boosters[who]
+  -- a price you set for him, or a name you put in the list yourself. Not an
+  -- advert: everybody who ever shouted in trade is in that book.
+  if info and (info.mine or (info.price or 0) > 0) then return true end
+  if BT.PaysFor(who) then return true end
+  for _, i in pairs(ChainDB.boosters or {}) do
+    if i.payFor == who then return true end
+  end
+  return false
+end
+
+-- And whether this particular line of the book is about buying runs. Typed by
+-- hand it is: you went and found his name. Watched, it is his if he was the
+-- one boosting you at the time - which is what makes the first payment of a
+-- fresh chain count before he has run anything for you.
+local function Boostish(t)
+  if not t or not t.with then return false end
+  if t.manual then return true end
+  if t.by and t.by == t.with then return true end
+  return BT.IsBooster(t.with)
+end
+
 local function PerRun(t)
   if (t.perRun or 0) > 0 then return t.perRun end
   -- an older record, from before the price was kept on it: the best we can do
@@ -382,7 +414,9 @@ function BT.BoosterCredit(who)
     local net = (t.gave or 0) - (t.got or 0)
     paid = paid + net
     n = n + 1
-    local per = PerRun(t)
+    -- the same rule as the ledger: a trade that was not about buying runs
+    -- does not buy runs, however much gold crossed the table
+    local per = Boostish(t) and PerRun(t) or nil
     if per and per > 0 and net ~= 0 then
       runsPaid = runsPaid + BT.Gold(net) / per
       if not ((t.perRun or 0) > 0) then guessed = guessed + 1 end
@@ -482,7 +516,7 @@ function BT.CreditLedger()
                    ran = ran }
       else
         local net = (t.gave or 0) - (t.got or 0)
-        local per = PerRun(t)
+        local per = Boostish(t) and PerRun(t) or nil
         local bought = (per and per > 0 and net ~= 0)
           and (BT.Gold(net) / per) or nil
         if bought then paidRuns = paidRuns + bought end
@@ -562,6 +596,57 @@ function BT.SetRunsLeft(who, runs, when)
   local rec = Stamp(who, when)
   rec.setTo = runs
   return Insert(rec)
+end
+
+-- How many runs are left in the pack he is on, counted the way the bar counts
+-- them: the one you are standing in is one of them, because nobody halfway
+-- through a run calls it finished.
+function BT.PackLeft(who)
+  local c = who and who ~= "" and BT.BoosterCredit(who) or nil
+  if not c then return nil end
+  if c.hisLeft ~= nil then return c.hisLeft end
+  if c.ofPack and c.ofPack >= 1 and (c.donePack or 0) <= c.ofPack then
+    local total = math.floor(c.ofPack + 0.5)
+    local done = math.max(0, c.donePack or 0)
+    return total - done + (c.livePack and 1 or 0)
+  end
+  return c.left
+end
+
+-- What a pack of his is: the last lot you actually bought from him, or your
+-- own default. Deliberately not the last number you typed - "new pack" after
+-- you have corrected the count to 1 means five again, not one.
+function BT.PackSize(who)
+  who = BT.CleanName and BT.CleanName(who) or who
+  if who and who ~= "" then
+    local led = BT.CreditLedger and BT.CreditLedger() or nil
+    local purse = BT.PurseFor(who)
+    for i = #ChainDB.trades, 1, -1 do
+      local t = ChainDB.trades[i]
+      if t.with and purse[t.with] and ((t.gave or 0) - (t.got or 0)) > 0 then
+        local e = led and led[t]
+        local n = e and e.bought
+        if n and n >= 1 then return math.floor(n + 0.5) end
+        break
+      end
+    end
+  end
+  return math.max(1, math.floor((ChainDB.pack or 5) + 0.5))
+end
+
+-- One out or one back, without typing a number.
+--
+-- You and he are one apart. That is the whole argument, every time: he has
+-- counted the one you are standing in and you have not, or he has counted a
+-- run from before the money. Whoever turns out to be right, the fix is one
+-- press, and it has to be one press because you are doing it with a booster
+-- waiting at the stone.
+function BT.NudgeRuns(who, delta, when)
+  if not who or who == "" then return nil, "no name" end
+  local now = BT.PackLeft(who)
+  if now == nil then return nil, "nothing on record with " .. who end
+  local want = math.max(0, math.floor(now + (delta or 0) + 0.5))
+  return BT.SetRunsLeft(who, want, when)
 end
 
 -- and a way back out of a typo

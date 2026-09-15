@@ -127,6 +127,8 @@ local WHY = {
     "A large banner across the middle of the screen. Off: the line on the bar says the same thing without covering anything up.",
   ["Tell the group when you reset"] =
     "Nobody else is told an instance has been reset - the game says it to whoever pressed the button and to no one else. So the group stands at the stone waiting for somebody to type it. This types it.",
+  ["Talent builds on the talent window"] =
+    "A small list beside Blizzard's own talent tree: the builds you have written down, and a button to spend the points again after a reset. Nothing is copied from the tree and nothing replaces it - you spec the way you always did, and this remembers what you ended up with. Off, the talent window is the talent window.",
   ["Layout and route per character"] =
     "The bar's place, size and scale, what is switched on, and your route follow the character rather than the account. What you have learned about other people - prices, what a booster delivers, who ganked you - stays shared.",
   ["Read NIT's count"] =
@@ -533,6 +535,8 @@ local function BuildOptions()
   -- about other people is the same whichever character is looking.
   opt.perChar = Toggle(2, "Layout and route per character",
     function(v) BT.SetPerChar(v) end)
+  opt.talentPanel = Toggle(3, "Talent builds on the talent window",
+    function(v) BT.SetTalentPanel(v) end)
   NextRow()
 
   -- A reset means the opposite thing depending on which side of the portal
@@ -978,6 +982,7 @@ function BT.RenderOptions()
   opt.announce:SetChecked(db.announce and true or false)
   opt.announceReset:SetChecked(db.announceReset ~= false)
   opt.perChar:SetChecked(BT.PerChar())
+  opt.talentPanel:SetChecked(BT.TalentPanelOn())
   opt.ads:SetChecked(db.readAds and true or false)
   opt.signal:SetChecked(db.logSignal and true or false)
   opt.snap:SetChecked(db.snapSignal and true or false)
@@ -1413,6 +1418,136 @@ SlashCmdList["CHAIN"] = function(input)
     else
       Say(why and (C.bad .. why .. "|r") or "usage: /chain paid <booster> <gold>")
     end
+  -- The same thing with nothing typed but a number, for a macro. You are at
+  -- the stone with him waiting and the window shut, and the argument is
+  -- always the same one: you and he are one apart.
+  -- The switch on My boost, for a macro: you press it when you sit down to
+  -- work and again when you stop, and both times your hands are busy.
+  -- The builds, for a macro and for the day the talent window is not where
+  -- you are looking.
+  elseif cmd == "spec" or cmd == "build" then
+    if rest == "" then
+      local list, class = BT.Builds()
+      if #list == 0 then
+        Say("no builds saved for " .. class:lower()
+          .. " - open the talent window and press 'save this'")
+      else
+        Say("builds you have:")
+        for _, b in ipairs(list) do
+          local gap = BT.BuildGap(b)
+          print("  " .. b.name .. C.dim .. "  " .. BT.SpecLine(b.ranks)
+            .. ((gap > 0) and ("  " .. gap .. " to put in") or "  you are in it")
+            .. "|r")
+        end
+      end
+    elseif rest == "save" or rest:match("^save%s") then
+      local name = rest:match("^save%s+(.+)$")
+      local b, why = BT.SaveBuild(name)
+      if b then Say("saved " .. b.name .. " - " .. BT.SpecLine(b.ranks))
+      else Say(C.bad .. (why or "no") .. "|r") end
+    else
+      local okGo, why = BT.ApplyBuild(rest)
+      if not okGo then Say(C.bad .. (why or "no") .. "|r") end
+    end
+  elseif cmd == "boost" or cmd == "selling" then
+    local want
+    if rest == "on" then want = true
+    elseif rest == "off" then want = false end
+    local on = BT.SetSelling(want == nil and (not BT.Selling()) or want)
+    if on then
+      Say("boost mode " .. C.good .. "on" .. C.off
+        .. " - gold from anyone in your group buys runs at your price, and "
+        .. "every run you clear counts one off and says so in party")
+    else
+      Say("boost mode " .. C.dim .. "off" .. C.off
+        .. " - nothing here is watching")
+    end
+  -- The receipt for the number on the bar.
+  --
+  -- "Why does it say four" is a question about arithmetic, and the arithmetic
+  -- is a list: the money, the runs since it, and the one you are standing in.
+  -- Printed out, there is nothing left to wonder about - and if a run is
+  -- missing from it, that is the bug, not the total.
+  elseif cmd == "count" or cmd == "why" then
+    local who = (rest ~= "" and BT.CleanName(rest))
+      or (BT.CurrentBooster and BT.CurrentBooster()) or ChainCharDB.lastBy
+    if not who then Say("nobody to count with") return end
+    local c = BT.BoosterCredit(who)
+    if not c then Say("nothing on record with " .. who) return end
+    local from = (BT.LastPaid and BT.LastPaid(who)) or 0
+    Say(who .. ": the count, line by line")
+    if from > 0 then
+      print("  " .. C.gold .. BT.T(time() - from) .. " ago" .. C.off
+        .. "   paid" .. ((c.ofPack and c.ofPack > 0)
+          and ("  - " .. math.floor(c.ofPack + 0.5) .. " runs") or ""))
+    else
+      print("  " .. C.warn .. "no payment on record" .. C.off
+        .. " - the count starts at the first run")
+    end
+    local n = 0
+    for _, r in ipairs(BT.Runs({ by = who, since = from + 1 })) do
+      n = n + 1
+      print("  " .. C.dim .. BT.T(time() - (r.at or 0)) .. " ago" .. C.off
+        .. "   " .. (BT.Short(r.zone) or "?") .. C.dim .. "   "
+        .. BT.N(r.xp or 0) .. " xp   " .. BT.T(r.t or 0) .. C.off
+        .. "   " .. C.good .. n .. C.off)
+    end
+    local live = ChainCharDB.run
+    if live and live.zone and live.by == who and (live.start or 0) > from then
+      n = n + 1
+      print("  " .. C.good .. "now" .. C.off .. "   "
+        .. (BT.Short(live.zone) or "?") .. C.dim .. "   "
+        .. BT.N(live.xp or 0) .. " xp   "
+        .. BT.T(time() - (live.start or time())) .. C.off
+        .. "   " .. C.good .. n .. C.off .. C.dim
+        .. "   the one you are standing in" .. C.off)
+    elseif live and live.zone then
+      print("  " .. C.warn .. "now" .. C.off .. "   "
+        .. (BT.Short(live.zone) or "?") .. C.dim .. "   not counted: "
+        .. ((live.by ~= who)
+            and ("it is down to " .. (live.by or "nobody"))
+            or "it started before the money") .. C.off)
+    end
+    -- The two numbers in one sentence, and they have to agree with each
+    -- other: the run you are standing in is counted in the first and is one
+    -- of the ones still to come in the second, which reads as an error unless
+    -- it is spelt out.
+    local of = (c.ofPack and c.ofPack > 0) and math.floor(c.ofPack + 0.5) or nil
+    local tail = ""
+    if of then
+      local after = math.max(0, of - n)
+      if live and live.zone and live.by == who and (live.start or 0) > from then
+        tail = "   -   " .. ((after > 0)
+          and (BT.Runsish(after) .. " after this one") or "this is the last one")
+      else
+        tail = "   -   " .. BT.Runsish(after) .. " left"
+      end
+    end
+    Say("that is " .. n .. " of " .. (of or "?") .. tail)
+  elseif cmd == "runs" or cmd == "pack" then
+    local who = (BT.CurrentBooster and BT.CurrentBooster())
+      or ChainCharDB.lastBy
+    if not who then
+      Say(C.bad .. "nobody to count with - no booster yet|r")
+    else
+      local arg = (rest or ""):gsub("%s+", "")
+      local rec, why
+      if arg == "+" or arg == "+1" then rec, why = BT.NudgeRuns(who, 1)
+      elseif arg == "-" or arg == "-1" then rec, why = BT.NudgeRuns(who, -1)
+      elseif arg == "" or arg == "new" or arg == "reset" then
+        rec, why = BT.SetRunsLeft(who, BT.PackSize(who))
+      elseif tonumber(arg) then
+        rec, why = BT.SetRunsLeft(who, tonumber(arg))
+      else
+        Say("usage: /chain runs [n|+1|-1|new]")
+      end
+      if rec then
+        local n = BT.PackLeft(who) or 0
+        Say(who .. ": " .. BT.Runsish(n) .. " left, counting from now")
+      elseif why then
+        Say(C.bad .. why .. "|r")
+      end
+    end
   elseif cmd == "left" or cmd == "credit" then
     local who, n = rest:match("^(%S+)%s+(%-?[%d%.]+)$")
     if who and n then
@@ -1613,6 +1748,14 @@ SlashCmdList["CHAIN"] = function(input)
     print("  /chain paid NAME 400   log gold the addon never saw")
     print("  /chain left NAME       how many runs he still owes you")
     print("  /chain left NAME 7     or tell it outright, from now on")
+    print("  /chain runs 1         the booster you are with has 1 left")
+    print("  /chain runs +1        or one more than it thinks - macro-sized")
+    print("  /chain runs new       start his pack again from what you bought")
+    print("  /chain count         why the bar says the number it says")
+    print("  /chain boost          you are the one selling - on or off")
+    print("  /chain spec           the talent builds you have saved")
+    print("  /chain spec NAME      put that one back in")
+    print("  /chain spec save NAME write down the one you are in")
     print("  /chain notnew     take back the last instance it counted")
     print("  /chain alt ALT BOOSTER  gold to his bank alt counts for him")
     print("  /chain loot       everything that dropped, yours and the group's")

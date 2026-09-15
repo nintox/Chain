@@ -157,11 +157,25 @@ end
 
 -- Where you should be at a given level, and what it would cost there.
 -- Returns the step, its cost per level, and the cost in the one you are in.
+-- The level a place stops being somewhere you can be sent. The route's own
+-- "to" if you set one, otherwise what the instance is worth doing to.
+local function Until(e)
+  if e.to then return e.to end
+  local d = e.id and BT.BY_ID[e.id]
+  return (d and d.hi) or 60
+end
+
 function BT.BestAt(level, current, booster)
   local bestStep, bestCost
   for _, e in ipairs(Candidates()) do
     local cost, runs
-    if (e.opens or 1) <= level then cost, runs = BT.CostPerLevel(e, level, booster) end
+    -- Open yet, and not finished with. "Move to SM now" at 47 is advice
+    -- nobody can take: SM is worth doing to 42, its mobs are grey by then,
+    -- and no booster will put a 47 in the group. The place having a low
+    -- price does not make it cheap - it makes it empty.
+    if (e.opens or 1) <= level and level < Until(e) then
+      cost, runs = BT.CostPerLevel(e, level, booster)
+    end
     -- with no price anywhere, fall back to fewest runs
     local score = cost or (runs and runs * 1000) or nil
     if score and (not bestCost or score < bestCost) then
@@ -183,9 +197,13 @@ function BT.SwitchAt(step, booster)
     if best and mine and best.id ~= step.id and bestCost < mine * 0.9 then
       return level, best, 1 - (bestCost / mine)
     end
-    -- nothing left to gain here at all
+    -- Nothing left to gain here at all - but only when that is something we
+    -- know. With no runs in this place PredictRun has nothing to anchor on
+    -- and returns nil, and nil was being read as zero: a level 47 standing in
+    -- Maraudon having done no runs yet was told to "move to SM now (100%
+    -- cheaper)", which is both the wrong place and a number out of nowhere.
     local xp = BT.PredictRun(step, level)
-    if not xp or xp <= 0 then
+    if xp and xp <= 0 and best then
       return level, best, 1
     end
   end

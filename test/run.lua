@@ -29,8 +29,8 @@ end
 
 -- the .toc order
 for _, f in ipairs({ "Data.lua", "Stats.lua", "Decay.lua", "Core.lua", "Trade.lua", "Selling.lua", "Loot.lua",
-                     "PvP.lua", "Enemy.lua", "Roster.lua", "Meter.lua", "Bar.lua", "Minimap.lua", "Window.lua",
-                     "Options.lua" }) do
+                     "PvP.lua", "Enemy.lua", "Roster.lua", "Meter.lua", "Bar.lua", "Minimap.lua", "Talents.lua",
+                     "Window.lua", "Options.lua" }) do
   loadFile(f)
 end
 
@@ -993,6 +993,54 @@ do
   S.Fire(frame, "CHAT_MSG_RAID", "reset", "Boostar-Testrealm")
   ok(ChainCharDB.resetAt ~= nil, "men leiaren blir trudd")
 
+  -- Ei setning med ordet "reset" i er ikkje ei kunngjering om at det har
+  -- skjedd. Dette er leiaren som forklarar kva han skal til å gjere, og baren
+  -- las det som ferdig: reset kalla, gå ut, alle flyttar seg. Feil akkurat i
+  -- det augeblikket det betyr mest.
+  local function says(text)
+    ChainCharDB.resetAt, ChainCharDB.resetZone = nil, nil
+    S.Fire(frame, "CHAT_MSG_PARTY", text, "Boostar-Testrealm")
+    return ChainCharDB.resetAt ~= nil
+  end
+  ok(not says("You can wait for me to reset successfully and then come in "
+    .. "and out in three to five minutes"), "leiaren som forklarar planen sin")
+  ok(not says("i will reset in a minute"), "noko han skal gjere")
+  ok(not says("need to reset first"), "noko som må gjerast fyrst")
+  ok(not says("should i reset now or after this pull"), "eit spørsmål med fleire ord")
+  ok(not says("remember to zone out before i reset"), "ei påminning")
+
+  -- men det som faktisk er ei kunngjering skal framleis kome gjennom
+  ok(says("reset"), "ordet åleine")
+  ok(says("Instances reset!"), "NIT si linje")
+  ok(says("reset done"), "to ord som seier at det er gjort")
+  ok(says("Maraudon has been reset."), "spelet si eiga setning, vidareformidla")
+  ok(says("[NIT] The Stockade has been reset."), "same, med eit addon-namn framfor")
+
+  -- NIT si ekte linje, ordrett. Ho har ordet "can" i forklaringa etter
+  -- kunngjeringa, og ei lesing som såg etter hedging-ord i heile linja kasta
+  -- henne - så addonen slutta å sjå reset i det heile. Det som står FRAMFOR
+  -- kunngjeringa er det som avgjer om ho er ei kunngjering.
+  ok(says("[NIT] Maraudon has been reset (Players still inside old instance "
+    .. "can zone out and enter new)."), "NIT si ekte linje, med parentes og alt")
+  ok(says("Maraudon has been reset (Players still inside old instance can "
+    .. "zone out and enter new)."), "og utan addon-namnet framfor")
+  -- medan hedginga framfor framleis tel
+  ok(not says("i can reset it after this pull if you want, then it has been "
+    .. "reset for everyone"), "eit ord som nøler framfor kunngjeringa tel enno")
+
+  -- Og på ein klient som ikkje er engelsk er "has been reset" ingenting. Det
+  -- er difor spelet si eiga setning blir lesen som eit mønster og ikkje som
+  -- ein engelsk frase: klienten seier sjølv korleis ho lyder.
+  do
+    local keep = _G.INSTANCE_RESET_SUCCESS
+    _G.INSTANCE_RESET_SUCCESS = "%s wurde zurückgesetzt."
+    ok(says("Maraudon wurde zurückgesetzt."),
+       "spelet si setning på eit anna språk")
+    ok(not says("ich muss Maraudon zurücksetzen bevor wir weitermachen"),
+       "men ikkje ei setning som berre inneheld ordet")
+    _G.INSTANCE_RESET_SUCCESS = keep
+  end
+
   -- og klienten si eiga melding treng ingen som går god for henne
   ChainCharDB.resetAt = nil
   S.Fire(frame, "CHAT_MSG_SYSTEM", "The Stockade has been reset.")
@@ -1597,6 +1645,133 @@ end
 CornersFit()
 
 --------------------------------------------------------------------------
+print("== questar og gruppe høyrer til på tooltipen ==")
+-- "quests ready 3.0% (1)   grp 55.7 (3) -8% xp" er to sanningar som står der
+-- heile dagen og som du handlar på ein gong i timen. Baren er for det som
+-- rører seg; dette er det du slår opp.
+do
+  local wasParty = S.party
+  S.party = { { name = "Boostar-Testrealm", lvl = 60 },
+              { name = "Kompis", lvl = 30 } }
+  S.level, S.xp, S.xpMax = 23, 12000, 31700
+  S.quests = { { title = "Q1", done = true, xp = 1200, level = 23 } }
+  BT.questScan = nil
+  BT.ScanQuests()
+
+  local txt = table.concat(BT.AllLines(BT.BuildText()), "\n")
+  ok(not txt:find("quests ready"), "questane står ikkje under baren")
+  ok(not txt:find("grp "), "og ikkje gruppa heller")
+
+  BT.BarTooltip(GameTooltip)
+  local tip = S.TipText()
+  ok(tip:find("quests ready"), "men questane står på tooltipen")
+  ok(tip:find("to hand in"), "med kor mange det er")
+  ok(tip:find("group"), "og gruppa")
+  ok(tip:find("average of 3"), "med kor mange de er (" ..
+     (tip:match("group[^\n]*") or "?") .. ")")
+  ok(tip:find("%% xp"), "og kva ho kostar deg i xp")
+
+  -- og det gule feltet på baren er framleis der: biletet blir verande, det er
+  -- setninga som flytta
+  BT.Refresh()
+  ok(BT.bar.quest:IsShown(), "det gule feltet står framleis på baren")
+
+  S.quests = {}
+  BT.questScan = nil
+  BT.ScanQuests()
+  BT.BarTooltip(GameTooltip)
+  ok(not S.TipText():find("quests ready"), "utan questar seier han ingenting")
+  S.party = wasParty
+end
+
+--------------------------------------------------------------------------
+print("== kvileprosent og ruta på baren ==")
+-- To linjer som ikkje fortente plassen sin. Rested er eitt tal som ikkje
+-- rører seg medan du spelar og som du ikkje kan gjere noko med - og det er
+-- teikna på baren frå før, som det blå feltet framfor fyllet. Ruta er ei
+-- overskrift du har sett sjølv.
+do
+  local wasRested = S.rested
+  S.rested = 3000
+  local txt = table.concat(BT.AllLines(BT.BuildText()), "\n")
+  ok(not txt:find("rested"), "prosenten står ikkje under baren lenger")
+
+  -- men han står på baren, og feltet kan du halde over
+  BT.Refresh()
+  local b = BT.bar
+  ok(b.rested:IsShown(), "det blå feltet er teikna")
+  ok(b.restedHot and b.restedHot:IsShown(), "og du kan halde over det")
+  BT.RestedTooltip(b.restedHot)
+  local tip = S.TipText()
+  ok(tip:find("Rested"), "tooltipen seier kva feltet er")
+  ok(tip:find("3,000"), "kor mykje som er att (" .. tip:gsub("\n", " | ") .. ")")
+  ok(tip:lower():find("double"), "og kva det gjer")
+
+  -- og baren sin eigen tooltip skal ikkje forsvinne fordi du gjekk over feltet
+  S.mouseOver = b.restedHot
+  BT.BarTooltip(b)
+  b.__scripts.OnLeave(b)
+  ok(GameTooltip:IsShown(), "baren tek ikkje tooltipen frå feltet")
+  S.mouseOver = nil
+  b.__scripts.OnLeave(b)
+  ok(not GameTooltip:IsShown(), "men går du heilt vekk, forsvinn han")
+
+  -- ingen kvile, ingenting å halde over
+  S.rested = 0
+  BT.Refresh()
+  ok(not b.restedHot:IsShown(), "utan kvile er det ingenting der")
+  S.rested = wasRested
+  BT.Refresh()
+end
+
+-- Rute-linja. "Maraudon > 52  solo ~296h 18m" er ikkje eit val nokon står i:
+-- tolv døgn grinding i ein instans du aldri har vore i. Linja lever av
+-- boost-talet - kor mange runs det tek - og solo-talet er det du held det opp
+-- mot. Utan boost-talet er heile linja ei overskrift du har skrive sjølv.
+do
+  local wasRoute = ChainDB.route
+  local wasSeen = ChainCharDB.seenInst
+  S.zone, S.inInstance = "Elwynn Forest", false
+  S.level, S.xp, S.xpMax = 47, 9877, 129100
+  ChainDB.route = { mara = { on = true, from = 46, to = 52, gold = 0 } }
+  ChainCharDB.seenInst = {}
+
+  local function planLine()
+    for _, l in ipairs(BT.AllLines(BT.BuildText())) do
+      local clean = (l:gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+      if clean:find("Maraudon") then return clean end
+    end
+  end
+
+  -- ei fart å rekne med, slik at eit solo-tal er mogleg i det heile
+  ChainCharDB.buckets = {}
+  S.party = {}
+  for _ = 1, 5 do
+    S.now = S.now + 60
+    S.xp = S.xp + 800
+    S.Fire(frame, "PLAYER_XP_UPDATE")
+  end
+  ok((BT.Rate() or 0) > 0, "det finst ei fart")
+
+  -- ingen runs i Maraudon enno: ingen linje, sjølv om solo-talet kunne
+  -- reknast ut. Eit tal ingen handlar på er ikkje ei linje.
+  eq(planLine(), nil, "utan ein einaste run står det ingenting om staden")
+
+  -- ein run gjennom døra, og då er det noko å seie
+  for i = 1, 3 do
+    table.insert(ChainDB.runs, { at = S.now - i * 600, by = "Boostar",
+      id = "mara", zone = "Maraudon", xp = 30000, k = 60, t = 600 })
+  end
+  BT.Touch()
+  local line = planLine()
+  ok(line and line:find("boost"), "med ein run i boka seier linja kva boosten tek")
+  ok(line and line:find("solo"), "og kva det er på eiga hand, til samanlikning")
+
+  ChainDB.route = wasRoute
+  ChainCharDB.seenInst = wasSeen
+end
+
+--------------------------------------------------------------------------
 print("== vindauge, opsjonar og eksport ==")
 BT.ToggleWindow()
 ok(_G.ChainWindow ~= nil, "historikkvindauget bygd")
@@ -2160,6 +2335,17 @@ do
   local cbody = table.concat(BT.AllLines(), "\n")
   ok(cbody:find("runs left") or cbody:find("runs unpaid") or cbody:find("%d/%d"),
      "baren seier kor mange runs som står att")
+  -- Og han seier kva talet er eit tal på. Den andre enden av baren seier
+  -- "inst 4/5", som tel kvar innmarsj mot dei fem i timen; dette tel rundene
+  -- i pakken du betalte for. To bare 4/5 på same baren les som eitt tal sagt
+  -- to gonger - og så som ein feil når dei er ulike.
+  do
+    local rest2 = cbody:gsub("inst %d+/%d+", "")
+    if rest2:find("%d+/%d+") then
+      ok(rest2:find("run %d+/%d+"), "og at det er runs han tel (" ..
+         (rest2:match("[^\n]*%d+/%d+[^\n]*") or "?") .. ")")
+    end
+  end
   BT.BarTooltip(GameTooltip)
   local ctip = S.TipText()
   -- Tooltipen er for det som skjer no: kor mange du har att med han, ikkje
@@ -2823,6 +3009,74 @@ do
   eq(sx, 0, "er skjermen smalare enn baren, står han midt på")
 end
 
+-- Og sjølve slippet. Rekninga over er rein aritmetikk og har alltid stemt;
+-- det som ikkje stemte var vegen frå der musa slapp til tala ho reknar på.
+-- UIParent står nesten aldri på skala 1 i eit ekte spel, og det var den eine
+-- faktoren som mangla: baren hoppa eit par hundre pikslar til høgre når du
+-- slapp han, eller heilt bort i kanten.
+do
+  local ui = _G.UIParent
+  local oldScale, oldW, oldH = ui:GetScale(), ui:GetWidth(), ui:GetHeight()
+  local oldPoint = ChainDB.point
+  local b = BT.bar
+  local oldBarScale = b:GetScale()
+
+  local UIS = 0.7111                  -- ein heilt vanleg UI-skala
+  ui:SetScale(UIS)
+  ui:SetSize(1920 / UIS, 1080 / UIS)  -- UIParent sine eigne einingar
+  ui.__center = { (1920 / UIS) / 2, (1080 / UIS) / 2 }
+
+  local function droppedAt(barScale, px, py)
+    b:SetScale(barScale)
+    local eb = b:GetEffectiveScale()
+    -- musa slapp han px pikslar til høgre og py opp for skjermmidten
+    b.__center = { (1920 / 2 + px) / eb, (1080 / 2 + py) / eb }
+    BT.SaveBarPos()
+    local p = ChainDB.point
+    return (p[4] or 0) * eb, (p[5] or 0) * eb   -- tilbake til skjermpikslar
+  end
+
+  local gx, gy = droppedAt(1, 300, 200)
+  near(gx, 300, "sleppt 300 px til høgre blir ståande der", 8)
+  near(gy, 200, "og 200 px opp likeeins", 8)
+
+  gx = droppedAt(1, -420, 0)
+  near(gx, -420, "og til venstre òg", 8)
+
+  -- ein skalert bar er den andre halvdelen av same rekninga
+  gx, gy = droppedAt(1.3, 300, -150)
+  near(gx, 300, "og ein skalert bar landar same staden", 12)
+  near(gy, -150, "i begge retningar", 12)
+
+  -- heilt ut i kanten skal han stoppe ved kanten, ikkje utanfor
+  gx = droppedAt(1, 5000, 0)
+  ok(gx < 1920 / 2, "han kjem ikkje forbi kanten (" .. math.floor(gx) .. ")")
+  ok(gx > 1920 / 2 - 400, "men heilt ut dit (" .. math.floor(gx) .. ")")
+
+  -- Og slippet skal ikkje vere eit klikk. Å sleppe ein drag er ein mouse-up
+  -- òg, så kvar gong du flytta baren opna - eller lukka - du vindauget,
+  -- nøyaktig der du prøvde å setje han ned.
+  do
+    local w = _G.ChainWindow
+    local wasShown = w:IsShown()
+    b.__scripts.OnDragStop(b)
+    b.__scripts.OnMouseUp(b, "LeftButton")
+    eq(w:IsShown(), wasShown, "å sleppe ein drag opnar ikkje vindauget")
+    S.uptime = S.uptime + 1
+    b.__scripts.OnMouseUp(b, "LeftButton")
+    ok(w:IsShown() ~= wasShown, "men eit ekte klikk gjer det framleis")
+    b.__scripts.OnMouseUp(b, "LeftButton")
+  end
+
+  ui:SetScale(oldScale or 1)
+  ui:SetSize(oldW, oldH)
+  ui.__center = nil
+  b:SetScale(oldBarScale or 1)
+  b.__center = nil
+  ChainDB.point = oldPoint
+  BT.PlaceBar()
+end
+
 --------------------------------------------------------------------------
 print("== kvar karakter sitt eige oppsett ==")
 -- Ein bar plassert for ein rogue sitt UI står feil på ein mage sitt, og ei
@@ -2994,15 +3248,17 @@ ok(not vbody:find("Gammal"), "og ikkje namnet hans heller")
 ok(vbody:find("xp/h") or vbody:find("no xp for") or true,
    "farta står der derimot")
 ok(not vbody:find("grp "), "gruppa heller ikkje")
+ok(not vbody:find("quests ready"), "og ikkje questane i sekken")
 ShortTip("med ein booster")
 BT.BarTooltip(GameTooltip)
 local vtip = S.TipText()
--- ...og ikkje på tooltipen heller. Verdien hans, raten hans og gruppa er
--- samanlikningar, og samanlikningar høyrer heime på Boosters-fana, som er dit
--- du går når du skal bestemme deg i staden for å gjere.
+-- Verdien hans og raten hans er samanlikningar, og samanlikningar høyrer heime
+-- på Boosters-fana, som er dit du går når du skal bestemme deg i staden for å
+-- gjere. Gruppa er noko anna: ho er din eigen situasjon akkurat no, og ho
+-- kostar deg xp. Difor står ho på tooltipen - berre ikkje på baren.
 ok(not vtip:find("xp per gold"), "verdien er ikkje på tooltipen")
 ok(not vtip:find("his time per run"), "og ikkje raten hans")
-ok(not vtip:find("group"), "og ikkje gruppa")
+ok(vtip:find("group"), "men gruppa di står der, med kva ho kostar deg")
 BT.ShowTab("boosters")
 do
   local seen = false
@@ -3089,7 +3345,10 @@ do
   eq(when, "now", "runden du er i står øvst, og seier 'now'")
   ok((top.cells[3]:GetText() or ""):find("4,200"), "med xp så langt")
   ok(not top.del:IsShown(), "han kan ikkje slettast - han er ikkje lagra enno")
-  ok(not top.pick:IsShown(), "og ikkje hakkast av - han tel ikkje for noko enno")
+  -- men hakkast av kan han. Det var han som ikkje kunne det, og det er nettopp
+  -- han striden står om: boosteren seier fem, du seier fire, og den fjerde er
+  -- den de begge står i.
+  ok(top.pick:IsShown(), "og han kan hakkast av")
 
   -- og når du går ut, er han borte att: han er lagra som ein vanleg run då,
   -- og skal ikkje stå der to gonger
@@ -3279,8 +3538,14 @@ do
   eq(wp.payName:GetText(), who, "namnet er fylt ut med den som boostar no")
   local note = ((wp.payNote:GetText() or "")
     :gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
-  ok(note:find("now "), "og det står kva talet er no (" .. note .. ")")
-  ok(note:find("10"), "det levande talet, ikkje det frosne i radene over")
+  -- Talet står under orda "runs left" og framfor dei tre knappane som endrar
+  -- det, så det er alt namngjeve to gonger når du les det. Difor er det berre
+  -- talet - "now 10 - the tally starts again from what you type" var ei
+  -- setning på ei linje som alt var full.
+  ok(note:find("10"), "det levande talet står der (" .. note .. ")")
+  ok(#note <= 4, "og ikkje ei setning til (" .. note .. ")")
+  ok(((wp.payOr:GetText() or ""):find("runs left")),
+     "orda står i si eiga overskrift i staden")
   ChainDB.trades, ChainDB.boosters = keepT, keepB
   BT.Touch() BT.TouchTrades()
 end
@@ -3622,6 +3887,189 @@ do
   BT.Touch() BT.TouchTrades()
 end
 
+-- "5/5 - last run", og han påstår vi har gått fem.
+--
+-- Det er alltid same usemja: de er éin frå kvarandre. Anten har han talt med
+-- runden de står i og ikkje du, eller han har talt ein frå før pengane. Kven
+-- som enn har rett, må rettinga vere eitt trykk - du gjer det med ein booster
+-- som ventar ved steinen.
+do
+  local keepT, keepR, keepLive = ChainDB.trades, ChainDB.runs, ChainCharDB.run
+  local keepPack = ChainDB.pack
+  local who = "Magecome"
+  ChainDB.trades, ChainDB.runs = {}, {}
+  -- standarden din er ein annan enn hans pakke, slik at eit tal som kjem frå
+  -- standarden ikkje kan sjå rett ut ved eit uhell
+  ChainDB.pack = 3
+  -- og to runs til gode frå før: saldoen er sju, pakken er fem, og det er
+  -- pakken både han og baren tel i
+  table.insert(ChainDB.trades, { at = S.now - 20000, with = who, gave = 120 * 10000,
+    got = 0, id = "mara", perRun = 60, char = "Tester" })
+  table.insert(ChainDB.trades, { at = S.now - 8000, with = who, gave = 300 * 10000,
+    got = 0, id = "mara", perRun = 60, char = "Tester" })
+  for i = 1, 4 do
+    table.insert(ChainDB.runs, { at = S.now - 7000 + i * 900, t = 1100,
+      zone = "Maraudon", id = "mara", by = who, xp = 40000, k = 300, lvl = 47 })
+  end
+  ChainCharDB.run = { start = S.now - 600, zone = "Maraudon", map = 349,
+                      id = "mara", by = who, xp = 20000, k = 200, lvl = 48 }
+  BT.Touch() BT.TouchTrades()
+
+  local c = BT.BoosterCredit(who)
+  eq(c.donePack, 5, "fire ferdige og den du står i er fem av fem")
+  eq(BT.PackLeft(who), 1, "og det er éin att - den du står i")
+  ok((c.left or 0) > 1, "saldoen er eit anna tal (" .. tostring(c.left) ..
+     ") - han inkluderer det gamle, og det er ikkje det nokon tel i")
+  eq(BT.PackSize(who), 5, "ein pakke hjå han er fem, ikkje standarden din")
+
+  -- eitt trykk opp, eitt ned
+  BT.NudgeRuns(who, 1)
+  eq(BT.PackLeft(who), 2, "+1 gjer det til to")
+  BT.NudgeRuns(who, -1)
+  eq(BT.PackLeft(who), 1, "og -1 tilbake til ein")
+
+  -- og ein heilt ny pakke, utan å skrive eit tal
+  BT.SetRunsLeft(who, BT.PackSize(who))
+  eq(BT.PackLeft(who), 5, "ny pakke er fem igjen")
+
+  -- knappane på fana gjer det same
+  BT.ShowTab("gold")
+  local wn = _G.ChainWindow
+  ok(wn.runsDown and wn.runsDown:IsShown(), "det er ein minus-knapp")
+  ok(wn.runsUp and wn.runsUp:IsShown(), "og ein pluss-knapp")
+  ok(wn.runsFresh and wn.runsFresh:IsShown(), "og ein for ein heilt ny pakke")
+  wn.payName:SetText(who)
+  wn.runsDown.__scripts.OnClick(wn.runsDown)
+  eq(BT.PackLeft(who), 4, "minus-knappen tel ned")
+  wn.runsUp.__scripts.OnClick(wn.runsUp)
+  eq(BT.PackLeft(who), 5, "og pluss-knappen opp att")
+
+  -- og frå ein makro, utan å skrive namnet hans
+  ChainCharDB.lastBy = who
+  SlashCmdList["CHAIN"]("runs 1")
+  eq(BT.PackLeft(who), 1, "/chain runs 1 set han til ein")
+  SlashCmdList["CHAIN"]("runs +1")
+  eq(BT.PackLeft(who), 2, "/chain runs +1 legg til ein")
+  SlashCmdList["CHAIN"]("runs new")
+  eq(BT.PackLeft(who), 5, "/chain runs new startar pakken på nytt")
+
+  -- og ein pakke kan ikkje gå under null
+  SlashCmdList["CHAIN"]("runs 0")
+  BT.NudgeRuns(who, -1)
+  ok((BT.PackLeft(who) or 0) >= 0, "han går ikkje i minus")
+
+  ChainDB.trades, ChainDB.runs = keepT, keepR
+  ChainCharDB.run = keepLive
+  ChainDB.pack = keepPack
+  BT.Touch() BT.TouchTrades()
+end
+
+-- Ein tilfeldig handel er ikkje ein boost.
+--
+-- Du sel ein green i trade chat, nokon gjev deg 1 400g for han, og det blei
+-- prisa til kva ein run kostar der du stod: "-23.3 runs", og mannen hamna i
+-- "they owe you" for tjuetre runs han aldri hadde høyrt om.
+do
+  local keepT, keepR, keepB = ChainDB.trades, ChainDB.runs, ChainDB.boosters
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = {}, {}, {}
+  ChainCharDB.run = nil
+  -- ein ekte booster: runs i boka og ei betaling
+  table.insert(ChainDB.runs, { at = S.now - 5000, t = 1000, zone = "Maraudon",
+    id = "mara", by = "Magecome", xp = 40000, k = 300, lvl = 47 })
+  table.insert(ChainDB.trades, { at = S.now - 6000, with = "Magecome",
+    gave = 300 * 10000, got = 0, id = "mara", perRun = 60, char = "Tester" })
+  -- og ein framand som gav deg gull for noko
+  table.insert(ChainDB.trades, { at = S.now - 1000, with = "Dirtyeob",
+    gave = 0, got = 1400 * 10000, id = "mara", perRun = 60, char = "Tester" })
+  BT.Touch() BT.TouchTrades()
+
+  local led = BT.CreditLedger()
+  local mine, his
+  for _, t in ipairs(ChainDB.trades) do
+    if t.with == "Magecome" then mine = led[t] else his = led[t] end
+  end
+  ok(mine and (mine.bought or 0) > 0, "boosteren sine pengar kjøper runs")
+  eq(his and his.bought, nil, "den framande sine gjer ikkje det")
+  eq(math.floor((BT.BoosterCredit("Dirtyeob") or {}).left or 0), 0,
+     "og han skuldar deg ingenting")
+
+  BT.ShowTab("gold")
+  local wg = _G.ChainWindow
+  local sum = ((wg.summary:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+  ok(not sum:find("Dirtyeob"), "han står ikkje i 'they owe you' (" .. sum .. ")")
+  ok(sum:find("Magecome"), "men boosteren gjer det")
+
+  -- og gjer du fyrst ein run med han, er han ein booster som alle andre
+  table.insert(ChainDB.runs, { at = S.now - 500, t = 1000, zone = "Maraudon",
+    id = "mara", by = "Dirtyeob", xp = 40000, k = 300, lvl = 47 })
+  BT.Touch() BT.TouchTrades()
+  ok(BT.IsBooster("Dirtyeob"), "ein run med han gjer han til ein booster")
+
+  -- den fyrste betalinga i ei fersk kjede tel, sjølv før fyrste runden: han
+  -- boosta deg då pengane skifta hender, og det står på linja
+  ChainDB.runs = {}
+  ChainDB.trades = { { at = S.now - 100, with = "Heiltny", gave = 300 * 10000,
+    got = 0, id = "mara", perRun = 60, by = "Heiltny", char = "Tester" } }
+  BT.Touch() BT.TouchTrades()
+  local l2 = BT.CreditLedger()[ChainDB.trades[1]]
+  ok(l2 and (l2.bought or 0) > 0,
+     "fyrste betalinga til ein ny booster tel med ein gong")
+
+  ChainDB.trades, ChainDB.runs, ChainDB.boosters = keepT, keepR, keepB
+  BT.Touch() BT.TouchTrades()
+end
+
+-- Kvittering for talet på baren.
+--
+-- "Kvifor står det fire" er eit spørsmål om rekning, og rekninga er ei liste:
+-- pengane, rundene sidan, og den du står i. Skriven ut er det ingenting att å
+-- lure på - og manglar ein run i lista, er det feilen, ikkje summen.
+do
+  local keepT, keepR, keepLive = ChainDB.trades, ChainDB.runs, ChainCharDB.run
+  local who = "Teljar2"
+  ChainDB.trades, ChainDB.runs = {}, {}
+  table.insert(ChainDB.trades, { at = S.now - 6000, with = who,
+    gave = 300 * 10000, got = 0, id = "mara", perRun = 60, char = "Tester" })
+  -- ein run frå før pengane, som ikkje skal vere med
+  table.insert(ChainDB.runs, { at = S.now - 8000, t = 1100, zone = "Maraudon",
+    id = "mara", by = who, xp = 30000, k = 300, lvl = 47 })
+  for i = 1, 3 do
+    table.insert(ChainDB.runs, { at = S.now - 5000 + i * 900, t = 1100,
+      zone = "Maraudon", id = "mara", by = who, xp = 40000, k = 300, lvl = 48 })
+  end
+  ChainCharDB.run = { start = S.now - 480, zone = "Maraudon", map = 349,
+                      id = "mara", by = who, xp = 0, k = 0, lvl = 49 }
+  ChainCharDB.lastBy = who
+  BT.Touch() BT.TouchTrades()
+
+  S.printed = {}
+  SlashCmdList["CHAIN"]("count")
+  local out = table.concat(S.printed, "\n"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+  ok(out:find("paid"), "kvitteringa startar med pengane (" .. out:gsub("\n", " | ") .. ")")
+  ok(out:find("5 runs"), "og kor mange dei kjøpte")
+  local counted = select(2, out:gsub("Maraudon", ""))
+  eq(counted, 4, "tre ferdige og den du står i - ikkje den frå før pengane")
+  ok(out:find("the one you are standing in"), "og det står kva den siste er")
+  ok(out:find("that is 4 of 5"), "og summen til slutt")
+  ok(out:find("1 run after this one"), "og kor mange som kjem etter denne ("
+     .. (out:match("that is[^\n]*") or "?") .. ")")
+
+  -- og ein run som høyrer til ein annan seier kvifor han ikkje tel
+  ChainCharDB.run.by = "Annan"
+  S.printed = {}
+  SlashCmdList["CHAIN"]("count " .. who)
+  local out2 = table.concat(S.printed, "\n"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+  ok(out2:find("not counted"), "og han seier at han ikkje er talt med")
+  ok(out2:find("it is down to Annan"), "runden du står i med ein annan tel ikkje med ("
+     .. (out2:match("now[^\n]*") or "?") .. ")")
+  ok(out2:find("that is 3 of 5"), "og då er summen tre")
+  ok(out2:find("2 runs left"), "og to står att (" .. (out2:match("that is[^\n]*") or "?") .. ")")
+
+  ChainDB.trades, ChainDB.runs = keepT, keepR
+  ChainCharDB.run = keepLive
+  BT.Touch() BT.TouchTrades()
+end
+
 -- Å gjere opp teljinga med boosteren.
 --
 -- Han seier fem, du talde fire, og ingen av dykk kan bevise noko fordi begge
@@ -3744,7 +4192,102 @@ do
     -- ei linje per run, og resten går ut eit halvt sekund om gongen
     local total = #S.said + #S.printed + #(S.timers or {})
     ok(total >= 2, "det er ei linje per run (" .. total .. ")")
+
+    -- Og runden du står i skal vere med. Han seier fem, du seier fire, og den
+    -- fjerde er den de begge står i - å telje han bort er å gje han rett.
+    local keepLive = ChainCharDB.run
+    ChainCharDB.run = { start = S.now - 600, zone = "Maraudon", map = 349,
+                        id = "mara", by = who, xp = 20000, k = 200, lvl = 20 }
+    BT.ShowTab("runs")
+    wq.sinceButton.__scripts.OnClick(wq.sinceButton)
+    ok((wq.sayNote:GetText() or ""):find("3"),
+       "runden du står i blir talt med (" .. (wq.sayNote:GetText() or "") .. ")")
+
+    S.said, S.printed, S.timers = {}, {}, {}
+    wq.sayButton.__scripts.OnClick(wq.sayButton)
+    for _, fn in ipairs(S.timers or {}) do fn() end
+    local all = table.concat(S.said, "\n") .. "\n" .. table.concat(S.printed, "\n")
+    ok(all:find("3/3"), "og han er den siste av tre (" ..
+       (all:match("3/3[^\n]*") or "?") .. ")")
+    ok(all:find("still in it"), "merka som ikkje ferdig")
+    ok(all:find("%-now,"), "og utan eit sluttidspunkt han ikkje har enno")
+
+    -- og klokka hans er ei anna klokke enn vår: han tel frå reset til reset,
+    -- vi frå fyrste pull til siste. Difor står begge, og differansen med.
+    local tot = all:match("total [^\n]*") or ""
+    ok(tot ~= "", "det står ein sum til slutt (" .. tot .. ")")
+    ok(tot:find("3 runs"), "med kor mange runs")
+    ok(tot:find("inside") and tot:find("between runs"),
+       "kor mykje var inne i instansen og kor mykje gjekk med imellom")
+
+    -- hakket kan takast av att, og då er han ute
+    local liveRow
+    for _, r in ipairs(wq.rows or {}) do
+      local txt = ((r.cells[1]:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""))
+      if r:IsShown() and (txt:gsub("|r", "")) == "now" then liveRow = r end
+    end
+    ok(liveRow and liveRow.pick:IsShown(), "raden hans har eit hakk")
+    if liveRow then
+      liveRow.pick.__scripts.OnClick(liveRow.pick)
+      ok((wq.sayNote:GetText() or ""):find("2"),
+         "og av att er vi tilbake på to (" .. (wq.sayNote:GetText() or "") .. ")")
+    end
+    ChainCharDB.run = keepLive
+    BT.ShowTab("runs")
   end
+end
+
+-- Botnlinja i vindauget: ingenting skal liggje oppå noko anna, og ingenting
+-- skal stikke utanfor ramma.
+--
+-- Trade-fana enda med to jobbar klemt saman på éi linje - "never saw it?",
+-- eit namn, ein pris, ein knapp, "or just say what is left", ein boks og tre
+-- knappar til - og etiketten på boksen las rett inn i teksten framfor han.
+-- Ein fyrstegongsbrukar hadde ikkje skjønt kva han såg på.
+do
+  local wb = _G.ChainWindow
+  for _, tab in ipairs({ "gold", "runs", "boosters", "route", "sell" }) do
+    BT.ShowTab(tab)
+    local boxes = {}
+    for _, w in ipairs({ wb.payLabel, wb.payName, wb.payPick, wb.payGold,
+                         wb.payButton, wb.payOr, wb.payOrSet, wb.payRuns,
+                         wb.payRunsButton, wb.runsDown, wb.runsUp,
+                         wb.runsFresh, wb.payNote, wb.addLabel, wb.addName,
+                         wb.addNote, wb.addButton, wb.addNote2, wb.sinceButton,
+                         wb.sayButton, wb.whisperTo, wb.whisperButton,
+                         wb.sayNote, wb.ownLabel, wb.ownPick, wb.ownAdd,
+                         wb.ownNote, wb.sellGold, wb.sellPack, wb.sellAd,
+                         wb.sellPost, wb.sellLabel, wb.sellPer, wb.sellRuns }) do
+      if w and w:IsShown() then
+        local _, _, _, x = w:GetPoint(1)
+        local width = (w.__kind == "FontString") and w:GetStringWidth()
+          or w:GetWidth()
+        if x and width and width > 0 then
+          table.insert(boxes, { x = x, w = width, what = tostring(w.__kind) ..
+            " \"" .. tostring((w.GetText and w:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) .. "\"" })
+        end
+      end
+    end
+    local clash
+    for i = 1, #boxes do
+      for j = i + 1, #boxes do
+        local a, b = boxes[i], boxes[j]
+        if a.x < b.x + b.w and b.x < a.x + a.w then
+          clash = a.what .. " ved " .. a.x .. " og " .. b.what .. " ved " .. b.x
+        end
+      end
+    end
+    ok(clash == nil, tab .. ": ingenting på botnlinja ligg oppå noko anna ("
+       .. tostring(clash) .. ")")
+    local over
+    for _, bx in ipairs(boxes) do
+      if bx.x + bx.w > 872 then over = bx.what .. " endar på "
+        .. math.floor(bx.x + bx.w) end
+    end
+    ok(over == nil, tab .. ": og ingenting stikk utanfor ramma ("
+       .. tostring(over) .. ")")
+  end
+  BT.ShowTab("runs")
 end
 
 -- ingen kolonne skal vere for smal for innhaldet sitt: "1h 42m ago" braut
@@ -3779,6 +4322,49 @@ do
   ChainDB.sell = nil
   local keepParty = S.party
   S.party = { { name = "Kunde" }, { name = "Annan" } }
+
+  -- Fyrst av alt: du sel ikkje før du seier det. Ein guild-kompis som
+  -- betaler tilbake eit lån ved steinen er ikkje ein kunde.
+  ok(not BT.Selling(), "boost-modus er av til du slår han på")
+  BT.CustomerPaid("Lanar", 300 * 10000, "mara")
+  eq(BT.Customer("Lanar"), nil, "og då blir ingen lagt til lista")
+  eq(BT.SellRunDone(), nil, "og ingenting blir talt opp")
+  BT.SetSelling(true)
+  ok(BT.Selling(), "og på når du seier det")
+
+  -- og knappen som seier det, på fana
+  BT.ShowTab("sell")
+  do
+    local ws = _G.ChainWindow
+    ok(ws.sellOn and ws.sellOn:IsShown(), "My boost har ein knapp for boost-modus")
+    ok((ws.sellOn.fs:GetText() or ""):find("boosting"),
+       "og han seier kva han gjer (" .. tostring(ws.sellOn.fs:GetText()) .. ")")
+    -- grøn når han er på, grå når han er av: ein brytar som ser lik ut begge
+    -- vegar er ein brytar du trykkjer to gonger
+    local r1, g1 = ws.sellOn.bg.__r, ws.sellOn.bg.__g
+    ok(g1 and r1 and g1 > r1 + 0.1, "og han er grøn medan du held på")
+    ok(not (ws.sellOn.fs:GetText() or ""):find("start"),
+       "medan han er på står det ikkje 'start'")
+    ws.sellOn.__scripts.OnClick(ws.sellOn)
+    ok(not BT.Selling(), "eit trykk slår han av")
+    BT.RenderWindow()
+    ok(math.abs((ws.sellOn.bg.__r or 0) - (ws.sellOn.bg.__g or 0)) < 0.05,
+       "og då er han grå")
+    ok((ws.sellOn.fs:GetText() or ""):find("start"),
+       "og teksten byd deg starte (" .. tostring(ws.sellOn.fs:GetText()) .. ")")
+    ws.sellOn.__scripts.OnClick(ws.sellOn)
+    ok(BT.Selling(), "og eit til slår han på att")
+    -- og han held fargen etter at musa har vore innom
+    ws.sellOn.__scripts.OnEnter(ws.sellOn)
+    ws.sellOn.__scripts.OnLeave(ws.sellOn)
+    ok((ws.sellOn.bg.__g or 0) > (ws.sellOn.bg.__r or 0) + 0.1,
+       "fargen overlever ei mus innom")
+    -- og frå ein makro
+    SlashCmdList["CHAIN"]("boost off")
+    ok(not BT.Selling(), "/chain boost off slår han av")
+    SlashCmdList["CHAIN"]("boost")
+    ok(BT.Selling(), "og /chain boost vekslar")
+  end
 
   -- prisen din, per instans
   BT.SetSellPrice("mara", 300, 5)
@@ -3819,6 +4405,71 @@ do
   BT.SellRunDone()
   ok((S.said[1] or ""):find("is done"), "siste runden blir sagt hogt ("
      .. tostring(S.said[1]) .. ")")
+
+  -- To kundar i same gruppa kjøper sjeldan like mange. Ein tek fem, og ein
+  -- kjem to runs seinare og tek ti - så den korte går tom fyrst, og han står
+  -- som regel der framleis medan den lange held fram.
+  do
+    BT.ClearCustomers()
+    S.party = { { name = "Femmar" } }
+    BT.CustomerPaid("Femmar", 300 * 10000, "mara")    -- 5 runs
+    eq(math.floor(BT.Customer("Femmar").runs + 0.5), 5, "den eine kjøpte fem")
+    BT.SellRunDone(); BT.SellRunDone()
+    eq(BT.Customer("Femmar").done, 2, "to gjennomførte")
+
+    -- og no kjem det ein til, midt i kjeda, og kjøper ti
+    S.party = { { name = "Femmar" }, { name = "Tiar" } }
+    BT.CustomerPaid("Tiar", 600 * 10000, "mara")
+    eq(math.floor(BT.Customer("Tiar").runs + 0.5), 10, "den andre kjøpte ti")
+    eq(BT.Customer("Tiar").done, 0, "og startar på null - ikkje på to")
+
+    S.said = {}
+    BT.SellRunDone()
+    eq(BT.Customer("Femmar").done, 3, "runden tel for begge")
+    eq(BT.Customer("Tiar").done, 1, "kvar på si eiga teljing")
+    ok((S.said[1] or ""):find("Femmar 3/5") and (S.said[1] or ""):find("Tiar 1/10"),
+       "og linja seier begge to (" .. tostring(S.said[1]) .. ")")
+
+    -- to til, og den korte er ferdig
+    S.said = {}
+    BT.SellRunDone(); BT.SellRunDone()
+    eq(BT.Customer("Femmar").done, 5, "fem av fem")
+    ok((S.said[#S.said] or ""):find("Femmar is done"),
+       "og det blir sagt (" .. tostring(S.said[#S.said]) .. ")")
+
+    -- Og no det som var feil: han står framleis i gruppa medan den lange
+    -- held fram, og teljinga hans gjekk til 6/5 og 7/5 - addonen som seier
+    -- at han har fått meir enn han betalte for, framfor mannen som betalte.
+    S.said = {}
+    BT.SellRunDone()
+    eq(BT.Customer("Femmar").done, 5, "pakken stoppar på si eiga storleik")
+    eq(BT.Customer("Tiar").done, 4, "medan den lange tel vidare")
+    ok((S.said[1] or ""):find("Femmar 5/5"), "og linja seier 5/5, ikkje 6/5 ("
+       .. tostring(S.said[1]) .. ")")
+
+    -- betaler han for fem til, held han fram der han slapp
+    BT.CustomerPaid("Femmar", 300 * 10000, "mara")
+    near(BT.Customer("Femmar").runs, 10, "fem til er ti", 0.01)
+    BT.SellRunDone()
+    eq(BT.Customer("Femmar").done, 6, "og han tel vidare frå seks")
+
+    -- ein som betalte utan at du hadde sett ein pris har ingen sum å stoppe
+    -- på: då er talet kor mange han har hatt
+    BT.ClearCustomers()
+    ChainDB.sell.price = {}
+    ChainDB.sell.gold, ChainDB.sell.pack = 0, nil
+    S.party = { { name = "Uprisa" } }
+    BT.CustomerPaid("Uprisa", 100 * 10000, "zzz")
+    eq(BT.Customer("Uprisa").runs, 0, "ingen sum er kjend")
+    BT.SellRunDone(); BT.SellRunDone()
+    eq(BT.Customer("Uprisa").done, 2, "men runda hans blir talde")
+
+    BT.ClearCustomers()
+    BT.SetSellPrice("mara", 300, 5)
+    S.party = { { name = "Kunde" } }
+    BT.CustomerPaid("Kunde", 300 * 10000, "mara")
+    BT.Customer("Kunde").done = 5
+  end
 
   -- du kan rette talet: du skriv kor mange han har att
   BT.SetCustomerRuns("Kunde", 2)
@@ -4003,6 +4654,85 @@ do
     ok(#t <= cap, "overskrifta på " .. tab .. " er " .. #t
        .. " teikn og går inn i søkeboksen: " .. t)
   end
+end
+
+-- Instans-loggen, lesbar.
+--
+-- Han var ei linje per hending, så kvar run tok to: ein reset av han, og du
+-- inn, rett under kvarandre, med same instansen skriven to gonger og same
+-- karakteren to gonger. Seksten linjer for åtte runs, med "no" nedover
+-- counts-kolonnen og "own" nedover source-kolonnen på kvar einaste ei.
+do
+  local keepE, keepR = ChainDB.entries, ChainDB.resets
+  local now = S.now
+  local me = BT.ShortName(UnitName("player") or "")
+  ChainDB.entries, ChainDB.resets = {}, {}
+  -- fire runs slik dei faktisk står: reset av Magecome, og inn eit minutt etter
+  local ages = { 3 * 60, 62 * 60, 81 * 60, 124 * 60 }
+  for _, age in ipairs(ages) do
+    table.insert(ChainDB.entries, { t = now - age, zone = "Maraudon",
+                                    char = me })
+    table.insert(ChainDB.resets, { at = now - age - 60, zone = "Maraudon",
+                                   char = me, by = "Magecome" })
+  end
+  -- og ein frå i går, utan reset attmed
+  table.insert(ChainDB.entries, { t = now - 35 * 3600, zone = "Scarlet Monastery",
+                                  char = me })
+  BT.ShowTab("locks")
+  local wl = _G.ChainWindow
+
+  local shown, pairs_, resets = {}, 0, 0
+  for _, row in ipairs(wl.rows or {}) do
+    if row:IsShown() then
+      local line = {}
+      for _, c in ipairs(row.cells or {}) do
+        if c:IsShown() then
+          line[#line + 1] = ((c:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+        end
+      end
+      local txt = table.concat(line, " | ")
+      if txt:find("%S") then
+        shown[#shown + 1] = txt
+        if txt:find("in after reset") then pairs_ = pairs_ + 1 end
+        if txt:find("reset only") then resets = resets + 1 end
+      end
+    end
+  end
+  for _, l in ipairs(shown) do print("   " .. l) end
+  eq(pairs_, 4, "fire runs, fire linjer - ikkje åtte")
+  eq(resets, 0, "ingen lause reset-linjer når nokon gjekk inn etterpå")
+  eq(#shown, 5, "fem linjer i alt (fire runs og SM i går)")
+
+  -- den ferske seier kva nummer han er av fem, og kva tid det er att
+  local first = shown[1]
+  ok(first:find("1/5") or first:find("%d/5"), "den som framleis tel har eit nummer ("
+     .. first .. ")")
+  ok(first:find("Magecome"), "og kven som resetta står i si eiga kolonne")
+
+  -- og dei gamle seier ingenting i counts-kolonnen i staden for "no"
+  local old = shown[#shown]
+  ok(not old:find("/5"), "ein gamal run tel ikkje mot noko (" .. old .. ")")
+  ok(not old:find("own"), "og 'own' står ikkje på kvar linje")
+  ok(not old:find(me), "og heller ikkje karakteren du spelar")
+
+  -- 35 timar sidan er eit tal du må rekne på. Klokkeslettet er det ikkje.
+  ok(not old:find("ago"), "gamle linjer seier klokkeslett, ikkje alder ("
+     .. old .. ")")
+  ok(first:find("ago"), "og ferske seier alder")
+
+  -- ein reset utan at nokon gjekk inn etterpå skal framleis stå der: instansen
+  -- er fersk og du er ute
+  table.insert(ChainDB.resets, { at = now - 30, zone = "Maraudon",
+                                 char = me, by = "Magecome" })
+  BT.ShowTab("locks")
+  local lone = false
+  for _, row in ipairs(wl.rows or {}) do
+    local c2 = row.cells and row.cells[2]
+    if row:IsShown() and ((c2:GetText() or ""):find("reset only")) then lone = true end
+  end
+  ok(lone, "ein reset ingen gjekk inn etter står for seg sjølv")
+
+  ChainDB.entries, ChainDB.resets = keepE, keepR
 end
 
 -- kvar einaste fane skal teikne utan å kaste
@@ -4937,6 +5667,627 @@ print(string.format("   byt til %s på level %s", best and best.label or "?", to
 ChainDB.runs = {}
 ChainDB.route.sm = nil
 BT.Touch()
+
+-- Og rådet som ikkje er eit råd. Level 47 står i Maraudon utan ein einaste run
+-- der, og baren sa "move to SM now (100% cheaper)". SM er verdt å gå til 42,
+-- mobbane er grå lenge før det på ein 47, og ingen boostar tek ein 47 med inn.
+-- Hundre prosent kom av at vi ikkje visste noko: utan runs har PredictRun
+-- ingenting å forankre i og svarar nil, og nil blei lese som null.
+do
+  local wasRoute, wasRuns = ChainDB.route, ChainDB.runs
+  ChainDB.route = { mara = { on = true, from = 42, to = 52, gold = 50 },
+                    sm = { on = true, from = 28, to = 42, gold = 20 } }
+  ChainDB.runs = {}
+  -- runs i SM, ingen i Maraudon: akkurat slik det står når du kjem dit
+  for i = 1, 3 do
+    table.insert(ChainDB.runs, { at = S.now, t = 300, zone = "Scarlet Monastery",
+      map = 189, id = "sm", by = "Boostar", xp = 40000, k = 90, lvl = 34 })
+  end
+  BT.Touch()
+  S.level = 47
+
+  local pickedAt, picked = BT.SwitchAt(BT.BY_ID["mara"], "Boostar")
+  ok(picked == nil or picked.id ~= "sm",
+     "ein 47 blir ikkje send til SM (" .. tostring(picked and picked.label) .. ")")
+  eq(BT.ComputeSwitchLine(BT.BY_ID["mara"], "Boostar"), nil,
+     "og utan runs i Maraudon står det ingenting om å flytte")
+
+  -- BestAt skal heller ikkje finne han på eit level han er ferdig med
+  local b40 = select(1, BT.BestAt(40, BT.BY_ID["mara"], "Boostar"))
+  ok(b40 and b40.id == "sm", "på 40 er SM framleis rett svar")
+  local b43 = select(1, BT.BestAt(43, BT.BY_ID["mara"], "Boostar"))
+  ok(not (b43 and b43.id == "sm"), "på 43 er han ute")
+
+  -- Same feilen ein gong til, utan at øvre grense reddar oss: du står i
+  -- Stockades på 33 utan ein einaste run der, og SM er framleis open. "100%
+  -- billegare" er ikkje ei måling, det er at vi ikkje veit noko.
+  ChainDB.route = { stock = { on = true, from = 18, to = 40, gold = 50 },
+                    sm = { on = true, from = 28, to = 42, gold = 20 } }
+  ChainDB.runs = {}
+  for i = 1, 3 do
+    table.insert(ChainDB.runs, { at = S.now, t = 300, zone = "Scarlet Monastery",
+      map = 189, id = "sm", by = "Boostar", xp = 40000, k = 90, lvl = 34 })
+  end
+  BT.Touch()
+  S.level = 33
+  eq(BT.ComputeSwitchLine(BT.BY_ID["stock"], "Boostar"), nil,
+     "utan ein run der du står er det ingenting å samanlikne med")
+
+  -- og når vi faktisk veit at staden er tom, skal rådet framleis kome
+  ChainDB.route = { stock = { on = true, from = 18, to = 40, gold = 50 },
+                    sm = { on = true, from = 28, to = 42, gold = 20 } }
+  ChainDB.runs = {}
+  for i = 1, 3 do
+    table.insert(ChainDB.runs, { at = S.now, t = 300, zone = "The Stockade",
+      map = 34, id = "stock", by = "Boostar", xp = 9000, k = 90, lvl = 22 })
+    table.insert(ChainDB.runs, { at = S.now, t = 300, zone = "Scarlet Monastery",
+      map = 189, id = "sm", by = "Boostar", xp = 40000, k = 90, lvl = 34 })
+  end
+  BT.Touch()
+  S.level = 33
+  local line = BT.ComputeSwitchLine(BT.BY_ID["stock"], "Boostar")
+  ok(line and line:find("SM"), "med runs i boka kjem rådet (" ..
+     tostring(line and (line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))) .. ")")
+
+  ChainDB.route, ChainDB.runs = wasRoute, wasRuns
+  S.level = 22
+  BT.Touch()
+end
+
+--------------------------------------------------------------------------
+print("== talent-bygg ==")
+-- Å nullstille talenta kostar gull og førti klikk. Gullet er poenget; klikka
+-- er det ikkje, og det førtiande er der du oppdagar at du sette to poeng feil
+-- på level 12 og må byrje på nytt.
+do
+  S.MakeTalents()
+  ChainDB.builds = nil
+
+  -- eit bygg blir lese rett ut av spelet: fane, indeks, kor mange poeng
+  local function spend(tab, index, n)
+    for _ = 1, n do LearnTalent(tab, index) end
+  end
+  spend(1, 1, 5)          -- rad 1
+  spend(1, 5, 1)          -- rad 2, midten (maks 1)
+  spend(1, 4, 4)
+  eq(select(2, BT.ReadSpec()), 10, "ti poeng inne")
+  eq(BT.SpecLine((BT.ReadSpec())), "10/0/0", "og dei blir lesne som 10/0/0")
+
+  local b = BT.SaveBuild("Levelling")
+  ok(b ~= nil, "bygget blir lagra")
+  eq(b.name, "Levelling", "med namnet du gav det")
+  eq(BT.SpecPoints(b.ranks), 10, "og ti poeng i seg")
+
+  -- same namnet to gonger er eit bygg du ikkje kan skilje frå det andre i ei
+  -- liste, så det erstattar
+  spend(1, 2, 3)
+  BT.SaveBuild("Levelling")
+  eq(#BT.Builds(), 1, "same namnet erstattar")
+  -- (midtkolonnen tek berre eitt poeng, så tre forsøk gav eitt)
+  eq(BT.SpecPoints(BT.Builds()[1].ranks), 11, "med det nye innhaldet")
+
+  -- utan namn heiter det det det er
+  local auto = BT.SaveBuild("")
+  eq(auto.name, "11/0/0", "utan namn heiter bygget det det er")
+
+  -- Og så det heile handlar om: du nullstiller, og bygget skal inn att.
+  S.MakeTalents()                     -- 51 poeng, alt på null
+  eq(select(2, BT.ReadSpec()), 0, "etter ein reset står alt på null")
+  local gap = BT.BuildGap(BT.Builds()[1])
+  eq(gap, 11, "og heile bygget manglar")
+
+  S.learnCalls = 0
+  local okApply, why = BT.ApplyBuild("Levelling")
+  ok(okApply, "det blir sett inn (" .. tostring(why) .. ")")
+  eq(select(2, BT.ReadSpec()), 11, "alle elleve poenga er inne")
+  eq(BT.BuildGap(BT.Builds()[1]), 0, "og ingenting manglar")
+  eq(UnitCharacterPoints("player"), 51 - 11, "og resten står att")
+
+  -- Rekkjefølgja er heile saka. Eit talent i rad 2 tek ikkje eit poeng før
+  -- det står fem i treet under, og spelet seier ikkje frå - det berre skjer
+  -- ikkje. Éin kall per poeng tyder at ingen blei nekta.
+  eq(S.learnCalls, 11, "eitt kall per poeng - ingen blei nekta")
+
+  -- og eit bygg du alt står i gjer ingenting
+  local again, why2 = BT.ApplyBuild("Levelling")
+  eq(again, nil, "eit bygg du alt har blir ikkje sett inn på nytt")
+  ok((why2 or ""):find("already"), "og han seier kvifor (" .. tostring(why2) .. ")")
+
+  -- Ei pil: midten av rad 3 krev midten av rad 2 på fullt. Eit bygg som tek
+  -- begge må ta forelderen ferdig fyrst, og det er sortering på rad som gjer
+  -- det - ikkje rekkjefølgja i lista.
+  S.MakeTalents()
+  local pil = { [1] = {}, [2] = {}, [3] = {} }
+  for i = 1, 15 do pil[1][i] = 0 pil[2][i] = 0 pil[3][i] = 0 end
+  pil[1][8] = 1        -- rad 3, midten: bak ei pil
+  pil[1][5] = 1        -- rad 2, midten: det pila peikar frå
+  pil[1][1] = 5        -- rad 1: poeng nok til å kome til rad 2
+  pil[1][4] = 4        -- rad 2: poeng nok til å kome til rad 3
+  table.insert(BT.Builds(), { name = "Pil", ranks = pil, at = S.now })
+  S.learnCalls = 0
+  BT.ApplyBuild("Pil")
+  eq(select(5, GetTalentInfo(1, 8)), 1, "talentet bak pila fekk poenget sitt")
+  eq(S.learnCalls, 11, "og ingen kall blei kasta bort på feil rekkjefølgje")
+
+  -- Og eit bygg der rekkjefølgja i lista er det motsette av den spelet krev:
+  -- eit talent i rad 3 i fyrste kolonnen, og poenga som gjev deg tilgang til
+  -- rad 3 ligg ute i tredje kolonnen. Sorterer du på kolonne, blir rad 3
+  -- prøvd med fem poeng i treet og nekta.
+  S.MakeTalents()
+  local kryss = { [1] = {}, [2] = {}, [3] = {} }
+  for i = 1, 15 do kryss[1][i] = 0 kryss[2][i] = 0 kryss[3][i] = 0 end
+  kryss[1][1] = 5       -- rad 1, kolonne 1
+  kryss[1][3] = 5       -- rad 1, kolonne 3
+  kryss[1][7] = 1       -- rad 3, kolonne 1 - krev ti poeng under seg
+  table.insert(BT.Builds(), { name = "Kryss", ranks = kryss, at = S.now })
+  S.learnCalls = 0
+  BT.ApplyBuild("Kryss")
+  eq(select(5, GetTalentInfo(1, 7)), 1, "rad 3 fekk poenget sitt")
+  eq(S.learnCalls, 11, "og ingen kall gjekk til spille (" .. S.learnCalls .. ")")
+  BT.DeleteBuild("Kryss")
+
+  -- Ikkje nok poeng: han set inn det han kan og seier kor langt han kom, i
+  -- staden for å stoppe med ingenting gjort.
+  S.MakeTalents()
+  S.talentPoints = 6
+  S.printed = {}
+  BT.ApplyBuild("Levelling")
+  eq(select(2, BT.ReadSpec()), 6, "seks poeng inn, og ikkje eitt meir")
+  eq(UnitCharacterPoints("player"), 0, "alt du hadde er brukt")
+  local said = table.concat(S.printed or {}, " ")
+  ok(said:find("6 of 11"), "og han seier kor langt han kom (" .. said .. ")")
+
+  -- Talent går inn, aldri ut. Står du med poeng bygget ikkje vil ha, kan
+  -- ingen knapp ta dei att - berre trenaren og gullet. Då skal han seie det,
+  -- ikkje sitje stille.
+  S.MakeTalents()
+  for _ = 1, 5 do LearnTalent(3, 1) end        -- fem poeng i eit tredje tre
+  local wrongBuild = BT.FindBuild("Levelling")
+  eq(BT.BuildExtra(wrongBuild), 5, "fem poeng bygget ikkje vil ha")
+  local nope, whyReset = BT.ApplyBuild("Levelling")
+  eq(nope, nil, "han set ikkje i gang")
+  ok((whyReset or ""):find("reset"), "og seier at du må nullstille fyrst ("
+     .. tostring(whyReset) .. ")")
+  eq(select(2, BT.ReadSpec()), 5, "og ingenting blei brukt i mellomtida")
+
+  -- eit bygg for ein annan klasse skal ikkje inn
+  S.MakeTalents()
+  local wrong = { name = "Annan", ranks = { { 5 } }, class = "DRUID" }
+  table.insert(BT.Builds(), wrong)
+  local no, whyNo = BT.ApplyBuild("Annan")
+  eq(no, nil, "eit bygg for ein annan klasse blir avvist")
+  ok((whyNo or ""):find("class"), "og seier det (" .. tostring(whyNo) .. ")")
+
+  -- du kan sletta eit
+  local before = #BT.Builds()
+  BT.DeleteBuild("Pil")
+  eq(#BT.Builds(), before - 1, "eit bygg kan slettast")
+
+  -- og namnet treng ikkje skrivast heilt ut i ein makro
+  ok(BT.FindBuild("Level") ~= nil, "starten av namnet er nok")
+
+  -- Panelet: det skal kome opp der du alt er - på Blizzard sitt eige
+  -- talentvindauge - og ikkje erstatte noko av det.
+  do
+    S.MakeTalents()
+    ChainDB.builds = nil
+    _G.TalentFrame = CreateFrame("Frame", "TalentFrame", UIParent)
+    _G.TalentFrame:Hide()
+    S.FireAll("ADDON_LOADED", "Blizzard_TalentUI")
+    local pan = BT.talentPanel
+    ok(pan ~= nil, "panelet festar seg på talentvindauget")
+    ok(not pan:IsShown(), "og er ikkje framme før vindauget er det")
+
+    _G.TalentFrame:Show()
+    ok(pan:IsShown(), "opnar du talenta, er det der")
+
+    -- ein rad per bygg, og ein knapp som set det inn
+    for _ = 1, 5 do LearnTalent(1, 1) end
+    BT.SaveBuild("Fyrste")
+    BT.RenderTalents()
+    local row = pan.rows[1]
+    ok(row:IsShown(), "bygget får ei rad")
+    eq(row.name:GetText(), "Fyrste", "med namnet sitt")
+    ok((row.spec:GetText() or ""):find("5/0/0"), "og kva det er ("
+       .. tostring(row.spec:GetText()) .. ")")
+    ok((row.use.fs:GetText() or "") == "on", "og står du i det, seier knappen det")
+
+    S.MakeTalents()
+    BT.RenderTalents()
+    ok((row.use.fs:GetText() or "") == "use", "etter ein reset byd han deg bruke det")
+    row.use.__scripts.OnClick(row.use)
+    eq(select(2, BT.ReadSpec()), 5, "og trykket set poenga inn")
+
+    -- Eit bilete av bygget når du held over det. Ikkje eit skjermbilete -
+    -- eit addon kan ikkje ta eit det får sjå etterpå - men alt eit bilete av
+    -- eit talenttre er laga av står der når du lagrar: ikonet, kva rad, kva
+    -- kolonne, kor mange poeng. Så det blir teke vare på som dei tala det er.
+    do
+      S.MakeTalents()
+      ChainDB.builds = nil
+      for _ = 1, 5 do LearnTalent(1, 1) end     -- rad 1, kolonne 1
+      for _ = 1, 5 do LearnTalent(1, 4) end     -- rad 2, kolonne 1
+      LearnTalent(2, 1)                         -- eit anna tre, same kolonne
+      local snap = BT.SaveBuild("Bilete")
+      ok(snap.pic ~= nil, "biletet blir teke når du lagrar")
+      eq(#snap.pic[1], 2, "to talent i fyrste treet")
+      eq(snap.pic[1].n, 10, "med ti poeng i seg")
+      ok(snap.pic[1][1].k ~= nil, "og ikonet er med")
+      eq(snap.pic[1][2].t, 2, "og kva rad det står i")
+
+      BT.RenderTalents()
+      local prow
+      for _, r in ipairs(pan.rows) do
+        if r:IsShown() and r.build and r.build.name == "Bilete" then prow = r end
+      end
+      ok(prow ~= nil, "bygget har ei rad")
+      prow.__scripts.OnEnter(prow)
+      local pv = BT.buildPreview
+      ok(pv and pv:IsShown(), "og held du over henne, kjem biletet")
+      ok((pv.title:GetText() or ""):find("Bilete"), "med namnet på ("
+         .. tostring(pv.title:GetText()) .. ")")
+      local shown = 0
+      for _, sl in ipairs(pv.slots or {}) do
+        if sl:IsShown() then shown = shown + 1 end
+      end
+      eq(shown, 3, "eitt ikon per talent med poeng i")
+      -- og dei står der dei står i treet: rad 2 lenger nede enn rad 1
+      local one, two = pv.slots[1], pv.slots[2]
+      local _, _, _, _, y1 = one:GetPoint(1)
+      local _, _, _, _, y2 = two:GetPoint(1)
+      ok(y2 < y1, "rad 2 er teikna under rad 1 (" .. y1 .. " mot " .. y2 .. ")")
+      -- og det tredje ikonet står i eit anna tre, altså lenger til høgre
+      local _, _, _, x1 = one:GetPoint(1)
+      local _, _, _, x3 = pv.slots[3]:GetPoint(1)
+      ok(x3 > x1, "det andre treet er teikna til høgre for det fyrste")
+
+      ok(prow.__scripts.OnLeave ~= nil, "rada slepp biletet når du går av")
+      if prow.__scripts.OnLeave then prow.__scripts.OnLeave(prow) end
+      ok(not pv:IsShown(), "og det forsvinn når du går av")
+
+      -- eit bygg lagra før det fanst bilete skal framleis kunne visast
+      local old = { name = "Gammalt", ranks = snap.ranks, at = S.now }
+      table.insert(BT.Builds(), old)
+      BT.ShowBuildPreview(old, pan)
+      ok(pv:IsShown(), "eit bygg utan bilete blir teikna frå treet i spelet")
+      BT.HideBuildPreview()
+
+      -- Og det som er heile poenget med å ta biletet: det held seg sjølv om
+      -- treet ikkje er der å lese. Eit druide-bygg på ein mage, eller ein
+      -- klient som har flytta på sine eigne talent-nummer.
+      local keepTree = S.talents
+      S.talents = {}
+      BT.ShowBuildPreview(snap, pan)
+      local drawn = 0
+      for _, sl in ipairs(pv.slots or {}) do
+        if sl:IsShown() then drawn = drawn + 1 end
+      end
+      eq(drawn, 3, "biletet står sjølv utan treet å lese frå")
+      BT.HideBuildPreview()
+      BT.ShowBuildPreview(old, pan)
+      local none = 0
+      for _, sl in ipairs(pv.slots or {}) do
+        if sl:IsShown() then none = none + 1 end
+      end
+      eq(none, 0, "medan eit bygg utan bilete ikkje har noko å teikne")
+      S.talents = keepTree
+      BT.HideBuildPreview()
+      BT.DeleteBuild("Gammalt")
+      BT.DeleteBuild("Bilete")
+      S.MakeTalents()
+      for _ = 1, 5 do LearnTalent(1, 1) end
+      BT.SaveBuild("Fyrste")
+      S.MakeTalents()
+      BT.RenderTalents()
+    end
+
+    -- Trykkjer du "use" medan poenga står ein annan stad, skal du få vite
+    -- kvifor - i spelet sin eigen boks, ikkje ei linje i chatten du rullar
+    -- forbi. Ein knapp som stilt gjer ingenting er verre enn turen til byen.
+    S.MakeTalents()
+    for _ = 1, 5 do LearnTalent(3, 1) end
+    BT.RenderTalents()
+    S.popup = nil
+    BT.lastTalentSay = nil
+    eq(row.use.fs:GetText(), "reset", "knappen seier reset, ikkje use")
+    row.use.__scripts.OnClick(row.use)
+    ok(S.popup ~= nil, "det kjem ein boks")
+    local box = tostring(S.popup and S.popup.text or "")
+    ok(box:lower():find("trainer"), "som seier kvar du må gå (" .. box .. ")")
+    ok(box:lower():find("unlearn"), "og kva du må gjere der")
+    ok(box:find("5 points"), "og kor mange poeng som står i vegen")
+    eq(select(2, BT.ReadSpec()), 5, "og ingenting blei sett inn")
+
+    -- boksen kan klikkast bort, men panelet held fram med å seie det - i få
+    -- ord, for den linja har éi linje, og fire av dei gjekk ut gjennom botnen
+    -- av ramma og heldt fram nedover skjermen
+    S.popup = nil
+    BT.RenderTalents()
+    local line = ((pan.status:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", "")):gsub("|r", "")
+    ok(line:find("trainer"), "panelet seier det framleis etterpå")
+    ok(#line <= 60, "men kort nok til å stå på ei linje (" .. #line .. ": "
+       .. line .. ")")
+    ok(line:find("5 points"), "og det er framleis tydeleg kva som er i vegen")
+
+    -- og ramma er så høg som det som står i henne: ei linje som brytst til
+    -- fire skal dytte botnen ned, ikkje gå ut gjennom han
+    local short = pan:GetHeight()
+    BT.TalentSay(("ord "):rep(60), pan.msgBuild)
+    local long = pan:GetHeight()
+    ok(long > short + 20, "ei lang melding gjer ramma høgare (" .. short
+       .. " -> " .. long .. ")")
+    local textBottom = 50 + 8 * 24 + 6 + 26 + (pan.status:GetStringHeight() or 0)
+    ok(long >= textBottom, "og teksten er innanfor botnen (" .. long
+       .. " mot " .. math.floor(textBottom) .. ")")
+    S.popup = nil
+    BT.RenderTalents()
+
+    -- og når du faktisk har nullstilt, er det ikkje lenger noko å seie
+    S.MakeTalents()
+    BT.RenderTalents()
+    ok(not (pan.status:GetText() or ""):find("trainer"),
+       "men ikkje etter at du har nullstilt")
+
+    -- og han kan slåast av for dei som ikkje vil ha han
+    BT.SetTalentPanel(false)
+    ok(not pan:IsShown(), "av er av")
+    BT.SetTalentPanel(true)
+    _G.TalentFrame:Hide()
+    _G.TalentFrame:Show()
+    ok(pan:IsShown(), "og på att er på att")
+    _G.TalentFrame:Hide()
+    ok(not pan:IsShown(), "og han følgjer vindauget ut")
+
+    -- frå ein makro
+    S.MakeTalents()
+    S.printed = {}
+    SlashCmdList["CHAIN"]("spec")
+    ok(#(S.printed or {}) > 0, "/chain spec listar dei")
+    SlashCmdList["CHAIN"]("spec Fyrste")
+    eq(select(2, BT.ReadSpec()), 5, "/chain spec NAMN set det inn")
+    S.MakeTalents()
+    for _ = 1, 3 do LearnTalent(2, 1) end
+    SlashCmdList["CHAIN"]("spec save Frost")
+    ok(BT.FindBuild("Frost") ~= nil, "/chain spec save NAMN skriv det ned")
+  end
+
+  -- Planleggjaren startar tom. Han blei fyrst sådd med poenga du alt hadde,
+  -- men ein planleggjar som opnar med nokon andre sitt svar i seg er ein du
+  -- må angre deg ut av før du kan tenkje - og poenga kan uansett ikkje takast
+  -- ut i kva rekkjefølgje som helst.
+  do
+    S.MakeTalents()
+    for _ = 1, 5 do LearnTalent(1, 1) end
+    BT.ShowTab("runs")                       -- ingenting med talent å gjere
+    BT.RenderTalents()
+    local pb = BT.talentPanel and BT.talentPanel.plan
+    ok(pb ~= nil, "det er ein plan-knapp")
+    pb.__scripts.OnClick(pb)
+    eq(BT.PlanPoints(), 0, "og planleggjaren opnar tom, ikkje med dine fem")
+    BT.PlanClose()
+    S.MakeTalents()
+  end
+
+  -- Eit lagra bygg er oftast eit fyrsteutkast: det du skreiv ned på 40 er det
+  -- du vil ha med tre poeng flytta på 47. Å redigere er planleggjaren opna på
+  -- det som alt ligg der - og lagrar du under same namnet, tek det plassen.
+  do
+    S.MakeTalents()
+    ChainDB.builds = nil
+    for _ = 1, 5 do LearnTalent(1, 1) end
+    for _ = 1, 3 do LearnTalent(1, 4) end
+    local made = BT.SaveBuild("Utkast")
+    eq(BT.SpecPoints(made.ranks), 8, "bygget er åtte poeng")
+    BT.RenderTalents()
+
+    local erow
+    for _, r in ipairs(BT.talentPanel.rows) do
+      if r:IsShown() and r.build and r.build.name == "Utkast" then erow = r end
+    end
+    ok(erow and erow.edit and erow.edit:IsShown(), "rada har ein rediger-knapp")
+    erow.edit.__scripts.OnClick(erow.edit)
+    eq(BT.PlanPoints(), 8, "planleggjaren opnar på det som står der")
+    ok(BT.planner.title:GetText():find("editing Utkast"),
+       "og seier kva han redigerer (" .. BT.planner.title:GetText() .. ")")
+
+    -- flytt eit poeng og lagre
+    BT.PlanSet(1, 4, 5)
+    eq(BT.PlanPoints(), 10, "eit par poeng til")
+    local after = BT.PlanSave()
+    eq(#BT.Builds(), 1, "det er framleis eitt bygg, ikkje to")
+    eq(after.name, "Utkast", "med same namnet")
+    eq(BT.SpecPoints(after.ranks), 10, "og det nye innhaldet")
+    ok(after.pic ~= nil, "og eit nytt bilete")
+
+    -- og byter du namn, har du to
+    BT.PlanOpen(after.ranks, "Utkast")
+    BT.planner.box:SetText("Ny variant")
+    BT.PlanSet(1, 7, 1)
+    local two = BT.PlanSave()
+    eq(#BT.Builds(), 2, "eit nytt namn gjev eit nytt bygg")
+    eq(two.name, "Ny variant", "med namnet du skreiv")
+    ok(BT.FindBuild("Utkast") ~= nil, "og det gamle står att")
+    BT.PlanClose()
+
+    ChainDB.builds = nil
+    S.MakeTalents()
+  end
+
+  -- Å lage eit bygg utan å ha poenga.
+  --
+  -- Reglane blir ikkje skrivne ein gong til: eit klikk gjer endringa og spør
+  -- så om resultatet er eit bygg som kan brukast - og det som svarar er same
+  -- vandringa som set poenga inn på ekte. Ein plan som er lov her, kan ikkje
+  -- bli nekta der.
+  do
+    S.MakeTalents()
+    ChainDB.builds = nil
+    BT.PlanOpen()
+    local pl = BT.planner
+    ok(pl ~= nil and pl:IsShown(), "planleggjaren opnar seg")
+    eq(BT.PlanPoints(), 0, "og startar tom")
+
+    -- rad 1 kan du klikke på med ein gong
+    ok(BT.PlanSet(1, 1, 1), "eit poeng i rad 1 går inn")
+    eq(BT.PlanPoints(), 1, "og blir talt")
+
+    -- rad 2 gjer det ikkje før det står fem i treet
+    ok(not BT.PlanSet(1, 4, 1), "rad 2 er stengd med eitt poeng i treet")
+    eq(BT.PlanPoints(), 1, "og ingenting blei lagt til likevel")
+    BT.PlanSet(1, 1, 5)
+    ok(BT.PlanSet(1, 4, 1), "med fem i treet opnar rad 2 seg")
+
+    -- og pila: midten av rad 3 vil ikkje ha noko før forelderen er full
+    BT.PlanSet(1, 4, 5)                     -- ti i treet, rad 3 er open
+    ok(not BT.PlanSet(1, 8, 1), "talentet bak pila er stengd")
+    BT.PlanSet(1, 5, 1)                     -- forelderen, maks 1
+    ok(BT.PlanSet(1, 8, 1), "og opnar seg når forelderen er full")
+
+    -- du kan ikkje ta ut eit poeng noko anna står på
+    ok(not BT.PlanSet(1, 5, 0), "forelderen kan ikkje takast ut under barnet")
+    ok(BT.PlanSet(1, 8, 0), "men barnet kan takast ut")
+    ok(BT.PlanSet(1, 5, 0), "og då forelderen òg")
+
+    -- og ikkje over maks
+    BT.PlanSet(1, 1, 99)
+    eq(((BT.PlanRanks()[1] or {})[1] or 0), 5, "eit talent stoppar på maks")
+
+    -- femtiein poeng er taket
+    S.MakeTalents()
+    BT.PlanOpen()
+    local put = 0
+    for tab = 1, 3 do
+      for index = 1, 15 do
+        for _ = 1, 5 do
+          if BT.PlanSet(tab, index, (((BT.PlanRanks()[tab] or {})[index]) or 0) + 1) then
+            put = put + 1
+          end
+        end
+      end
+    end
+    eq(put, 51, "du kjem ikkje forbi femtiein poeng")
+    ok(BT.Legal(BT.PlanRanks()), "og det som ligg der er eit lovleg bygg")
+
+    -- Spelet sine eigne ord om talentet. "Improved Ambush" er eit namn, ikkje
+    -- ein grunn til å bruke tre poeng. Klienten gjev frå seg teksten på to
+    -- ulike måtar alt etter kva bygg du køyrer, og på nokre gjev han ingen av
+    -- dei - så vi spør, sjekkar om det kom noko, og prøver den andre vegen.
+    do
+      S.MakeTalents()
+      BT.PlanOpen()
+      local pf = BT.planner
+      local slot
+      for _, sl in ipairs(pf.slots or {}) do
+        if sl:IsShown() and sl.tab == 1 and sl.index == 1 then slot = sl end
+      end
+      ok(slot ~= nil, "planleggjaren har ein knapp per talent")
+
+      S.tip = {}
+      slot.__scripts.OnEnter(slot)
+      local tip = S.TipText()
+      ok(tip:find("What Fire 1%-1 does"), "tooltipen har spelet sine eigne ord ("
+         .. tip:gsub("\n", " | ") .. ")")
+      ok(tip:find("row 1"), "og kva rad talentet står i")
+      local names = select(2, tip:gsub("Fire 1%-1\n", ""))
+      ok(names <= 1, "og namnet står ikkje to gonger")
+
+      -- utan SetTalent skal han finne teksten den andre vegen
+      S.noSetTalent = true
+      S.tip = {}
+      slot.__scripts.OnEnter(slot)
+      local tip2 = S.TipText()
+      ok(tip2:find("hyperlink"), "utan SetTalent går han om lenkja ("
+         .. tip2:gsub("\n", " | ") .. ")")
+
+      -- og har klienten ingen av delane, står vi att med våre eigne ord
+      S.noTalentLink = true
+      S.tip = {}
+      slot.__scripts.OnEnter(slot)
+      local tip3 = S.TipText()
+      ok(tip3:find("Fire 1%-1"), "har han ingen av delane, seier vi i det minste namnet")
+      ok(tip3:find("row 1"), "og resten av det vi veit sjølve")
+      S.noSetTalent, S.noTalentLink = nil, nil
+      BT.PlanClose()
+      BT.PlanOpen()
+    end
+
+    -- Og eit talent du ikkje kan ta seier kvifor, i staden for å berre nekte.
+    -- Det er nettopp når du held over eit du ikkje får lov til å ta at du vil
+    -- vite kva som står i vegen.
+    S.MakeTalents()
+    BT.PlanOpen()
+    local why2 = BT.PlanWhy(1, 4)              -- rad 2, ingen poeng i treet
+    ok(why2 and why2:find("5 points"), "rad 2 seier kor mange poeng ho vil ha ("
+       .. tostring(why2) .. ")")
+    ok(why2:find("you have put in 0"), "og kor mange du har sett inn")
+    BT.PlanSet(1, 1, 5)
+    BT.PlanSet(1, 4, 5)
+    local why3 = BT.PlanWhy(1, 8)              -- bak pila
+    ok(why3 and why3:find("Fire 2%-2"), "eit talent bak ei pil namngjev ho ("
+       .. tostring(why3) .. ")")
+    BT.PlanSet(1, 5, 1)
+    eq(BT.PlanWhy(1, 8), nil, "og når pila er open er det ingenting å seie")
+    BT.PlanSet(1, 8, 1)
+    eq(BT.PlanWhy(1, 8), "full", "eit fullt talent seier at det er fullt")
+    eq(BT.PlanWhy(1, 1), "full", "og det gjeld dei med fem rangar òg")
+
+    -- og når alle poenga er brukte er det det som er svaret
+    S.MakeTalents()
+    BT.PlanOpen()
+    for tab = 1, 3 do
+      for index = 1, 15 do
+        for _ = 1, 5 do
+          BT.PlanSet(tab, index, (((BT.PlanRanks()[tab] or {})[index]) or 0) + 1)
+        end
+      end
+    end
+    local last
+    for index = 1, 15 do
+      local w = BT.PlanWhy(3, index)
+      if w and w:find("fifty%-one") then last = w end
+    end
+    ok(last ~= nil, "med alle poenga brukte seier han det (" .. tostring(last) .. ")")
+
+    S.MakeTalents()
+    BT.PlanOpen()
+    for tab = 1, 3 do
+      for index = 1, 15 do
+        for _ = 1, 5 do
+          BT.PlanSet(tab, index, (((BT.PlanRanks()[tab] or {})[index]) or 0) + 1)
+        end
+      end
+    end
+
+    -- lagra som eit vanleg bygg, med bilete og alt
+    local kept = BT.PlanSave()
+    ok(kept ~= nil, "planen blir lagra som eit bygg")
+    ok(kept.pic ~= nil, "med bilete")
+    eq(BT.SpecPoints(kept.ranks), 51, "og alle poenga")
+    ok(kept.lvl >= 60, "og kva level du treng for det (" .. tostring(kept.lvl) .. ")")
+
+    -- og det kan settast inn att, med den vanlege motoren
+    BT.PlanClose()
+    ok(not pl:IsShown(), "planleggjaren lukkar seg")
+    S.MakeTalents()
+    S.talentPoints = 51
+    BT.ApplyBuild(kept.name)
+    eq(select(2, BT.ReadSpec()), 51, "og heile planen går inn i spelet")
+
+    -- Det er heile poenget med å sjekke med same vandringa: ein plan som fekk
+    -- stå her, kan ikkje bli nekta der. Eitt kall per poeng seier det.
+    S.MakeTalents()
+    S.talentPoints = 51
+    S.learnCalls = 0
+    BT.ApplyBuild(kept.name)
+    eq(S.learnCalls, 51, "utan eit einaste kall spelet sa nei til")
+
+    ChainDB.builds = nil
+    S.MakeTalents()
+  end
+
+  ChainDB.builds = nil
+  S.MakeTalents()
+end
 
 --------------------------------------------------------------------------
 print("== cache og yting ==")

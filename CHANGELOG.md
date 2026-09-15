@@ -1110,6 +1110,304 @@ parts that are not.
   it off hands the account whatever this character was using, so the screen
   does not rearrange itself underneath you.
 
+**"Maraudon reset by Magecome - zone out", when nothing had been reset**
+
+- **A sentence with the word "reset" in it is not an announcement that one has
+  happened.** "You can wait for me to reset successfully and then come in and
+  out in three to five minutes" is the leader saying what he is about to do,
+  and the bar read it as done: reset called, zone out, everybody moves. Wrong
+  at the moment it matters most.
+- A line has to look like an announcement now. Either it is the game's own
+  sentence - "Maraudon has been reset." - which is what every addon that says
+  anything is relaying, or it says in so many words that it is finished, or it
+  is the word on its own, which is how it is usually typed ("reset",
+  "Instances reset!"). A word that puts it in the future or in question -
+  wait, will, need, about to, a question mark - takes it back out again.
+- **And a hedging word only counts if it comes before the announcement.** NIT
+  says "[NIT] Maraudon has been reset (Players still inside old instance can
+  zone out and enter new)" - a reset that has already happened, with the word
+  "can" in the explanation after it. Reading the whole line for hedging threw
+  that away, and the addon stopped seeing resets at all. What stands in front
+  of "has been reset" is what decides whether it has: "[NIT] Maraudon" does
+  not hedge, "you can wait for me to" does.
+- The game's own sentence is read as the pattern the client hands over rather
+  than as an English phrase, so it still works on a client that is not in
+  English.
+
+**Talent builds**
+
+- **The build you are standing in can be written down, and put back in one
+  press.** Resetting talents costs gold and forty clicks; the gold is the
+  point and the clicks are not, and the fortieth is where you find you put
+  two points in the wrong row at level 12 and have to start over.
+- It sits **beside Blizzard's own talent window** - press N and it is there.
+  Nothing is copied from the tree and nothing replaces it: you spec the way
+  you always did, press "save this", and after a reset the list has a button
+  that spends the points again. Switch it off in the settings and the talent
+  window is the talent window.
+- The points go in **tree by tree and row by row**, because that is the only
+  order the game will take them: a talent in row 4 needs fifteen points below
+  it, and a talent with an arrow into it needs the one it points from at full
+  rank. One point at a time, each one asked for after the game has answered
+  for the last - the client does not answer straight away, and code that reads
+  the rank back in a loop spends nothing and never stops.
+- **And what it says fits in the frame.** The reason went out through the
+  bottom edge and carried on down the screen: four lines of explanation on a
+  line that has room for one. The box keeps the whole story, the panel gets
+  the short of it - "2 points in the way - unlearn at a trainer first" - and
+  the frame is as tall as whatever is in it, measured rather than assumed.
+- **Talents go in, never out.** Standing in the wrong build, no button can
+  take the points back - only the trainer and the gold - so the row says
+  "reset" instead of "use", and pressing it puts the reason in the game's own
+  dialog: how many points are in the way, and that a trainer is the only thing
+  that can move them. Click the dialog away and the panel goes on saying it
+  until it stops being true. A button that quietly did nothing would be worse
+  than the walk to town.
+- Fewer points than the build needs is not an error: it puts in what you have,
+  in the right order, and says how far it got. Come back a level later and
+  press it again.
+- **Everything is a size bigger.** The icons were 18 pixels against
+  Blizzard's own 37, which is squinting at a talent tree to plan in it. The
+  planner draws at 34 with the rank in the ordinary font rather than the small
+  one, the picture on hover at 24, and the list beside the tree got wider rows
+  and larger names. Two sizes and not one, because the picture is something
+  you glance at and the planner is something you work in.
+- **A saved build can be edited.** "edit" on the row opens the planner on what
+  is already there, with the name filled in - save it under the same name and
+  it takes the place of the old one, change the name and you have two. A build
+  is a first draft more often than not: the one you wrote down at 40 is the
+  one you want with three points moved at 47.
+- **And the planner starts empty.** It opened with the points you already had
+  in it, on the grounds that a plan is usually the build you have with the
+  rest filled in - but a planner that starts with somebody else's answer in it
+  is one you have to undo before you can think.
+- **And you can make one up.** "plan" opens the three trees, clickable, with
+  no need to have a single point: left-click adds, right-click takes back.
+  The rules are not written out a second time - a click makes its change and
+  then asks whether the result is a build that could be spent, and the thing
+  that answers is the same walk that spends it for real. So a point the game
+  would refuse never goes in, a talent an arrow depends on cannot be taken
+  out from under it, and a plan that can be written down is a plan that can
+  be put in.
+- **The talent's own words are in the tooltip.** "Improved Ambush" is a name,
+  not a reason to spend three points. The client hands the real text over two
+  different ways depending on the build you are running, and on some it hands
+  over neither - so it asks, checks whether anything actually arrived, and
+  tries the other way before falling back to what we know ourselves. Without
+  that check a silent failure looks exactly like a talent with nothing to say
+  about itself, which is what it looked like.
+- **And a talent you cannot take says why**, rather than refusing in silence:
+  "needs 10 points in Subtlety - you have put in 6", or "needs Master of
+  Deception at 5/5". Hovering the one you cannot have is exactly when you
+  want to be told what is in the way. The two lines of numbers at the top of
+  the panel, and the counter in the planner, have words on them now too. It says what level it needs, and until you are there it goes in
+  as far as your points reach.
+- **Hover a build and you see it.** Three trees side by side with the icons
+  where they sit in them, the rank on each and a gold edge on the ones that
+  are full - because nobody recognises a build as "31/20/0", they recognise
+  the shape of where the points are. It is not a screenshot: an addon cannot
+  take one it can look at afterwards. Everything a picture of a talent tree is
+  made of - the icon, the row, the column, the points - is there at the moment
+  you save, so it is kept as the handful of numbers it is and drawn again on
+  demand. That is why it still draws on a character who cannot learn a single
+  talent in it.
+- Builds are kept per class, so the build you worked out on one mage is there
+  on the next one. `/chain spec` lists them, `/chain spec NAME` puts one back,
+  `/chain spec save NAME` writes down the one you are in.
+
+**Two customers, two different packs**
+
+- **A pack stops at its own size.** One takes five, somebody joins two runs
+  later and takes ten, and the short one runs out first while still standing
+  in the group - so his count went 6/5, then 7/5: the addon telling the man
+  who paid for five that he has had seven, in front of him. He stops at 5/5
+  now, and the long one carries on. Pay for five more and he picks up where he
+  left off.
+- Somebody who paid before you had set a price has no total to stop at, so he
+  keeps counting: what we have is how many he has had, and that is what it
+  says.
+- Nobody is told twice. The run that finishes a man says he is done; the runs
+  after it, while he is still standing there, say nothing about him.
+
+**Boost mode**
+
+- **My boost has a switch now, and it starts off.** Everything on the seller's
+  side used to be always on: anybody in your group who handed you gold became
+  a customer at your price, and the count went out in party chat whether or
+  not you were running anything for anybody. A guild mate paying back a loan
+  at the summoning stone is not a customer.
+- Press **start boosting** when you sit down to work. While it is on, money
+  from anyone in the group buys runs at your price and every run you clear
+  counts one off for everybody in it and says so. While it is off, nothing on
+  this side watches anything. The button says which it is, in words and in
+  colour, and goes on saying it after the mouse has been over it.
+- `/chain boost` toggles it from a macro, `/chain boost on` and `off` for the
+  times you want to be sure which way it went.
+
+**A trade is not a boost**
+
+- **You sold a green in trade chat and the buyer went into the book owing you
+  twenty-three runs.** Any trade with anybody was priced at what a run costs
+  in the place you were standing, so 1,400 gold coming in became "-23.3 runs"
+  and a stranger appeared in "they owe you". A trade only buys runs now when
+  it is with somebody you buy runs from: a name you have run with, priced or
+  added yourself, or an alt collecting for one - or when he was the man
+  boosting you at the moment the money crossed, which is what keeps the first
+  payment of a fresh chain counting before he has run anything.
+
+**The bottom line of the window, said properly**
+
+- The Trade tab had two different jobs crammed onto one line with nothing to
+  separate them: "never saw it?", a name, a price, a button, "or just say
+  what is left", a box whose own label ran into the words in front of it, and
+  three more buttons with no heading of their own. It reads left to right as a
+  sentence now - **with** *who*, then **paid him** *how much*, then, past a
+  divider, **runs left** *n* with the buttons that change it.
+- **"new pack" says what a pack is**, and the boxes explain themselves: hover
+  any of them and it says what it is for, the way every button already did.
+- On My boost, **the heading was drawn on top of the price box** - "your
+  price" and the box you type into were at the same place. There is a test for
+  this now: on every tab, nothing on that line may overlap anything else or
+  reach past the frame.
+
+**Putting the count right in one press**
+
+- **-1, +1 and "new pack"** on the Trade tab, beside the box you used to have
+  to type a number into. The argument is always the same argument - you and
+  he are one apart, because he counted the run you are standing in and you
+  did not, or he counted one from before the money. Whoever turns out to be
+  right, the fix is now one press, which is what it has to be with a booster
+  waiting at the stone.
+- **`/chain runs 1`, `/chain runs +1`, `/chain runs new`** do the same from a
+  macro, with the booster you are with taken as read. The window does not
+  have to be open, and neither does his name have to be typed.
+- "New pack" means the last lot you actually **bought** from him - five, even
+  if you have since corrected the count to one - not the last number typed.
+- The number these work in is the pack, the one on the bar, counting the run
+  you are standing in as one of them. The balance can say seven when the pack
+  says five, because two were owed from before; nobody counts in sevens.
+
+**The instance log, readable**
+
+- **One line a run, not two.** It was one line per thing that happened, so
+  every run took two of them: his reset, then you going in, one under the
+  other, naming the same instance twice and the same character twice. Sixteen
+  lines for eight runs. A reset and the entry that follows it within a quarter
+  of an hour are one thing that happened, and now they are one line - "in
+  after reset", with who reset it in a column of its own instead of in the
+  "free in" column, where it had no business being. A reset nobody followed up
+  on still gets its own line: the instance is fresh and you are outside it.
+- **What is ordinary is left blank.** Your own character and your own log were
+  written out on every line - "own", "own", "own" down the page - and a column
+  that says the same word every time is a column you stop reading. Only an
+  alt, or an entry that came from NIT or was rebuilt, says anything now.
+- **"no" in the counts column became nothing, and "yes" became a number.** The
+  ones still counting against the five say which of the five they are; the
+  rest say nothing, because that is what they have to say.
+- **And old lines give the time instead of their age.** "35h 22m ago" is
+  arithmetic you have to do before you know whether it was last night or the
+  night before. Under six hours it still counts up from now; past that it is
+  "yesterday 22:14", "Fri 22:14", or a date.
+
+**The receipt for the number**
+
+- **The pack count says what it is counting.** One end of the bar said
+  "inst 4/5" and the other said "4/5", and they are not the same thing at all:
+  the first counts every zone-in against the five an hour, the second counts
+  the runs in the pack you paid for. Two bare numbers of the same shape read
+  as one number said twice - and then as a bug on the day they disagree. It
+  says "run 4/5" now.
+
+- **`/chain count`** prints what the bar counted, line by line: the payment,
+  every run since it with its experience and its length, the one you are
+  standing in, and the total. "Why does it say four" is a question about
+  arithmetic, and the arithmetic is a list - written out there is nothing left
+  to wonder about, and a run missing from the list is the bug rather than the
+  total.
+- A run that does not count says why it does not: it was with somebody else,
+  or it started before the money did.
+- The two numbers in the last line are made to agree with each other. The run
+  you are standing in is counted in "4 of 5" and is also one of the ones still
+  to come, which reads as an error unless it is spelt out - so it says "1 run
+  after this one" rather than a number that looks like it contradicts the one
+  beside it.
+
+**Settling the count**
+
+- **The run you are standing in is counted now.** "Mark since last trade"
+  marked the finished ones and stopped, so the addon said three where the
+  booster said four - and the run in dispute is exactly the one you are both
+  standing in. It is marked with the rest, goes in the chat lines as the last
+  of them with what it has given so far, and says "still in it" instead of an
+  end time it does not have yet. It still cannot be deleted: it is not stored
+  until you walk out.
+- **And a total line, because he is reading a different clock.** His addon
+  counts from his reset to now - the summon, the walk in, the wipe, the
+  break. Ours counts from the first pull to the last. Both are right and they
+  never match, so the last line says the whole stretch, how much of it was
+  inside the instance, and how long went on everything between. Once the gap
+  has a number on it there is nothing left to argue about.
+
+**"Move to SM now (100% cheaper)"**
+
+- **Nobody takes a 47 into Scarlet Monastery.** The advice about where to go
+  next checked that a place was open yet and never that you were done with
+  it, so anywhere with a low price stayed a candidate for ever - and a place
+  whose mobs have gone grey is not cheap, it is empty. It stops being an
+  answer at the level your route says you leave it, or at the level the
+  instance is worth doing to.
+- **And "100% cheaper" was not a measurement, it was silence.** With no runs
+  in the place you are standing in, the forecast has nothing to anchor on and
+  says so by returning nothing - which was being read as "nothing left to
+  gain here", the strongest possible reason to move. So a character who had
+  just walked into Maraudon, with no runs there at all, was told to leave for
+  somewhere he had outlevelled. It now waits until there is something to
+  compare, the same way the forecast on the bar does.
+
+**Lines that were not earning their place**
+
+- **The quests in your bag and the group you are in moved to the tooltip.**
+  Both are true all day and neither changes what you do in the next minute:
+  the quests are experience you have already earned and can hand in when you
+  like, and the group is what it is until somebody leaves. The tooltip has
+  room to say what they mean - how many there are to hand in, when you would
+  ding after handing them in, how many of you there are and what the spread
+  costs you in experience - instead of "quests ready 3.0% (1)  grp 55.7 (3)
+  -8% xp" across the bottom of the bar. The gold band on the bar stays: the
+  picture was never the clutter, the sentence was.
+
+- **"Maraudon > 52  solo ~296h 18m" is gone unless there is a boost figure to
+  put next to it.** Twelve days of grinding, in a place you have never run,
+  is not a choice anybody was weighing. The line exists for the comparison -
+  what the boost would take against what it takes on your own - so it waits
+  until the first half of that is a real measurement, and the solo figure
+  comes along as the thing you hold it up against.
+- **Rested moved onto the bar.** It was a line of text under it at all times:
+  one number that does not move while you play and that you cannot do
+  anything about. It is drawn there already - the blue band ahead of the fill
+  is exactly how much you have - so hover the band and it says what it is
+  worth, that kills give double experience until it is used up, and roughly
+  how long that lasts at the rate you are going.
+
+**The bar's own place**
+
+- **Dropping the bar put it somewhere else.** A frame reports where it is in
+  its own units - screen pixels divided by everything scaling it, its own
+  scale and UIParent's on top of that - and the sum that turned "where the
+  mouse let go" into "how far from the middle" used the bar's scale but not
+  the interface's. The interface scale is almost never 1 in a real game, so
+  the bar jumped a couple of hundred pixels to the right of where you put it,
+  or slid straight into the edge, and you could not place it on purpose. It
+  goes through the screen now: out of one frame's units into pixels, out of
+  the other's into pixels, subtract there, and back once.
+- The arithmetic behind the resting places was always right, and always
+  tested. The road to it was not tested at all, because the test screen was
+  the one place an interface scale of 1 is normal. It is 0.7111 in that test
+  now, which is what a real one looks like.
+- **And letting go of a drag stopped counting as a click.** The end of a drag
+  is a mouse-up as well, so every time you moved the bar you also opened - or
+  closed - the window, right where you were trying to set it down.
+
 **Smaller things**
 
 - **The bar has resting places now.** Dragged by hand it landed wherever the

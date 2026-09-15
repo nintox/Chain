@@ -33,5 +33,6 @@ Roster.lua
 Meter.lua
 Bar.lua
 Minimap.lua
+Talents.lua
 Window.lua
 Options.lua
